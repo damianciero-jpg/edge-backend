@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EDGE — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#080c10; --surface:#0d1219; --border:#1e2d3d; --border2:#243447;
+  --accent:#00e5ff; --accent2:#7b61ff; --green:#00ff88; --red:#ff3b5c; --yellow:#ffd600;
+  --text:#e8f4f8; --muted:#5a7a8a; --muted2:#3a5060;
+  --mono:'Space Mono',monospace; --sans:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.009) 2px,rgba(0,229,255,0.009) 4px);pointer-events:none;z-index:9999;}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:13px 28px;border-bottom:1px solid var(--border);background:rgba(8,12,16,0.97);position:sticky;top:0;z-index:200;}
+.logo{font-family:var(--sans);font-size:18px;font-weight:800;letter-spacing:6px;color:var(--accent);}
+.logo small{color:var(--muted);font-weight:400;font-size:8px;letter-spacing:4px;display:block;margin-top:-2px;}
+.hdr-right{display:flex;align-items:center;gap:14px;}
+.admin-badge{font-family:var(--mono);font-size:8px;letter-spacing:3px;padding:4px 12px;border:1px solid var(--accent2);color:var(--accent2);}
+.logout-btn{font-family:var(--mono);font-size:9px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;cursor:pointer;transition:all 0.15s;}
+.logout-btn:hover{border-color:var(--red);color:var(--red);}
+
+.page{max-width:1100px;margin:0 auto;padding:28px 28px 60px;}
+
+/* LOGIN */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 56px);}
+.login-card{background:var(--surface);border:1px solid var(--border2);padding:40px;width:360px;position:relative;}
+.login-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.login-title{font-size:18px;font-weight:800;letter-spacing:3px;margin-bottom:6px;}
+.login-sub{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:26px;letter-spacing:1px;}
+.field{margin-bottom:14px;}
+.field label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:3px;display:block;margin-bottom:6px;}
+.field input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:11px;padding:10px 12px;outline:none;transition:border-color 0.2s;}
+.field input:focus{border-color:var(--accent);}
+.login-btn{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:3px;padding:12px;cursor:pointer;margin-top:4px;}
+.login-btn:hover{opacity:0.9;}
+.login-err{font-family:var(--mono);font-size:9px;color:var(--red);margin-top:10px;display:none;}
+
+/* SECTIONS */
+.section-lbl{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:3px;margin-bottom:14px;text-transform:uppercase;}
+.card{background:var(--surface);border:1px solid var(--border);margin-bottom:22px;}
+.card-hdr{padding:12px 18px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:3px;display:flex;align-items:center;justify-content:space-between;}
+.card-body{padding:18px;}
+
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+.stat{background:var(--surface);border:1px solid var(--border);padding:18px;}
+.stat-lbl{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:8px;}
+.stat-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--accent);}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;}
+.tbl th{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);background:var(--bg);}
+.tbl td{font-family:var(--mono);font-size:10px;padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.tbl tr:hover td{background:rgba(0,229,255,0.02);}
+.user-id{color:var(--muted);font-size:8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sub-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border:1px solid var(--green);color:var(--green);white-space:nowrap;}
+.free-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border:1px solid var(--muted2);color:var(--muted);}
+.credit-inp{width:70px;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:5px 8px;outline:none;text-align:center;}
+.credit-inp:focus{border-color:var(--accent);}
+.action-btn{font-family:var(--mono);font-size:8px;padding:5px 10px;border:1px solid;cursor:pointer;background:transparent;transition:all 0.15s;white-space:nowrap;}
+.action-btn.save{border-color:var(--accent);color:var(--accent);}
+.action-btn.save:hover{background:rgba(0,229,255,0.1);}
+.action-btn.toggle-sub{border-color:var(--accent2);color:var(--accent2);}
+.action-btn.toggle-sub:hover{background:rgba(123,97,255,0.1);}
+.action-btn.del{border-color:var(--muted2);color:var(--muted);}
+.action-btn.del:hover{border-color:var(--red);color:var(--red);}
+.actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+/* CONFIG */
+.config-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.cfg-row{background:var(--bg);border:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.cfg-key{font-family:var(--mono);font-size:9px;color:var(--muted);}
+.cfg-val{font-family:var(--mono);font-size:9px;}
+.cfg-val.set{color:var(--green);}
+.cfg-val.unset{color:var(--red);}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:9000;display:flex;flex-direction:column;gap:8px;}
+.toast{font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:12px 18px;border:1px solid;animation:toastIn 0.25s ease;}
+.toast.success{background:rgba(0,255,136,0.1);border-color:var(--green);color:var(--green);}
+.toast.error{background:rgba(255,59,92,0.1);border-color:var(--red);color:var(--red);}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+.empty-row td{text-align:center;color:var(--muted);padding:30px;letter-spacing:2px;}
+.refresh-btn{font-family:var(--mono);font-size:8px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;cursor:pointer;letter-spacing:2px;}
+.refresh-btn:hover{border-color:var(--accent);color:var(--accent);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">EDGE<small>ADMIN PANEL</small></div>
+  <div class="hdr-right">
+    <div class="admin-badge">ADMIN</div>
+    <button class="logout-btn" onclick="logout()">LOGOUT</button>
+  </div>
+</header>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <div class="login-title">ADMIN ACCESS</div>
+    <div class="login-sub">EDGE BACKEND DASHBOARD</div>
+    <div class="field">
+      <label>ADMIN PASSWORD</label>
+      <input type="password" id="pwInput" placeholder="Enter password..." onkeydown="if(event.key==='Enter')login()">
+    </div>
+    <button class="login-btn" onclick="login()">SIGN IN →</button>
+    <div class="login-err" id="loginErr">Incorrect password</div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" style="display:none;">
+  <div class="page">
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat"><div class="stat-lbl">TOTAL USERS</div><div class="stat-val" id="s-users">—</div></div>
+      <div class="stat"><div class="stat-lbl">SUBSCRIBERS</div><div class="stat-val" id="s-subs" style="color:var(--green)">—</div></div>
+      <div class="stat"><div class="stat-lbl">FREE CREDITS HELD</div><div class="stat-val" id="s-credits" style="color:var(--yellow)">—</div></div>
+      <div class="stat"><div class="stat-lbl">ANALYSES RUN</div><div class="stat-val" id="s-analyses" style="color:var(--accent2)">—</div></div>
+    </div>
+
+    <!-- Users -->
+    <div class="card">
+      <div class="card-hdr">
+        USER MANAGEMENT
+        <button class="refresh-btn" onclick="loadAll()">↻ REFRESH</button>
+      </div>
+      <div class="card-body" style="padding:0;overflow-x:auto;">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>USER ID</th>
+              <th>STATUS</th>
+              <th>CREDITS</th>
+              <th>JOINED</th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody">
+            <tr class="empty-row"><td colspan="5">LOADING...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="card">
+      <div class="card-hdr">API CONFIGURATION STATUS</div>
+      <div class="card-body">
+        <div class="config-grid" id="configGrid">
+          <div class="cfg-row"><span class="cfg-key">LOADING...</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+let adminKey = sessionStorage.getItem('edge_admin_key') || '';
+
+function showToast(msg, type = 'success') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+async function api(method, path, body) {
+  const res = await fetch('/api/admin' + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adminKey },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+  return res.json();
+}
+
+async function login() {
+  const pw = document.getElementById('pwInput').value;
+  adminKey = pw;
+  try {
+    await api('GET', '/stats');
+    sessionStorage.setItem('edge_admin_key', pw);
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadAll();
+  } catch {
+    document.getElementById('loginErr').style.display = 'block';
+    adminKey = '';
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem('edge_admin_key');
+  adminKey = '';
+  document.getElementById('loginWrap').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('pwInput').value = '';
+}
+
+async function loadAll() {
+  loadStats();
+  loadUsers();
+  loadConfig();
+}
+
+async function loadStats() {
+  const s = await api('GET', '/stats');
+  document.getElementById('s-users').textContent = s.totalUsers;
+  document.getElementById('s-subs').textContent = s.subscribers;
+  document.getElementById('s-credits').textContent = s.totalCredits;
+  document.getElementById('s-analyses').textContent = s.totalAnalyses;
+}
+
+async function loadUsers() {
+  const users = await api('GET', '/users');
+  const tbody = document.getElementById('usersBody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">NO USERS YET</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr id="row-${u.userId}">
+      <td><div class="user-id" title="${u.userId}">${u.userId}</div></td>
+      <td>${u.isSubscriber
+        ? '<span class="sub-badge">SUBSCRIBER</span>'
+        : '<span class="free-badge">FREE</span>'}</td>
+      <td><input class="credit-inp" id="cr-${u.userId}" type="number" value="${u.credits}" min="0"></td>
+      <td style="color:var(--muted)">${u.subscribedAt ? new Date(u.subscribedAt).toLocaleDateString() : '—'}</td>
+      <td>
+        <div class="actions">
+          <button class="action-btn save" onclick="saveCredits('${u.userId}')">SAVE CREDITS</button>
+          <button class="action-btn toggle-sub" onclick="toggleSub('${u.userId}', ${!u.isSubscriber})">${u.isSubscriber ? 'REMOVE SUB' : 'GRANT SUB'}</button>
+          <button class="action-btn del" onclick="deleteUser('${u.userId}')">✕</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+async function loadConfig() {
+  const cfg = await api('GET', '/config');
+  const grid = document.getElementById('configGrid');
+  grid.innerHTML = Object.entries(cfg).map(([k, v]) => `
+    <div class="cfg-row">
+      <span class="cfg-key">${k}</span>
+      <span class="cfg-val ${v.set ? 'set' : 'unset'}">${v.set ? '✓ ' + v.preview : '✗ NOT SET'}</span>
+    </div>`).join('');
+}
+
+async function saveCredits(userId) {
+  const val = parseInt(document.getElementById('cr-' + userId).value);
+  if (isNaN(val)) return;
+  await api('POST', `/users/${userId}/credits`, { credits: val });
+  showToast('Credits updated');
+  loadStats();
+}
+
+async function toggleSub(userId, isSubscriber) {
+  await api('POST', `/users/${userId}/subscriber`, { isSubscriber });
+  showToast(isSubscriber ? 'Subscription granted' : 'Subscription removed');
+  loadUsers();
+  loadStats();
+}
+
+async function deleteUser(userId) {
+  if (!confirm(`Delete user ${userId.slice(0,8)}...?`)) return;
+  await api('DELETE', `/users/${userId}`);
+  showToast('User deleted');
+  loadUsers();
+  loadStats();
+}
+
+// Auto-login if key is stored
+if (adminKey) {
+  api('GET', '/stats').then(() => {
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadAll();
+  }).catch(() => { adminKey = ''; sessionStorage.removeItem('edge_admin_key'); });
+}
+</script>
+</body>
+</html>

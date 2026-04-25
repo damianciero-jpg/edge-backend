@@ -1,0 +1,13 @@
+{
+  "name": "EDGE — AI Betting Analytics",
+  "short_name": "EDGE",
+  "description": "AI-powered sports betting expected value analysis",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080c10",
+  "theme_color": "#080c10",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
