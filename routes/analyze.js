@@ -107,8 +107,16 @@ router.post('/', async (req, res) => {
     if (!user.isSubscriber) {
       withTimeout(addCredits(userId, 1), 3000, 'credit refund').catch(() => {});
     }
-    console.error('Anthropic API error:', err.message);
-    res.status(500).json({ error: err.message });
+    const status = err.status || err.statusCode || 'unknown';
+    console.error(`Anthropic API error [${status}] model=${useSearch ? 'sonnet' : 'haiku'}:`, err.message);
+    const userMsg = status === 429
+      ? 'API rate limit hit — wait a minute and try again'
+      : status === 401
+      ? 'Invalid API key — check admin config'
+      : status === 403
+      ? 'API key does not have access to this model'
+      : err.message;
+    res.status(500).json({ error: userMsg, detail: err.message });
   }
 });
 
