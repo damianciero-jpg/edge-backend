@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [{ role: 'user', content: prompt }],
       },
-      { timeout: 90_000 }
+      { timeout: 180_000 }
     );
 
     // Increment counters only on success
