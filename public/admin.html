@@ -151,6 +151,38 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       </div>
     </div>
 
+    <!-- Limits -->
+    <div class="card">
+      <div class="card-hdr">TODAY'S USAGE & LIMITS <span id="limitsDate" style="color:var(--muted);font-weight:400;margin-left:8px;font-size:8px;"></span></div>
+      <div class="card-body">
+        <div class="config-grid" style="margin-bottom:14px;">
+          <div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+            <div style="display:flex;justify-content:space-between;width:100%;">
+              <span class="cfg-key">GLOBAL ANALYSES TODAY</span>
+              <span class="cfg-val set" id="lim-global">—</span>
+            </div>
+            <div style="background:var(--border);height:4px;width:100%;border-radius:2px;overflow:hidden;">
+              <div id="lim-global-bar" style="background:var(--accent);height:4px;width:0%;transition:width 0.4s;"></div>
+            </div>
+            <span style="font-family:var(--mono);font-size:8px;color:var(--muted);">Est. cost today: $<span id="lim-cost">0.00</span> &nbsp;|&nbsp; Limit: <span id="lim-global-max">—</span>/day</span>
+          </div>
+          <div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">
+            <div style="display:flex;justify-content:space-between;width:100%;">
+              <span class="cfg-key">PER-USER DAILY LIMIT</span>
+              <span class="cfg-val set" id="lim-user">—</span>
+            </div>
+            <span style="font-family:var(--mono);font-size:8px;color:var(--muted);">Max analyses any one user can run per day</span>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+              <input id="new-global-limit" class="credit-inp" type="number" placeholder="150" style="width:80px;">
+              <input id="new-user-limit" class="credit-inp" type="number" placeholder="20" style="width:80px;">
+              <button class="action-btn save" onclick="updateLimits()" style="font-size:8px;">UPDATE LIMITS</button>
+            </div>
+            <span style="font-family:var(--mono);font-size:8px;color:var(--muted2);">Left field = global/day &nbsp;|&nbsp; Right field = per-user/day</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Config -->
     <div class="card">
       <div class="card-hdr">API CONFIGURATION STATUS</div>
@@ -214,6 +246,7 @@ function logout() {
 async function loadAll() {
   loadStats();
   loadUsers();
+  loadLimits();
   loadConfig();
 }
 
@@ -248,6 +281,30 @@ async function loadUsers() {
         </div>
       </td>
     </tr>`).join('');
+}
+
+async function loadLimits() {
+  const d = await api('GET', '/limits');
+  const pct = Math.min(100, Math.round((d.globalUsed / d.globalLimit) * 100));
+  const barColor = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--accent)';
+  document.getElementById('lim-global').textContent = `${d.globalUsed} / ${d.globalLimit}`;
+  document.getElementById('lim-global').style.color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--green)';
+  document.getElementById('lim-global-bar').style.width = pct + '%';
+  document.getElementById('lim-global-bar').style.background = barColor;
+  document.getElementById('lim-global-max').textContent = d.globalLimit;
+  document.getElementById('lim-cost').textContent = d.estimatedCost;
+  document.getElementById('lim-user').textContent = `${d.userLimit} / day`;
+  document.getElementById('limitsDate').textContent = new Date().toISOString().slice(0, 10) + ' UTC';
+  document.getElementById('new-global-limit').placeholder = d.globalLimit;
+  document.getElementById('new-user-limit').placeholder = d.userLimit;
+}
+
+async function updateLimits() {
+  const g = document.getElementById('new-global-limit').value;
+  const u = document.getElementById('new-user-limit').value;
+  await api('POST', '/limits', { globalLimit: g ? parseInt(g) : undefined, userLimit: u ? parseInt(u) : undefined });
+  showToast('Limits updated — takes effect immediately', 'success');
+  loadLimits();
 }
 
 async function loadConfig() {

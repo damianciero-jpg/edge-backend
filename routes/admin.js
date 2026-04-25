@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getUser, saveUser, readDB } = require('../lib/users');
+const { getGlobalCount, getLimitConfig, setLimitConfig } = require('../lib/limits');
 
 function auth(req, res, next) {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -71,6 +72,21 @@ router.delete('/users/:userId', async (req, res) => {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
   }
   res.json({ ok: true });
+});
+
+router.get('/limits', async (req, res) => {
+  const [globalUsed, { globalLimit, userLimit }] = await Promise.all([getGlobalCount(), getLimitConfig()]);
+  res.json({ globalUsed, globalLimit, userLimit, estimatedCost: (globalUsed * 0.03).toFixed(2) });
+});
+
+router.post('/limits', async (req, res) => {
+  const { globalLimit, userLimit } = req.body;
+  const updates = {};
+  if (typeof globalLimit === 'number' && globalLimit > 0) updates.globalLimit = globalLimit;
+  if (typeof userLimit === 'number' && userLimit > 0) updates.userLimit = userLimit;
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide globalLimit and/or userLimit as positive numbers' });
+  const saved = await setLimitConfig(updates);
+  res.json(saved);
 });
 
 router.get('/config', (req, res) => {
