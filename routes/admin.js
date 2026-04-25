@@ -58,10 +58,11 @@ router.delete('/users/:userId', async (req, res) => {
   const db = await readDB();
   if (!db[userId]) return res.status(404).json({ error: 'User not found' });
   // For KV: remove from set + delete key; for file: delete from object
-  const { kv } = process.env.KV_REST_API_URL ? require('@vercel/kv') : {};
-  if (kv) {
-    await kv.del(`edge:user:${req.params.userId}`);
-    await kv.srem('edge:users', req.params.userId);
+  if (process.env.UPSTASH_REDIS_REST_URL) {
+    const { Redis } = require('@upstash/redis');
+    const redis = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+    await redis.del(`edge:user:${userId}`);
+    await redis.srem('edge:users', userId);
   } else {
     const fs = require('fs'), path = require('path');
     const DB_PATH = path.join(__dirname, '..', 'users.json');
@@ -76,7 +77,7 @@ router.get('/config', (req, res) => {
   const vars = [
     'ANTHROPIC_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
     'STRIPE_SUB_PRICE_ID', 'STRIPE_CREDITS_10_PRICE_ID', 'STRIPE_CREDITS_50_PRICE_ID',
-    'FRONTEND_URL', 'ADMIN_PASSWORD', 'KV_REST_API_URL',
+    'FRONTEND_URL', 'ADMIN_PASSWORD', 'UPSTASH_REDIS_REST_URL',
   ];
   const config = {};
   vars.forEach(k => {
