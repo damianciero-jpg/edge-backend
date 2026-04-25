@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { getUser, saveUser, readDB } = require('../lib/users');
 const { getGlobalCount, getLimitConfig, setLimitConfig } = require('../lib/limits');
+const { getAppConfig, setAppConfig } = require('../lib/config');
+
+const EDITABLE_CONFIG_KEYS = [
+  'stripeSecretKey', 'stripeWebhookSecret', 'stripePublishableKey',
+  'stripeSubPriceId', 'stripeCredits10PriceId', 'stripeCredits50PriceId',
+  'frontendUrl',
+];
 
 function auth(req, res, next) {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -87,6 +94,28 @@ router.post('/limits', async (req, res) => {
   if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide globalLimit and/or userLimit as positive numbers' });
   const saved = await setLimitConfig(updates);
   res.json(saved);
+});
+
+router.get('/app-config', async (req, res) => {
+  const config = await getAppConfig();
+  const result = {};
+  EDITABLE_CONFIG_KEYS.forEach(k => {
+    const v = config[k];
+    result[k] = { set: !!v, preview: v ? v.slice(0, 6) + '...' : '' };
+  });
+  res.json(result);
+});
+
+router.post('/app-config', async (req, res) => {
+  const updates = {};
+  EDITABLE_CONFIG_KEYS.forEach(k => {
+    if (req.body[k] !== undefined && String(req.body[k]).trim() !== '') {
+      updates[k] = String(req.body[k]).trim();
+    }
+  });
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'No valid fields provided' });
+  await setAppConfig(updates);
+  res.json({ ok: true, updated: Object.keys(updates) });
 });
 
 router.get('/config', (req, res) => {

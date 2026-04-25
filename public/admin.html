@@ -87,6 +87,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 @keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
 .empty-row td{text-align:center;color:var(--muted);padding:30px;letter-spacing:2px;}
+.setup-inp{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:9px;padding:8px 10px;outline:none;transition:border-color 0.2s;margin-top:4px;}
+.setup-inp:focus{border-color:var(--accent);}
+.field label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;display:block;}
 .refresh-btn{font-family:var(--mono);font-size:8px;background:transparent;border:1px solid var(--border2);color:var(--muted);padding:5px 12px;cursor:pointer;letter-spacing:2px;}
 .refresh-btn:hover{border-color:var(--accent);color:var(--accent);}
 </style>
@@ -183,9 +186,79 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       </div>
     </div>
 
-    <!-- Config -->
+    <!-- Setup / API Keys -->
     <div class="card">
-      <div class="card-hdr">API CONFIGURATION STATUS</div>
+      <div class="card-hdr">
+        API SETUP
+        <span style="color:var(--muted);font-weight:400;font-size:8px;">Keys saved here are stored securely in your database</span>
+      </div>
+      <div class="card-body">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:16px;line-height:2;">
+          ANTHROPIC_API_KEY and ADMIN_PASSWORD must be set via Vercel dashboard → Settings → Environment Variables.<br>
+          Everything else below can be entered here and takes effect immediately.
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" id="setupGrid">
+
+          <div style="grid-column:1/-1;">
+            <div class="section-lbl" style="margin-bottom:10px;">STRIPE</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="field">
+                <label>STRIPE SECRET KEY (sk_live_... or sk_test_...)</label>
+                <input class="setup-inp" id="cfg-stripeSecretKey" type="password" placeholder="sk_live_...">
+              </div>
+              <div class="field">
+                <label>STRIPE WEBHOOK SECRET (whsec_...)</label>
+                <input class="setup-inp" id="cfg-stripeWebhookSecret" type="password" placeholder="whsec_...">
+              </div>
+              <div class="field">
+                <label>STRIPE PUBLISHABLE KEY (pk_live_...)</label>
+                <input class="setup-inp" id="cfg-stripePublishableKey" type="text" placeholder="pk_live_...">
+              </div>
+              <div class="field">
+                <label>FRONTEND URL (your Vercel URL)</label>
+                <input class="setup-inp" id="cfg-frontendUrl" type="text" placeholder="https://edge-backend-rho.vercel.app">
+              </div>
+            </div>
+          </div>
+
+          <div style="grid-column:1/-1;">
+            <div class="section-lbl" style="margin-bottom:10px;">STRIPE PRICE IDs — get these from Stripe dashboard → Products</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div class="field">
+                <label>MONTHLY SUBSCRIPTION (price_...)</label>
+                <input class="setup-inp" id="cfg-stripeSubPriceId" type="text" placeholder="price_...">
+              </div>
+              <div class="field">
+                <label>10 CREDITS PACK (price_...)</label>
+                <input class="setup-inp" id="cfg-stripeCredits10PriceId" type="text" placeholder="price_...">
+              </div>
+              <div class="field">
+                <label>50 CREDITS PACK (price_...)</label>
+                <input class="setup-inp" id="cfg-stripeCredits50PriceId" type="text" placeholder="price_...">
+              </div>
+            </div>
+          </div>
+
+          <div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
+            <div id="setupStatus" style="font-family:var(--mono);font-size:9px;color:var(--muted);"></div>
+            <button class="action-btn save" style="font-size:10px;padding:8px 20px;" onclick="saveSetup()">SAVE CONFIGURATION →</button>
+          </div>
+
+        </div>
+
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+          <div class="section-lbl" style="margin-bottom:10px;">CURRENT STATUS</div>
+          <div class="config-grid" id="setupStatusGrid">
+            <div class="cfg-row"><span class="cfg-key">LOADING...</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Env Var Status -->
+    <div class="card">
+      <div class="card-hdr">VERCEL ENV VAR STATUS</div>
       <div class="card-body">
         <div class="config-grid" id="configGrid">
           <div class="cfg-row"><span class="cfg-key">LOADING...</span></div>
@@ -247,6 +320,7 @@ async function loadAll() {
   loadStats();
   loadUsers();
   loadLimits();
+  loadSetup();
   loadConfig();
 }
 
@@ -305,6 +379,45 @@ async function updateLimits() {
   await api('POST', '/limits', { globalLimit: g ? parseInt(g) : undefined, userLimit: u ? parseInt(u) : undefined });
   showToast('Limits updated — takes effect immediately', 'success');
   loadLimits();
+}
+
+const SETUP_LABELS = {
+  stripeSecretKey: 'Stripe Secret Key',
+  stripeWebhookSecret: 'Stripe Webhook Secret',
+  stripePublishableKey: 'Stripe Publishable Key',
+  stripeSubPriceId: 'Price ID — Subscription',
+  stripeCredits10PriceId: 'Price ID — 10 Credits',
+  stripeCredits50PriceId: 'Price ID — 50 Credits',
+  frontendUrl: 'Frontend URL',
+};
+
+async function loadSetup() {
+  const cfg = await api('GET', '/app-config');
+  const grid = document.getElementById('setupStatusGrid');
+  grid.innerHTML = Object.entries(cfg).map(([k, v]) => `
+    <div class="cfg-row">
+      <span class="cfg-key">${SETUP_LABELS[k] || k}</span>
+      <span class="cfg-val ${v.set ? 'set' : 'unset'}">${v.set ? '✓ ' + v.preview : '✗ NOT SET'}</span>
+    </div>`).join('');
+}
+
+async function saveSetup() {
+  const fields = ['stripeSecretKey','stripeWebhookSecret','stripePublishableKey',
+                  'stripeSubPriceId','stripeCredits10PriceId','stripeCredits50PriceId','frontendUrl'];
+  const body = {};
+  fields.forEach(k => {
+    const v = document.getElementById('cfg-' + k)?.value?.trim();
+    if (v) body[k] = v;
+  });
+  if (!Object.keys(body).length) { showToast('No fields filled in', 'error'); return; }
+  const r = await api('POST', '/app-config', body);
+  if (r.ok) {
+    showToast(`Saved: ${r.updated.join(', ')}`);
+    fields.forEach(k => { const el = document.getElementById('cfg-' + k); if (el) el.value = ''; });
+    loadSetup();
+  } else {
+    showToast(r.error || 'Save failed', 'error');
+  }
 }
 
 async function loadConfig() {

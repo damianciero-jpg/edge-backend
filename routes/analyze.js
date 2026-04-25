@@ -15,7 +15,7 @@ const SYSTEM_PROMPT = [
 ];
 
 router.post('/', async (req, res) => {
-  const { prompt, userId } = req.body;
+  const { prompt, userId, useSearch = false } = req.body;
 
   if (!prompt || !userId) {
     return res.status(400).json({ error: 'prompt and userId are required' });
@@ -56,16 +56,15 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const response = await client.messages.create(
-      {
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
-        system: SYSTEM_PROMPT,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }],
-      },
-      { timeout: 180_000 }
-    );
+    const msgParams = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    };
+    if (useSearch) msgParams.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+
+    const response = await client.messages.create(msgParams, { timeout: 180_000 });
 
     // Increment counters only on success
     await incrementGlobalCount();
