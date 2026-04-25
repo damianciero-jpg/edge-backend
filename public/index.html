@@ -938,7 +938,15 @@ async function runAnalysis() {
   const area = document.getElementById('aiResultArea');
   btn.disabled = true; btn.textContent = 'ANALYZING...';
 
-  area.innerHTML = `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">FETCHING STATS · RUNNING EV MODEL</div></div>`;
+  // Elapsed-time counter in loading state
+  let elapsed = 0;
+  const loadingMsgs = ['SEARCHING THE WEB', 'READING INJURY REPORTS', 'CHECKING RECENT FORM', 'RUNNING EV MODEL', 'ALMOST DONE'];
+  function loadingHtml() {
+    const msgIdx = Math.min(Math.floor(elapsed / 18), loadingMsgs.length - 1);
+    return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">${loadingMsgs[msgIdx]} · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">Web search typically takes 30–90 seconds</div></div>`;
+  }
+  area.innerHTML = loadingHtml();
+  const ticker = setInterval(() => { elapsed++; area.innerHTML = loadingHtml(); }, 1000);
 
   const game = currentGame;
   let oddsCtx = '';
@@ -991,15 +999,26 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
   "stats_found": "Brief summary of data sources used."
 }`;
 
+  const controller = new AbortController();
+  const clientTimeout = setTimeout(() => controller.abort(), 100_000);
+
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, userId: getUserId() })
+      body: JSON.stringify({ prompt, userId: getUserId() }),
+      signal: controller.signal,
     });
+    clearTimeout(clientTimeout);
+    clearInterval(ticker);
 
     if (res.status === 402) { showPaywall(); btn.disabled=false; btn.textContent='⚡ ANALYZE EV'; return; }
-    if (!res.ok) { const e=await res.json(); area.innerHTML=`<div class="err-msg">API ERROR: ${e.error||res.status}</div>`; btn.disabled=false; btn.textContent='⚡ ANALYZE EV'; return; }
+    if (!res.ok) {
+      let errMsg = `HTTP ${res.status}`;
+      try { const e = await res.json(); errMsg = e.error || errMsg; } catch {}
+      area.innerHTML = `<div class="err-msg">API ERROR: ${errMsg}</div>`;
+      btn.disabled = false; btn.textContent = '⚡ ANALYZE EV'; return;
+    }
 
     const data = await res.json();
     const txt = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
@@ -1008,11 +1027,19 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     try {
       const m = txt.match(/\{[\s\S]*\}/);
       result = JSON.parse(m[0]);
-    } catch { area.innerHTML=`<div class="sec"><div class="sec-hdr">AI ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`; btn.disabled=false; btn.textContent='↻ RE-ANALYZE'; return; }
+    } catch {
+      area.innerHTML = `<div class="sec"><div class="sec-hdr">AI ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
+      btn.disabled = false; btn.textContent = '↻ RE-ANALYZE'; return;
+    }
 
     renderAIResult(result);
     syncUserStatus();
-  } catch(e) { area.innerHTML=`<div class="err-msg">ERROR: ${e.message}</div>`; }
+  } catch(e) {
+    clearTimeout(clientTimeout);
+    clearInterval(ticker);
+    const msg = e.name === 'AbortError' ? 'Request timed out after 100s — try again' : e.message;
+    area.innerHTML = `<div class="err-msg">ERROR: ${msg}</div>`;
+  }
 
   btn.disabled = false; btn.textContent = '↻ RE-ANALYZE';
 }
