@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { addCredits, setSubscriber } = require('../lib/users');
 const { getCfg } = require('../lib/config');
+const { ok, fail } = require('../lib/http');
 
 router.post('/', async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -12,7 +13,7 @@ router.post('/', async (req, res) => {
   ]);
 
   if (!stripeKey || !webhookSecret) {
-    return res.status(503).json({ error: 'Stripe not configured' });
+    return fail(res, 503, { text: 'Stripe is not configured', error: 'Stripe not configured' });
   }
 
   const stripe = require('stripe')(stripeKey);
@@ -21,32 +22,37 @@ router.post('/', async (req, res) => {
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error(`[${req.id}] Webhook signature verification failed:`, err.message);
+    return fail(res, 400, { text: 'Invalid webhook signature', error: 'Invalid signature' });
   }
 
   try {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      const { userId, plan, credits } = session.metadata;
-      if (!userId) { console.warn('Webhook: no userId in metadata'); return res.json({ received: true }); }
+      const { userId, plan, credits } = session.metadata || {};
+      if (!userId) {
+        console.warn(`[${req.id}] Webhook: no userId in metadata`);
+        return ok(res, { text: 'Webhook received (missing user metadata)', data: { received: true } });
+      }
       if (plan === 'sub') {
         await setSubscriber(userId, true);
-        console.log(`User ${userId} subscribed`);
+        console.log(`[${req.id}] User subscribed: ${userId}`);
       } else if (credits) {
         const amount = parseInt(credits, 10);
-        await addCredits(userId, amount);
-        console.log(`Added ${amount} credits to user ${userId}`);
+        if (Number.isFinite(amount) && amount > 0) {
+          await addCredits(userId, amount);
+          console.log(`[${req.id}] Added ${amount} credits to ${userId}`);
+        }
       }
     } else if (event.type === 'customer.subscription.deleted') {
-      console.log(`Subscription cancelled: ${event.data.object.id}`);
+      console.log(`[${req.id}] Subscription cancelled: ${event.data.object.id}`);
     }
   } catch (err) {
-    console.error('Webhook handler error:', err.message);
-    return res.status(500).send('Internal error');
+    console.error(`[${req.id}] Webhook handler error:`, err.message);
+    return fail(res, 500, { text: 'Webhook processing failed', error: 'Internal webhook error' });
   }
 
-  res.json({ received: true });
+  return ok(res, { text: 'Webhook received', data: { received: true } });
 });
 
 module.exports = router;

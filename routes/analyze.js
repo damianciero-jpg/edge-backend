@@ -4,8 +4,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { getUser, addCredits } = require('../lib/users');
 const { getGlobalCount, incrementGlobalCount, getUserDailyCount, incrementUserDailyCount, getLimitConfig } = require('../lib/limits');
 const { verifySession } = require('../lib/auth');
+const { ok, fail } = require('../lib/http');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const hasOpenAI = !!process.env.OPENAI_API_KEY;
 
 const SYSTEM_PROMPT = [
   {
@@ -15,7 +17,6 @@ const SYSTEM_PROMPT = [
   },
 ];
 
-// Wraps any promise with a hard timeout so a stalled Redis call can't block the route
 function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
@@ -23,102 +24,193 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+function extractTextFromAnthropic(response) {
+  return (response?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+}
+
+function sanitizeErrorMessage(err) {
+  const status = err?.status || err?.statusCode || 500;
+  if (status === 429) return 'AI service is rate-limited. Try again shortly.';
+  if (status === 401 || status === 403) return 'AI service authentication failed. Contact support.';
+  return 'AI analysis is temporarily unavailable.';
+}
+
+async function callAnthropic(prompt, useSearch) {
+  const model = useSearch ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+  const apiTimeout = useSearch ? 180_000 : 25_000;
+
+  const msgParams = {
+    model,
+    max_tokens: 1500,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: prompt }],
+  };
+  if (useSearch) msgParams.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+
+  const response = await anthropicClient.messages.create(msgParams, { timeout: apiTimeout });
+  return {
+    provider: 'anthropic',
+    model,
+    raw: response,
+    text: extractTextFromAnthropic(response),
+  };
+}
+
+async function callOpenAIFallback(prompt) {
+  if (!hasOpenAI) throw new Error('OPENAI_API_KEY is not configured');
+
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1-mini',
+      temperature: 0.2,
+      max_output_tokens: 1400,
+      input: [
+        { role: 'system', content: 'You are a second-pass reviewer for sports betting analysis. Return only a valid JSON object.' },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `OpenAI request failed (${response.status})`);
+  }
+
+  return {
+    provider: 'openai',
+    model: 'gpt-4.1-mini',
+    raw: payload,
+    text: payload.output_text || '',
+  };
+}
+
 router.post('/', async (req, res) => {
+  const startedAt = Date.now();
   const { prompt, useSearch = false } = req.body;
 
   const session = verifySession(req.cookies?.edge_session);
   if (!session?.email) {
-    return res.status(401).json({ error: 'Not logged in', authRequired: true });
+    return fail(res, 401, { text: 'Login required', error: 'Not logged in', data: { authRequired: true } });
   }
   const userId = session.email;
 
   if (!prompt) {
-    return res.status(400).json({ error: 'prompt is required' });
+    return fail(res, 400, { text: 'Missing required prompt', error: 'prompt is required' });
   }
 
-  // Fetch user + limits in parallel, each with a 5s cap
-  let user, globalLimit, userLimit;
-  try {
-    [{ user, globalLimit, userLimit }] = await Promise.all([
-      withTimeout(
-        Promise.all([getUser(userId), getLimitConfig()]).then(([u, lim]) => ({ user: u, ...lim })),
-        5000, 'user/limits fetch'
-      ),
-    ]);
-  } catch (err) {
-    console.error('Storage fetch error:', err.message);
-    return res.status(503).json({ error: `Storage error: ${err.message}` });
-  }
-
-  // Credit / subscription gate
-  if (!user.isSubscriber && user.credits <= 0) {
-    return res.status(402).json({ error: 'No credits remaining', paywall: true });
-  }
-
-  // Global circuit breaker
+  let user;
+  let globalLimit;
+  let userLimit;
   let globalCount = 0;
+
   try {
-    globalCount = await withTimeout(getGlobalCount(), 3000, 'global count');
-  } catch { /* non-fatal — allow request through if counter is slow */ }
+    const [userAndLimits, globalCountResult] = await Promise.all([
+      withTimeout(Promise.all([getUser(userId), getLimitConfig()]).then(([u, lim]) => ({ user: u, ...lim })), 4500, 'user/limits fetch'),
+      withTimeout(getGlobalCount(), 2500, 'global count').catch(() => 0),
+    ]);
+
+    user = userAndLimits.user;
+    globalLimit = userAndLimits.globalLimit;
+    userLimit = userAndLimits.userLimit;
+    globalCount = globalCountResult || 0;
+  } catch (err) {
+    console.error(`[${req.id}] Storage fetch error:`, err.message);
+    return fail(res, 503, { text: 'Temporary storage issue', error: 'Storage unavailable' });
+  }
+
+  if (!user.isSubscriber && user.credits <= 0) {
+    return fail(res, 402, { text: 'No credits remaining', error: 'No credits remaining', data: { paywall: true } });
+  }
 
   if (globalCount >= (globalLimit || 150)) {
-    return res.status(503).json({
-      error: `Daily analysis capacity reached (${globalLimit} max). Resets at midnight UTC.`,
-      limitType: 'global',
+    return fail(res, 503, {
+      text: 'Daily analysis capacity reached. Resets at midnight UTC.',
+      error: 'Global daily limit reached',
+      data: { limitType: 'global', limit: globalLimit || 150, used: globalCount },
     });
   }
 
-  // Per-user daily limit (subscribers only)
   if (user.isSubscriber) {
     let userCount = 0;
     try {
-      userCount = await withTimeout(getUserDailyCount(userId), 3000, 'user count');
-    } catch { /* non-fatal */ }
+      userCount = await withTimeout(getUserDailyCount(userId), 2500, 'user count');
+    } catch {
+      userCount = 0;
+    }
+
     if (userCount >= (userLimit || 20)) {
-      return res.status(429).json({
-        error: `Daily limit of ${userLimit} analyses reached. Resets at midnight UTC.`,
-        limitType: 'user',
-        used: userCount,
-        limit: userLimit,
+      return fail(res, 429, {
+        text: `Daily limit reached (${userLimit || 20}). Resets at midnight UTC.`,
+        error: 'User daily limit reached',
+        data: { limitType: 'user', used: userCount, limit: userLimit || 20 },
       });
     }
   }
 
   try {
-    const model = useSearch ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
-    const apiTimeout = useSearch ? 180_000 : 30_000;
+    let result;
+    let fallbackUsed = false;
 
-    const msgParams = {
-      model,
-      max_tokens: 1500,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
-    };
-    if (useSearch) msgParams.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+    try {
+      result = await callAnthropic(prompt, useSearch);
+    } catch (anthropicErr) {
+      console.error(`[${req.id}] Anthropic failed:`, anthropicErr.message);
+      if (!hasOpenAI) throw anthropicErr;
+      fallbackUsed = true;
+      result = await withTimeout(callOpenAIFallback(prompt), 20_000, 'openai fallback');
+    }
 
-    const response = await client.messages.create(msgParams, { timeout: apiTimeout });
+    // Best-effort second-layer reviewer (non-blocking for speed)
+    let reviewer = null;
+    if (hasOpenAI && result.provider === 'anthropic') {
+      withTimeout(callOpenAIFallback(`Review this analysis JSON for consistency and risk flags:\n\n${result.text}`), 8_000, 'openai reviewer')
+        .then((review) => {
+          reviewer = { provider: review.provider, model: review.model, preview: review.text.slice(0, 300) };
+        })
+        .catch((err) => console.warn(`[${req.id}] reviewer skipped: ${err.message}`));
+    }
 
-    // Deduct credit and increment counters only after a successful response — fire-and-forget
     Promise.all([
       !user.isSubscriber
-        ? withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch(e => console.error(e.message))
+        ? withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch((e) => console.error(`[${req.id}] credit deduct: ${e.message}`))
         : Promise.resolve(),
-      withTimeout(incrementGlobalCount(), 3000, 'incr global').catch(e => console.error(e.message)),
-      withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
+      withTimeout(incrementGlobalCount(), 3000, 'incr global').catch((e) => console.error(`[${req.id}] incr global: ${e.message}`)),
+      withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch((e) => console.error(`[${req.id}] incr user: ${e.message}`)),
     ]);
 
-    res.json(response);
+    const elapsedMs = Date.now() - startedAt;
+    console.log(`[${req.id}] /api/analyze success provider=${result.provider} fallback=${fallbackUsed} ms=${elapsedMs}`);
+
+    return ok(res, {
+      text: result.text,
+      meta: {
+        provider: result.provider,
+        model: result.model,
+        useSearch: !!useSearch,
+        fallbackUsed,
+        elapsedMs,
+        reviewer,
+      },
+      data: {
+        // compatibility for existing frontend parser
+        content: result.provider === 'anthropic'
+          ? result.raw.content
+          : [{ type: 'text', text: result.text }],
+      },
+    });
   } catch (err) {
-    const status = err.status || err.statusCode || 'unknown';
-    console.error(`Anthropic API error [${status}] model=${useSearch ? 'sonnet' : 'haiku'}:`, err.message);
-    const userMsg = status === 429
-      ? 'API rate limit hit — wait a minute and try again'
-      : status === 401
-      ? 'Invalid API key — check admin config'
-      : status === 403
-      ? 'API key does not have access to this model'
-      : err.message;
-    res.status(500).json({ error: userMsg, detail: err.message });
+    const status = err.status || err.statusCode || 500;
+    console.error(`[${req.id}] /api/analyze failed [${status}]:`, err.message);
+    return fail(res, 500, {
+      text: 'Analysis failed',
+      error: sanitizeErrorMessage(err),
+      meta: { provider: 'none', elapsedMs: Date.now() - startedAt },
+    });
   }
 });
 
