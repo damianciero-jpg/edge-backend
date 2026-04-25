@@ -4,3 +4,6 @@ users.json
 .vercel
 
 .vercel
+.env 
+node_modules 
+.vercel 

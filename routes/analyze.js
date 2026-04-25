@@ -3,13 +3,14 @@ const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { getUser, addCredits } = require('../lib/users');
 const { getGlobalCount, incrementGlobalCount, getUserDailyCount, incrementUserDailyCount, getLimitConfig } = require('../lib/limits');
+const { verifySession } = require('../lib/auth');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = [
   {
     type: 'text',
-    text: 'You are an expert sports betting analyst specializing in expected value (EV) modeling. You have deep knowledge of major North American sports (NFL, NBA, MLB, NHL) and European football. When analyzing games, you search for recent team form, injury reports, head-to-head records, home/away splits, and situational factors. Always respond in the exact JSON format the user requests — no markdown, no backticks, no extra text.',
+    text: 'You are an expert sports betting analyst specializing in expected value (EV) modeling. You have deep knowledge of major North American sports (NFL, NBA, MLB, NHL) and European football. When analyzing games, consider recent team form, injury reports, head-to-head records, home/away splits, and situational factors. CRITICAL: Always respond with ONLY the raw JSON object — no markdown, no backticks, no // comments, no preamble text, no citations, no explanations. Start your response with { and end with }. Never include anything outside the JSON object.',
     cache_control: { type: 'ephemeral' },
   },
 ];
@@ -23,10 +24,16 @@ function withTimeout(promise, ms, label) {
 }
 
 router.post('/', async (req, res) => {
-  const { prompt, userId, useSearch = false } = req.body;
+  const { prompt, useSearch = false } = req.body;
 
-  if (!prompt || !userId) {
-    return res.status(400).json({ error: 'prompt and userId are required' });
+  const session = verifySession(req.cookies?.edge_session);
+  if (!session?.email) {
+    return res.status(401).json({ error: 'Not logged in', authRequired: true });
+  }
+  const userId = session.email;
+
+  if (!prompt) {
+    return res.status(400).json({ error: 'prompt is required' });
   }
 
   // Fetch user + limits in parallel, each with a 5s cap

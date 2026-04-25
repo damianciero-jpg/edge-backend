@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { getCfg } = require('../lib/config');
+const { verifySession } = require('../lib/auth');
 
 const CREDITS_MAP = { sub: '0', credits_10: '10', credits_50: '50' };
 
 router.post('/', async (req, res) => {
-  const { plan, userId } = req.body;
-  if (!plan || !userId) return res.status(400).json({ error: 'plan and userId are required' });
+  const { plan } = req.body;
+  const session = verifySession(req.cookies?.edge_session);
+  const userId = session?.email;
+  if (!plan || !userId) return res.status(400).json({ error: 'plan required and must be logged in' });
 
   const [stripeKey, subPrice, credits10Price, credits50Price, frontendUrl] = await Promise.all([
     getCfg('stripeSecretKey', 'STRIPE_SECRET_KEY'),
