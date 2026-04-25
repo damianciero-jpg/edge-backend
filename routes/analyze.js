@@ -39,8 +39,8 @@ router.post('/', async (req, res) => {
       ),
     ]);
   } catch (err) {
-    console.error('Redis fetch error:', err.message);
-    return res.status(503).json({ error: 'Service temporarily unavailable — database connection slow. Try again in a moment.' });
+    console.error('Storage fetch error:', err.message);
+    return res.status(503).json({ error: `Storage error: ${err.message}` });
   }
 
   // Credit / subscription gate
