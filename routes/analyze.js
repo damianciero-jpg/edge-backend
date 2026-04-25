@@ -14,6 +14,14 @@ const SYSTEM_PROMPT = [
   },
 ];
 
+// Wraps any promise with a hard timeout so a stalled Redis call can't block the route
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 router.post('/', async (req, res) => {
   const { prompt, userId, useSearch = false } = req.body;
 
@@ -21,26 +29,45 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'prompt and userId are required' });
   }
 
-  const [user, { globalLimit, userLimit }] = await Promise.all([getUser(userId), getLimitConfig()]);
+  // Fetch user + limits in parallel, each with a 5s cap
+  let user, globalLimit, userLimit;
+  try {
+    [{ user, globalLimit, userLimit }] = await Promise.all([
+      withTimeout(
+        Promise.all([getUser(userId), getLimitConfig()]).then(([u, lim]) => ({ user: u, ...lim })),
+        5000, 'user/limits fetch'
+      ),
+    ]);
+  } catch (err) {
+    console.error('Redis fetch error:', err.message);
+    return res.status(503).json({ error: 'Service temporarily unavailable — database connection slow. Try again in a moment.' });
+  }
 
   // Credit / subscription gate
   if (!user.isSubscriber && user.credits <= 0) {
     return res.status(402).json({ error: 'No credits remaining', paywall: true });
   }
 
-  // Global circuit breaker — protects total daily spend
-  const globalCount = await getGlobalCount();
-  if (globalCount >= globalLimit) {
+  // Global circuit breaker
+  let globalCount = 0;
+  try {
+    globalCount = await withTimeout(getGlobalCount(), 3000, 'global count');
+  } catch { /* non-fatal — allow request through if counter is slow */ }
+
+  if (globalCount >= (globalLimit || 150)) {
     return res.status(503).json({
       error: `Daily analysis capacity reached (${globalLimit} max). Resets at midnight UTC.`,
       limitType: 'global',
     });
   }
 
-  // Per-user daily limit (subscribers only — free users are already credit-gated)
+  // Per-user daily limit (subscribers only)
   if (user.isSubscriber) {
-    const userCount = await getUserDailyCount(userId);
-    if (userCount >= userLimit) {
+    let userCount = 0;
+    try {
+      userCount = await withTimeout(getUserDailyCount(userId), 3000, 'user count');
+    } catch { /* non-fatal */ }
+    if (userCount >= (userLimit || 20)) {
       return res.status(429).json({
         error: `Daily limit of ${userLimit} analyses reached. Resets at midnight UTC.`,
         limitType: 'user',
@@ -50,29 +77,36 @@ router.post('/', async (req, res) => {
     }
   }
 
-  // Deduct credit before the API call — refund on failure
+  // Deduct credit before API call — refund on failure
   if (!user.isSubscriber) {
-    await addCredits(userId, -1);
+    try { await withTimeout(addCredits(userId, -1), 3000, 'credit deduct'); } catch { /* non-fatal */ }
   }
 
   try {
+    const model = useSearch ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
+    const apiTimeout = useSearch ? 180_000 : 30_000;
+
     const msgParams = {
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: 1500,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
     };
     if (useSearch) msgParams.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
 
-    const response = await client.messages.create(msgParams, { timeout: 180_000 });
+    const response = await client.messages.create(msgParams, { timeout: apiTimeout });
 
-    // Increment counters only on success
-    await incrementGlobalCount();
-    await incrementUserDailyCount(userId);
+    // Increment counters — non-blocking, don't let slow Redis delay the response
+    Promise.all([
+      withTimeout(incrementGlobalCount(), 3000, 'incr global').catch(e => console.error(e.message)),
+      withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
+    ]);
 
     res.json(response);
   } catch (err) {
-    if (!user.isSubscriber) await addCredits(userId, 1);
+    if (!user.isSubscriber) {
+      withTimeout(addCredits(userId, 1), 3000, 'credit refund').catch(() => {});
+    }
     console.error('Anthropic API error:', err.message);
     res.status(500).json({ error: err.message });
   }
