@@ -290,7 +290,10 @@ async function api(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
-  return res.json();
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Server error (${res.status})`); }
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
 }
 
 async function login() {
@@ -325,15 +328,18 @@ async function loadAll() {
 }
 
 async function loadStats() {
-  const s = await api('GET', '/stats');
-  document.getElementById('s-users').textContent = s.totalUsers;
-  document.getElementById('s-subs').textContent = s.subscribers;
-  document.getElementById('s-credits').textContent = s.totalCredits;
-  document.getElementById('s-analyses').textContent = s.totalAnalyses;
+  try {
+    const s = await api('GET', '/stats');
+    document.getElementById('s-users').textContent = s.totalUsers;
+    document.getElementById('s-subs').textContent = s.subscribers;
+    document.getElementById('s-credits').textContent = s.totalCredits;
+    document.getElementById('s-analyses').textContent = s.totalAnalyses;
+  } catch (e) { showToast('Stats: ' + e.message, 'error'); }
 }
 
 async function loadUsers() {
-  const users = await api('GET', '/users');
+  let users;
+  try { users = await api('GET', '/users'); } catch (e) { showToast('Users: ' + e.message, 'error'); return; }
   const tbody = document.getElementById('usersBody');
   if (!users.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="5">NO USERS YET</td></tr>';
@@ -358,7 +364,8 @@ async function loadUsers() {
 }
 
 async function loadLimits() {
-  const d = await api('GET', '/limits');
+  let d;
+  try { d = await api('GET', '/limits'); } catch (e) { showToast('Limits: ' + e.message, 'error'); return; }
   const pct = Math.min(100, Math.round((d.globalUsed / d.globalLimit) * 100));
   const barColor = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--accent)';
   document.getElementById('lim-global').textContent = `${d.globalUsed} / ${d.globalLimit}`;
@@ -376,9 +383,11 @@ async function loadLimits() {
 async function updateLimits() {
   const g = document.getElementById('new-global-limit').value;
   const u = document.getElementById('new-user-limit').value;
-  await api('POST', '/limits', { globalLimit: g ? parseInt(g) : undefined, userLimit: u ? parseInt(u) : undefined });
-  showToast('Limits updated — takes effect immediately', 'success');
-  loadLimits();
+  try {
+    await api('POST', '/limits', { globalLimit: g ? parseInt(g) : undefined, userLimit: u ? parseInt(u) : undefined });
+    showToast('Limits updated', 'success');
+    loadLimits();
+  } catch (e) { showToast('Limits save failed: ' + e.message, 'error'); }
 }
 
 const SETUP_LABELS = {
@@ -433,24 +442,30 @@ async function loadConfig() {
 async function saveCredits(userId) {
   const val = parseInt(document.getElementById('cr-' + userId).value);
   if (isNaN(val)) return;
-  await api('POST', `/users/${userId}/credits`, { credits: val });
-  showToast('Credits updated');
-  loadStats();
+  try {
+    await api('POST', `/users/${userId}/credits`, { credits: val });
+    showToast('Credits updated');
+    loadStats();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
 async function toggleSub(userId, isSubscriber) {
-  await api('POST', `/users/${userId}/subscriber`, { isSubscriber });
-  showToast(isSubscriber ? 'Subscription granted' : 'Subscription removed');
-  loadUsers();
-  loadStats();
+  try {
+    await api('POST', `/users/${userId}/subscriber`, { isSubscriber });
+    showToast(isSubscriber ? 'Subscription granted' : 'Subscription removed');
+    loadUsers();
+    loadStats();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
 async function deleteUser(userId) {
   if (!confirm(`Delete user ${userId.slice(0,8)}...?`)) return;
-  await api('DELETE', `/users/${userId}`);
-  showToast('User deleted');
-  loadUsers();
-  loadStats();
+  try {
+    await api('DELETE', `/users/${userId}`);
+    showToast('User deleted');
+    loadUsers();
+    loadStats();
+  } catch (e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
 // Auto-login if key is stored

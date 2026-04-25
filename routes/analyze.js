@@ -77,11 +77,6 @@ router.post('/', async (req, res) => {
     }
   }
 
-  // Deduct credit before API call — refund on failure
-  if (!user.isSubscriber) {
-    try { await withTimeout(addCredits(userId, -1), 3000, 'credit deduct'); } catch { /* non-fatal */ }
-  }
-
   try {
     const model = useSearch ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001';
     const apiTimeout = useSearch ? 180_000 : 30_000;
@@ -96,17 +91,17 @@ router.post('/', async (req, res) => {
 
     const response = await client.messages.create(msgParams, { timeout: apiTimeout });
 
-    // Increment counters — non-blocking, don't let slow Redis delay the response
+    // Deduct credit and increment counters only after a successful response — fire-and-forget
     Promise.all([
+      !user.isSubscriber
+        ? withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch(e => console.error(e.message))
+        : Promise.resolve(),
       withTimeout(incrementGlobalCount(), 3000, 'incr global').catch(e => console.error(e.message)),
       withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
     ]);
 
     res.json(response);
   } catch (err) {
-    if (!user.isSubscriber) {
-      withTimeout(addCredits(userId, 1), 3000, 'credit refund').catch(() => {});
-    }
     const status = err.status || err.statusCode || 'unknown';
     console.error(`Anthropic API error [${status}] model=${useSearch ? 'sonnet' : 'haiku'}:`, err.message);
     const userMsg = status === 429
