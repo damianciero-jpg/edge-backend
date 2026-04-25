@@ -73,8 +73,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .sb-refresh:hover{border-color:var(--accent);color:var(--accent);}
 .sb-empty{padding:28px 15px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:2.2;}
 
-.main-area{overflow:hidden;display:flex;flex-direction:column;}
-.scrollable{flex:1;overflow-y:auto;padding:22px 26px;}
+.main-area{overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+.scrollable{flex:1;overflow-y:auto;padding:22px 26px;min-height:0;}
 .scrollable::-webkit-scrollbar{width:3px;}
 .scrollable::-webkit-scrollbar-thumb{background:var(--border2);}
 
@@ -267,7 +267,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .sport-grid::-webkit-scrollbar{display:none;}
   .detail-hdr{padding:12px 16px;gap:8px;}
   .mkt-tabs{margin-left:0;width:100%;}
-  .analyze-btn{width:100%;margin-top:6px;}
+  .detail-hdr .analyze-btn{width:auto;margin-top:0;padding:7px 10px;font-size:8px;letter-spacing:0px;}
   .back-btn{display:flex;}
   .scrollable{padding:16px;}
   .welcome{padding:20px;}
@@ -857,16 +857,16 @@ function renderOddsDetail(game) {
   const dtStr = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
   main.innerHTML = `
-    <div class="detail-hdr">
+    <div class="detail-hdr" style="flex-wrap:nowrap;">
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
-      <div style="min-width:0;flex:1"><div class="detail-title" style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${game.bookmakers?.length||0} BOOKS</div></div>
-      <div style="display:flex;gap:7px;align-items:center;">
-        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:8px 14px;">⚡ QUICK</button>
-        <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:8px 14px;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH</button>
+      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${game.bookmakers?.length||0} BOOKS</div></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK</button>
+        <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH</button>
       </div>
     </div>
     <div class="scrollable">
-      <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);padding:6px 0 10px;letter-spacing:1px;">⚡ QUICK = instant (AI knowledge) &nbsp;|&nbsp; 🔍 RESEARCH = live web search, 60–120s</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);padding:4px 0 12px;letter-spacing:1px;">⚡ QUICK = instant &nbsp;|&nbsp; 🔍 RESEARCH = live web search, 60–120s</div>
       <div class="section-lbl">BEST AVAILABLE ODDS (AWAY / HOME)</div>
       <div class="odds-row">
         <div class="odds-card oc-a"><div class="oc-label">AWAY — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
@@ -1044,6 +1044,11 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
     renderAIResult(result);
     syncUserStatus();
+    // Scroll results into view on all devices
+    setTimeout(() => {
+      const el = document.getElementById('aiResultArea');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   } catch(e) {
     clearTimeout(clientTimeout);
     clearInterval(ticker);
@@ -1058,12 +1063,19 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
 function renderAIResult(r) {
   const area = document.getElementById('aiResultArea');
-  const vc = r.verdict==='BET'?'bet':r.verdict==='PASS'?'pass':'lean';
-  const vi = r.verdict==='BET'?'✅':r.verdict==='PASS'?'❌':'⚠️';
-  const vm = r.verdict==='BET'?`BET — ${r.bet_on}`:r.verdict==='PASS'?'PASS — NO EDGE':'LEAN — '+r.bet_on;
-  const ec = v => parseFloat(v)>0?'pos':parseFloat(v)<0?'neg':'neu';
-  const cc = r.confidence==='HIGH'?'pos':r.confidence==='MEDIUM'?'wrn':'neu';
-  const factors = (r.key_factors||[]).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${f}</span></div>`).join('');
+  if (!area) return;
+
+  // Normalize — Haiku sometimes returns lowercase or alternate casing
+  const verdict = (r.verdict || r.recommendation || 'LEAN').toString().toUpperCase();
+  const confidence = (r.confidence || 'MEDIUM').toString().toUpperCase();
+  const betOn = r.bet_on || r.betOn || r.team || '';
+
+  const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
+  const vi = verdict==='BET'?'✅':verdict==='PASS'?'❌':'⚠️';
+  const vm = verdict==='BET'?`BET — ${betOn}`:verdict==='PASS'?'PASS — NO EDGE':`LEAN — ${betOn}`;
+  const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
+  const cc = confidence==='HIGH'?'pos':confidence==='MEDIUM'?'wrn':'neu';
+  const factors = (r.key_factors||r.keyFactors||[]).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${f}</span></div>`).join('');
 
   area.innerHTML = `<div class="ai-result">
     <div class="verdict ${vc}">
