@@ -16,7 +16,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const MODELS = {
   quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5',
-  deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-6',
+  deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-5',
 };
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
@@ -35,15 +35,20 @@ function withTimeout(promise, ms, label) {
 }
 
 function extractAnthropicText(response) {
-  if (!response || !Array.isArray(response.content)) {
+  try {
+    if (!response || !Array.isArray(response.content)) {
+      return '';
+    }
+
+    return response.content
+      .filter(block => block && block.type === 'text' && block.text)
+      .map(block => block.text)
+      .join('\n')
+      .trim();
+  } catch (err) {
+    console.error('extractAnthropicText error:', err.message);
     return '';
   }
-
-  return response.content
-    .filter(block => block && block.type === 'text' && block.text)
-    .map(block => block.text)
-    .join('\n')
-    .trim();
 }
 
 function extractOpenAIText(response) {
@@ -80,18 +85,23 @@ async function callAnthropic(prompt, mode) {
 
   try {
     const response = await anthropic.messages.create(params, { timeout: mode === 'deep' ? 180000 : 30000 });
+    const text = cleanJsonText(extractAnthropicText(response));
+    if (!text) {
+      throw new Error('Research returned no readable text. Try Quick AI or retry Research.');
+    }
+
     return {
       provider: 'anthropic',
       model,
-      text: cleanJsonText(extractAnthropicText(response)),
+      text,
       usage: response.usage,
     };
   } catch (err) {
-    console.error('Anthropic API error:', {
+    console.error('Anthropic call failed:', {
+      provider: 'anthropic',
       mode,
       model,
       status: err.status || err.statusCode || 'unknown',
-      type: err.type || err.name || 'unknown',
       message: err.message,
     });
     throw err;

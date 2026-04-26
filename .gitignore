@@ -1,7 +1,10 @@
 node_modules/
 .env
 users.json
-.vercel
+.vercel 
+config.json
+watcher.log
+watcher.pid
 
 .vercel
 .env 
