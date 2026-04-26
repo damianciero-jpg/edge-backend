@@ -10,7 +10,7 @@ function waitForElement(selector, timeout = 5000) {
       if (el) return resolve(el);
 
       elapsed += interval;
-      if (elapsed >= timeout) return resolve(document.body);
+      if (elapsed >= timeout) return resolve(document.querySelector('main') || document.body);
 
       setTimeout(check, interval);
     };
@@ -23,9 +23,18 @@ waitForElement('.welcome').then(container => {
   if (document.getElementById('edgeUpgradePanel')) return;
 
   async function goToCheckout() {
-    const res = await fetch('/api/create-checkout-session', { method: 'POST' });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'sub' })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Checkout unavailable');
+      window.location.href = data.url;
+    } catch (err) {
+      alert(err.message || 'Checkout unavailable');
+    }
   }
 
   function showPaywall() {
@@ -35,9 +44,12 @@ waitForElement('.welcome').then(container => {
       <div style="background:#0d1219;padding:30px;border:1px solid #243447;text-align:center">
         <h2 style="color:#00e5ff">Unlock EDGE Premium</h2>
         <p>Get Deep AI, best edges, and alerts</p>
-        <button onclick="(${goToCheckout.toString()})()" style="background:#00e5ff;color:black;padding:12px 20px;margin-top:15px;">Upgrade Now - $9.99/mo</button>
+        <button id="edgeCheckoutBtn" style="background:#00e5ff;color:black;padding:12px 20px;margin-top:15px;">Upgrade Now - $20/mo</button>
+        <button id="edgeClosePaywall" style="display:block;margin:12px auto 0;background:transparent;color:#5a7a8a;border:0;">Close</button>
       </div>`;
     document.body.appendChild(modal);
+    document.getElementById('edgeCheckoutBtn').addEventListener('click', goToCheckout);
+    document.getElementById('edgeClosePaywall').addEventListener('click', () => modal.remove());
   }
 
   async function runAnalysis(useSearch) {
@@ -61,12 +73,15 @@ waitForElement('.welcome').then(container => {
   }
 
   const html = `
-    <div id="edgeUpgradePanel">
+    <div id="edgeUpgradePanel" style="box-sizing:border-box;width:min(920px,96%);margin:22px auto 0;">
       <input id="manualInput" placeholder="Paste bet" />
-      <button onclick="runAnalysis(false)">Quick AI</button>
-      <button onclick="runAnalysis(true)">Deep AI</button>
+      <button id="quickBtn">Quick AI</button>
+      <button id="deepBtn">Deep AI</button>
     </div>
   `;
 
   container.insertAdjacentHTML('beforeend', html);
+  document.getElementById('manualInput').style.boxSizing = 'border-box';
+  document.getElementById('quickBtn').addEventListener('click', () => runAnalysis(false));
+  document.getElementById('deepBtn').addEventListener('click', () => runAnalysis(true));
 });
