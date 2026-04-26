@@ -411,11 +411,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <!-- HOME TAB -->
 <div id="view-home" style="height:calc(100vh - 102px);">
   <div class="welcome" style="height:100%">
-    <div style="font-size:44px;margin-bottom:8px">âš¡</div>
     <h2>FIND YOUR EDGE</h2>
     <p>AI-powered expected value analysis with live odds and real-time stats.</p>
     <div class="welcome-steps">
-      <div class="ws"><div class="ws-n">01</div><div class="ws-t">Pick a sport</div></div>
+      <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
+        <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
+      </button>
       <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
       <div class="ws"><div class="ws-n">03</div><div class="ws-t">Hit Analyze EV</div></div>
     </div>
@@ -445,19 +446,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="select-hint" style="height:calc(100vh - 102px)" id="welcomeState">
         <div class="select-hint-arrow">←</div>
         <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN AI ANALYSIS</p>
-        <div style="display:none">
         <div style="font-size:44px;margin-bottom:8px">⚡</div>
-        <h2>FIND YOUR EDGE</h2>
-        <p>AI-powered expected value analysis with live odds and real-time stats.</p>
-        <div class="welcome-steps">
-          <div class="ws"><div class="ws-n">01</div><div class="ws-t">Pick a sport</div></div>
-          <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
-          <div class="ws"><div class="ws-n">03</div><div class="ws-t">Hit Analyze EV</div></div>
-        </div>
       </div>
   </div>
-</div>
-
 </div>
 
 </div>
