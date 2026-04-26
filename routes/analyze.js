@@ -35,9 +35,13 @@ function withTimeout(promise, ms, label) {
 }
 
 function extractAnthropicText(response) {
-  return (response && response.content ? response.content : [])
-    .filter(block => block && block.type === 'text')
-    .map(block => block.text || '')
+  if (!response || !Array.isArray(response.content)) {
+    return '';
+  }
+
+  return response.content
+    .filter(block => block && block.type === 'text' && block.text)
+    .map(block => block.text)
     .join('\n')
     .trim();
 }
