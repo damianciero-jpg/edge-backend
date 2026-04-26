@@ -53,30 +53,67 @@ waitForElement('.welcome').then(container => {
   }
 
   async function runAnalysis(useSearch) {
-    const prompt = document.getElementById('manualInput').value.trim();
-    if (!prompt) return alert('Enter a bet');
-
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, useSearch, secondLayer: useSearch })
-    });
-
-    const data = await res.json();
-
-    if (data.paywall) {
-      showPaywall();
+    const input = document.getElementById('manualInput');
+    const result = document.getElementById('homeAiResult');
+    const quickBtn = document.getElementById('quickBtn');
+    const deepBtn = document.getElementById('deepBtn');
+    const prompt = input.value.trim();
+    if (!prompt) {
+      result.style.display = 'block';
+      result.textContent = 'Enter a bet first.';
       return;
     }
 
-    alert(data.text);
+    quickBtn.disabled = true;
+    deepBtn.disabled = true;
+    result.style.display = 'block';
+    result.textContent = useSearch ? 'Research AI is analyzing...' : 'Quick AI is analyzing...';
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, useSearch, secondLayer: useSearch })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (data.authRequired || res.status === 401) {
+        const overlay = document.getElementById('auth-overlay');
+        if (overlay) overlay.style.display = 'flex';
+        result.textContent = 'Please sign in to run analysis.';
+        return;
+      }
+
+      if (data.paywall || res.status === 402) {
+        showPaywall();
+        result.textContent = data.error || 'No credits remaining.';
+        return;
+      }
+
+      if (!res.ok || data.ok === false) {
+        result.textContent = data.error || 'Analysis failed.';
+        return;
+      }
+
+      result.textContent = data.text || 'Analysis complete.';
+      if (typeof syncUserStatus === 'function') syncUserStatus();
+    } catch (err) {
+      result.textContent = `Analysis failed: ${err.message}`;
+    } finally {
+      quickBtn.disabled = false;
+      deepBtn.disabled = false;
+    }
   }
 
   const html = `
     <div id="edgeUpgradePanel" style="box-sizing:border-box;width:min(920px,96%);margin:22px auto 0;">
-      <input id="manualInput" placeholder="Paste bet" />
-      <button id="quickBtn">Quick AI</button>
-      <button id="deepBtn">Deep AI</button>
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+        <input id="manualInput" placeholder="Paste bet" style="min-width:220px;padding:8px;background:#080c10;border:1px solid #243447;color:#e8f4f8;" />
+        <button id="quickBtn" style="padding:8px 12px;background:#00e5ff;border:0;color:#080c10;font-weight:700;">Quick AI</button>
+        <button id="deepBtn" style="padding:8px 12px;background:#7b61ff;border:0;color:white;font-weight:700;">Deep AI</button>
+      </div>
+      <div id="homeAiResult" style="display:none;margin:12px auto 0;max-width:720px;max-height:260px;overflow:auto;white-space:pre-wrap;text-align:left;background:#0d1219;border:1px solid #1e2d3d;color:#b0ccd8;padding:12px;font-size:12px;line-height:1.7;"></div>
     </div>
   `;
 
