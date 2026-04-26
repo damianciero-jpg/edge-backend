@@ -12,6 +12,7 @@ const verifyRouter = require('./routes/verify');
 const analyzeRouter = require('./routes/analyze');
 const adminRouter = require('./routes/admin');
 const authRouter = require('./routes/auth');
+const alertsRouter = require('./routes/alerts');
 
 const app = express();
 
@@ -32,7 +33,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// Webhook route must use raw body before any JSON middleware
 app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRouter);
 
 app.use(express.json({ limit: '1mb' }));
@@ -43,6 +43,7 @@ app.use('/api/create-checkout-session', checkoutRouter);
 app.use('/api/user-status', statusRouter);
 app.use('/api/verify-session', verifyRouter);
 app.use('/api/analyze', analyzeRouter);
+app.use('/api/alerts', alertsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/admin', adminRouter);
@@ -65,10 +66,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use((err, _req, res, _next) => {
   console.error('Server error:', err.message);
-  res.status(err.status || 500).json({
-    ok: false,
-    error: err.message || 'Internal server error',
-  });
+  res.status(err.status || 500).json({ ok:false, error: err.message || 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3000;
