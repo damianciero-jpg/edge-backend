@@ -276,6 +276,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   #view-markets .main-area{display:none;}
   #view-markets.detail-open .sidebar{display:none;}
   #view-markets.detail-open .main-area{display:flex;height:100%;min-height:0;overflow:hidden;}
+  #view-home{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-tracker{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-account{height:calc(100vh - 56px - 56px) !important;height:calc(100dvh - 56px - 56px) !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
   .odds-row{grid-template-columns:1fr;}
@@ -397,7 +398,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 
 <!-- NAV -->
 <div class="nav">
-  <button class="nav-tab active" onclick="showTab('odds')" id="tab-odds">ODDS</button>
+  <button class="nav-tab active" onclick="showTab('home')" id="tab-home">HOME</button>
+  <button class="nav-tab" onclick="showTab('odds')" id="tab-odds">ODDS</button>
   <button class="nav-tab" onclick="showTab('markets')" id="tab-markets">MARKETS</button>
   <button class="nav-tab" onclick="showTab('tracker')" id="tab-tracker">TRACKER</button>
   <button class="nav-tab" onclick="showTab('account')" id="tab-account">ACCOUNT</button>
@@ -406,8 +408,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <!-- hidden odds key — updated via Account tab -->
 <input type="hidden" id="oddsKey" value="e37bbddd4d0947ae8c39052cf8d75b61">
 
+<!-- HOME TAB -->
+<div id="view-home" style="height:calc(100vh - 102px);">
+  <div class="welcome" style="height:100%">
+    <div style="font-size:44px;margin-bottom:8px">âš¡</div>
+    <h2>FIND YOUR EDGE</h2>
+    <p>AI-powered expected value analysis with live odds and real-time stats.</p>
+    <div class="welcome-steps">
+      <div class="ws"><div class="ws-n">01</div><div class="ws-t">Pick a sport</div></div>
+      <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
+      <div class="ws"><div class="ws-n">03</div><div class="ws-t">Hit Analyze EV</div></div>
+    </div>
+  </div>
+</div>
+
 <!-- ODDS TAB -->
-<div id="view-odds" class="app-shell">
+<div id="view-odds" class="app-shell" style="display:none;">
   <div class="sidebar">
     <div class="sb-sport-hdr">
       <div class="sb-label">LIVE GAMES</div>
@@ -426,7 +442,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   </div>
   <div class="main-area">
     <div id="oddsMain">
-      <div class="welcome" style="height:calc(100vh - 102px)" id="welcomeState">
+      <div class="select-hint" style="height:calc(100vh - 102px)" id="welcomeState">
+        <div class="select-hint-arrow">←</div>
+        <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN AI ANALYSIS</p>
+        <div style="display:none">
         <div style="font-size:44px;margin-bottom:8px">⚡</div>
         <h2>FIND YOUR EDGE</h2>
         <p>AI-powered expected value analysis with live odds and real-time stats.</p>
@@ -436,8 +455,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
           <div class="ws"><div class="ws-n">03</div><div class="ws-t">Hit Analyze EV</div></div>
         </div>
       </div>
-    </div>
   </div>
+</div>
+
+</div>
+
 </div>
 
 <!-- MARKETS TAB -->
@@ -607,7 +629,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <div class="toast-container" id="toastContainer"></div>
 
 <nav class="bottom-nav">
-  <button class="bn-tab active" id="bn-odds" onclick="showTab('odds')"><span class="bn-icon">⚡</span>ODDS</button>
+  <button class="bn-tab active" id="bn-home" onclick="showTab('home')"><span class="bn-icon">⚡</span>HOME</button>
+  <button class="bn-tab" id="bn-odds" onclick="showTab('odds')"><span class="bn-icon">🎲</span>ODDS</button>
   <button class="bn-tab" id="bn-markets" onclick="showTab('markets')"><span class="bn-icon">📊</span>MARKETS</button>
   <button class="bn-tab" id="bn-tracker" onclick="showTab('tracker')"><span class="bn-icon">📋</span>TRACKER</button>
   <button class="bn-tab" id="bn-account" onclick="showTab('account')"><span class="bn-icon">💳</span>ACCOUNT</button>
@@ -640,7 +663,7 @@ handleStripeReturn();
 function isMobile() { return window.innerWidth <= 768; }
 
 function showTab(tab) {
-  ['odds','markets','tracker','account'].forEach(t => {
+  ['home','odds','markets','tracker','account'].forEach(t => {
     document.getElementById('view-'+t).style.display = 'none';
     document.getElementById('tab-'+t)?.classList.remove('active');
     document.getElementById('bn-'+t)?.classList.remove('active');
