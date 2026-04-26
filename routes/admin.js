@@ -3,6 +3,7 @@ const router = express.Router();
 const { getUser, saveUser, readDB } = require('../lib/users');
 const { getGlobalCount, getLimitConfig, setLimitConfig } = require('../lib/limits');
 const { getAppConfig, setAppConfig } = require('../lib/config');
+const { hasRedisConfig, createRedis } = require('../lib/redis');
 
 const EDITABLE_CONFIG_KEYS = [
   'stripeSecretKey', 'stripeWebhookSecret', 'stripePublishableKey',
@@ -82,9 +83,8 @@ router.delete('/users/:userId', async (req, res) => {
     const { userId } = req.params;
     const db = await readDB();
     if (!db[userId]) return res.status(404).json({ error: 'User not found' });
-    if (process.env.UPSTASH_REDIS_REST_URL) {
-      const { Redis } = require('@upstash/redis');
-      const redis = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+    if (hasRedisConfig()) {
+      const redis = createRedis();
       await redis.del(`edge:user:${userId}`);
       await redis.srem('edge:users', userId);
     } else {
@@ -157,7 +157,7 @@ router.get('/config', (req, res) => {
   const vars = [
     'ANTHROPIC_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET',
     'STRIPE_SUB_PRICE_ID', 'STRIPE_CREDITS_10_PRICE_ID', 'STRIPE_CREDITS_50_PRICE_ID',
-    'FRONTEND_URL', 'ADMIN_PASSWORD', 'UPSTASH_REDIS_REST_URL',
+    'FRONTEND_URL', 'ADMIN_PASSWORD', 'UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL',
   ];
   const config = {};
   vars.forEach(k => {
