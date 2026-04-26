@@ -53,10 +53,11 @@ app.get('/', (_req, res, next) => {
   fs.readFile(indexPath, 'utf8', (err, html) => {
     if (err) return next(err);
 
-    const upgradeScript = '<script defer src="/home-upgrades.js"></script>';
-    const upgradedHtml = html.includes('/home-upgrades.js')
-      ? html
-      : html.replace('</body>', `${upgradeScript}\n</body>`);
+    const version = process.env.VERCEL_GIT_COMMIT_SHA || Date.now();
+    const upgradeScript = `<script defer src="/home-upgrades.js?v=${version}"></script>`;
+    const upgradedHtml = html
+      .replace(/<script[^>]+src=["']\/home-upgrades\.js[^>]*><\/script>\s*/g, '')
+      .replace('</body>', `${upgradeScript}\n</body>`);
 
     res.type('html').send(upgradedHtml);
   });
