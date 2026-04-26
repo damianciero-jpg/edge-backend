@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getCfg } = require('../lib/config');
 const { verifySession } = require('../lib/auth');
+const { ok, fail } = require('../lib/http');
 
 const CREDITS_MAP = { sub: '0', credits_10: '10', credits_50: '50' };
 
@@ -9,7 +10,9 @@ router.post('/', async (req, res) => {
   const { plan } = req.body;
   const session = verifySession(req.cookies?.edge_session);
   const userId = session?.email;
-  if (!plan || !userId) return res.status(400).json({ error: 'plan required and must be logged in' });
+  if (!plan || !userId) {
+    return fail(res, 400, { text: 'Plan and login are required', error: 'plan required and must be logged in' });
+  }
 
   const [stripeKey, subPrice, credits10Price, credits50Price, frontendUrl] = await Promise.all([
     getCfg('stripeSecretKey', 'STRIPE_SECRET_KEY'),
@@ -19,25 +22,29 @@ router.post('/', async (req, res) => {
     getCfg('frontendUrl', 'FRONTEND_URL', 'https://edge-backend-rho.vercel.app'),
   ]);
 
-  if (!stripeKey) return res.status(503).json({ error: 'Stripe not configured. Add keys in admin → Setup.' });
+  if (!stripeKey) {
+    return fail(res, 503, { text: 'Stripe is not configured', error: 'Stripe not configured. Add keys in admin → Setup.' });
+  }
 
   const PRICE_MAP = { sub: subPrice, credits_10: credits10Price, credits_50: credits50Price };
   const priceId = PRICE_MAP[plan];
-  if (!priceId) return res.status(400).json({ error: `Price ID not configured for plan "${plan}". Add it in admin → Setup.` });
+  if (!priceId) {
+    return fail(res, 400, { text: 'Requested plan is unavailable', error: `Price ID not configured for plan "${plan}". Add it in admin → Setup.` });
+  }
 
   try {
     const stripe = require('stripe')(stripeKey);
-    const session = await stripe.checkout.sessions.create({
+    const checkoutSession = await stripe.checkout.sessions.create({
       mode: plan === 'sub' ? 'subscription' : 'payment',
       line_items: [{ price: priceId, quantity: 1 }],
       metadata: { userId, plan, credits: CREDITS_MAP[plan] },
       success_url: `${frontendUrl}?session_id={CHECKOUT_SESSION_ID}&status=success`,
       cancel_url: `${frontendUrl}?status=cancelled`,
     });
-    res.json({ url: session.url });
+    return ok(res, { text: 'Checkout session created', data: { url: checkoutSession.url } });
   } catch (err) {
-    console.error('Stripe checkout error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error(`[${req.id}] Stripe checkout error:`, err.message);
+    return fail(res, 500, { text: 'Checkout could not be created', error: 'Stripe checkout failed' });
   }
 });
 
