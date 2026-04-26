@@ -1183,15 +1183,28 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     }
 
     const data = await res.json();
-    const txt = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    const txt = typeof data.text === 'string'
+      ? data.text
+      : Array.isArray(data.content)
+        ? data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n')
+        : '';
+
+    if (!txt.trim()) {
+      area.innerHTML = `<div class="err-msg">API ERROR: Empty analysis response</div>`;
+      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
+    }
 
     let result;
     try {
       const m = txt.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('No JSON found');
       const cleanJson = m[0]
         .replace(/\/\/[^\n]*/g, '')        // strip // comments
         .replace(/,(\s*[}\]])/g, '$1');    // strip trailing commas
       result = JSON.parse(cleanJson);
+      if (!result || typeof result !== 'object' || !Object.keys(result).length) {
+        throw new Error('Empty JSON');
+      }
     } catch {
       area.innerHTML = `<div class="sec"><div class="sec-hdr">AI ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
       btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;

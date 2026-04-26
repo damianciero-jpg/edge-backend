@@ -16,6 +16,14 @@ const alertsRouter = require('./routes/alerts');
 
 const app = express();
 
+process.on('uncaughtException', err => {
+  console.error('Uncaught exception:', err && err.stack ? err.stack : err);
+});
+
+process.on('unhandledRejection', err => {
+  console.error('Unhandled rejection:', err && err.stack ? err.stack : err);
+});
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,

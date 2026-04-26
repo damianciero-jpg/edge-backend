@@ -5,6 +5,9 @@ users.json
 config.json
 watcher.log
 watcher.pid
+server.out.log
+server.err.log
+daily.json
 
 .vercel
 .env 
