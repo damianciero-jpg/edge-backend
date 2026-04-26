@@ -344,7 +344,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       </div>
       <div class="pw-plan featured selected" id="planSub" onclick="selectPlan('sub')">
         <div class="pp-name">SUBSCRIPTION</div>
-        <div class="pp-price">$9.99<small>/mo</small></div>
+        <div class="pp-price">$20<small>/mo</small></div>
         <div class="pp-desc">Unlimited analyses</div>
       </div>
       <div class="pw-plan" id="planBig" onclick="selectPlan('big')">
@@ -576,7 +576,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="acct-card">
         <div class="acct-title">UNLIMITED PLAN</div>
         <div class="acct-sub">Unlimited AI analyses, priority processing, and all future features included.</div>
-        <div class="credit-display" style="font-size:28px;margin-bottom:2px;">$9.99</div>
+        <div class="credit-display" style="font-size:28px;margin-bottom:2px;">$20</div>
         <div class="credit-type">/MONTH — UNLIMITED ANALYSES</div>
         <div style="margin-bottom:18px;">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12px;color:#b0ccd8;">
@@ -837,7 +837,7 @@ function selectPlan(p) {
   const map = {credits:'planCredits',sub:'planSub',big:'planBig'};
   document.getElementById(map[p])?.classList.add('selected');
   const btn = document.querySelector('.pw-cta');
-  if (p === 'sub') { btn.textContent = '💳 SUBSCRIBE — $9.99/MO'; }
+  if (p === 'sub') { btn.textContent = '💳 SUBSCRIBE — $20/MO'; }
   else if (p === 'credits') { btn.textContent = '💳 BUY 10 CREDITS — $4.99'; }
   else { btn.textContent = '💳 BUY 50 CREDITS — $14.99'; }
 }
@@ -1074,6 +1074,7 @@ function renderMarketTable(game, mkt) {
 // ─── AI ANALYSIS ──────────────────────────────────────────────────────────────
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
+  if (useSearch && !isSubscriber) { showPaywall(); return; }
   if (!isSubscriber && credits <= 0) { showPaywall(); return; }
 
   const btn = document.getElementById('analyzeBtn');

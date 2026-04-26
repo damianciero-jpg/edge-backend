@@ -7,7 +7,7 @@ const { hasRedisConfig, createRedis } = require('../lib/redis');
 
 const EDITABLE_CONFIG_KEYS = [
   'stripeSecretKey', 'stripeWebhookSecret', 'stripePublishableKey',
-  'stripeSubPriceId', 'stripeCredits10PriceId', 'stripeCredits50PriceId',
+  'stripeSubPriceId', 'stripeSubProductId', 'stripeCredits10PriceId', 'stripeCredits50PriceId',
   'frontendUrl',
 ];
 

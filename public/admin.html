@@ -224,10 +224,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 
           <div style="grid-column:1/-1;">
             <div class="section-lbl" style="margin-bottom:10px;">STRIPE PRICE IDs — get these from Stripe dashboard → Products</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;">
               <div class="field">
                 <label>MONTHLY SUBSCRIPTION (price_...)</label>
                 <input class="setup-inp" id="cfg-stripeSubPriceId" type="text" placeholder="price_...">
+              </div>
+              <div class="field">
+                <label>MONTHLY SUBSCRIPTION PRODUCT</label>
+                <input class="setup-inp" id="cfg-stripeSubProductId" type="text" value="prod_UOy3vrbxmo601V" placeholder="prod_...">
               </div>
               <div class="field">
                 <label>10 CREDITS PACK (price_...)</label>
@@ -397,6 +401,7 @@ const SETUP_LABELS = {
   stripeSubPriceId: 'Price ID — Subscription',
   stripeCredits10PriceId: 'Price ID — 10 Credits',
   stripeCredits50PriceId: 'Price ID — 50 Credits',
+  stripeSubProductId: 'Product ID - Subscription',
   frontendUrl: 'Frontend URL',
 };
 
@@ -412,7 +417,7 @@ async function loadSetup() {
 
 async function saveSetup() {
   const fields = ['stripeSecretKey','stripeWebhookSecret','stripePublishableKey',
-                  'stripeSubPriceId','stripeCredits10PriceId','stripeCredits50PriceId','frontendUrl'];
+                  'stripeSubPriceId','stripeSubProductId','stripeCredits10PriceId','stripeCredits50PriceId','frontendUrl'];
   const body = {};
   fields.forEach(k => {
     const v = document.getElementById('cfg-' + k)?.value?.trim();
