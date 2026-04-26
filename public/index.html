@@ -1097,7 +1097,6 @@ function renderMarketTable(game, mkt) {
 // ─── AI ANALYSIS ──────────────────────────────────────────────────────────────
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
-  if (useSearch && !isSubscriber) { showPaywall(); return; }
   if (!isSubscriber && credits <= 0) { showPaywall(); return; }
 
   const btn = document.getElementById('analyzeBtn');

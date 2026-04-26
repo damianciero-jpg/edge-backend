@@ -168,15 +168,6 @@ router.post('/', async (req, res) => {
     return fail(res, 503, { text: 'Temporary storage issue', error: 'Storage unavailable', meta: { mode } });
   }
 
-  if (mode === 'deep' && !user.isSubscriber) {
-    return fail(res, 402, {
-      text: 'Deep AI is a premium feature',
-      error: 'Deep AI is a premium feature',
-      meta: { mode },
-      data: { paywall: true, upgrade: true, event: 'deep_ai_blocked' },
-    });
-  }
-
   if (!user.isSubscriber && user.credits <= 0) {
     return fail(res, 402, {
       text: 'No credits remaining',
