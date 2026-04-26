@@ -34,7 +34,10 @@ router.post('/verify-otp', async (req, res) => {
   if (!email || !otp) return fail(res, 400, { text: 'Email and OTP required', error: 'email and otp required' });
 
   const valid = await validateOTP(email, otp);
-  if (!valid) return fail(res, 401, { text: 'Invalid or expired code', error: 'Invalid or expired code' });
+  if (!valid) {
+    console.warn(`[${req.id}] OTP validation failed for ${email}`);
+    return fail(res, 401, { text: 'Invalid or expired code', error: 'Invalid or expired code' });
+  }
 
   await getUser(email);
 
