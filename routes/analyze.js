@@ -6,6 +6,7 @@ const { getGlobalCount, incrementGlobalCount, getUserDailyCount, incrementUserDa
 const { verifySession } = require('../lib/auth');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const FREE_DAILY_LIMIT = Number(process.env.FREE_DAILY_LIMIT || 5);
 
 async function runOpenAISecondLayer(prompt, firstOutput) {
   if (!process.env.OPENAI_API_KEY) return firstOutput;
@@ -52,8 +53,59 @@ router.post('/', async (req, res) => {
     return res.status(503).json({ ok: false, error: err.message });
   }
 
+  if (useSearch && !user.isSubscriber) {
+    return res.status(402).json({
+      ok: false,
+      error: 'Deep AI is a premium feature',
+      paywall: true,
+      upgrade: true,
+      event: 'deep_ai_blocked'
+    });
+  }
+
+  if (!user.isSubscriber) {
+    const userCount = await getUserDailyCount(userId).catch(() => 0);
+    if (userCount >= FREE_DAILY_LIMIT) {
+      return res.status(429).json({
+        ok: false,
+        error: `Free limit reached (${FREE_DAILY_LIMIT}/day)`,
+        paywall: true,
+        upgrade: true,
+        used: userCount,
+        limit: FREE_DAILY_LIMIT,
+        event: 'free_limit_reached'
+      });
+    }
+  }
+
   if (!user.isSubscriber && user.credits <= 0) {
-    return res.status(402).json({ ok: false, error: 'No credits remaining', paywall: true });
+    return res.status(402).json({ ok: false, error: 'No credits remaining', paywall: true, upgrade: true });
+  }
+
+  let globalCount = 0;
+  try {
+    globalCount = await getGlobalCount();
+  } catch {}
+
+  if (globalCount >= (globalLimit || 150)) {
+    return res.status(503).json({
+      ok: false,
+      error: `Daily analysis capacity reached (${globalLimit || 150} max). Resets at midnight UTC.`,
+      limitType: 'global',
+    });
+  }
+
+  if (user.isSubscriber) {
+    const userCount = await getUserDailyCount(userId).catch(() => 0);
+    if (userCount >= (userLimit || 20)) {
+      return res.status(429).json({
+        ok: false,
+        error: `Daily limit of ${userLimit || 20} analyses reached. Resets at midnight UTC.`,
+        limitType: 'user',
+        used: userCount,
+        limit: userLimit || 20,
+      });
+    }
   }
 
   try {
@@ -71,6 +123,7 @@ router.post('/', async (req, res) => {
       text = await runOpenAISecondLayer(prompt, text);
     }
 
+    const nextCredits = user.isSubscriber ? null : Math.max(0, (user.credits || 0) - 1);
     Promise.all([
       !user.isSubscriber ? addCredits(userId, -1) : null,
       incrementGlobalCount(),
@@ -81,7 +134,10 @@ router.post('/', async (req, res) => {
       ok: true,
       text,
       meta: {
-        mode: useSearch ? 'deep' : 'quick'
+        mode: useSearch ? 'deep' : 'quick',
+        isSubscriber: !!user.isSubscriber,
+        creditsRemaining: nextCredits,
+        freeDailyLimit: user.isSubscriber ? null : FREE_DAILY_LIMIT,
       }
     });
   } catch (err) {
