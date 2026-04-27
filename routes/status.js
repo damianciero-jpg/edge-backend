@@ -4,7 +4,10 @@ const { getUser } = require('../lib/users');
 const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 
-const OWNER_EMAILS = ['damianciero@gmail.com'];
+const OWNER_EMAILS = [
+  'damianciero@gmail.com',
+  'ffanning@comcast.net',
+];
 
 router.get('/', async (req, res) => {
   const session = verifySession(req.cookies?.edge_session);

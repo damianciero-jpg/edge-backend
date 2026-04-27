@@ -13,7 +13,10 @@ const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const OWNER_EMAILS = ['damianciero@gmail.com'];
+const OWNER_EMAILS = [
+  'damianciero@gmail.com',
+  'ffanning@comcast.net',
+];
 
 const MODELS = {
   quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5',
