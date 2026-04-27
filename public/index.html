@@ -611,7 +611,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
           +12.4% Expected Value
         </div>
 
-        <button class="pw-cta" onclick="revealTodayPick()">
+        <button class="pw-cta" onclick="revealTodaysPick()">
            Reveal Today’s Pick
         </button>
 
@@ -1091,6 +1091,29 @@ function revealTodayPick() {
     return;
   }
   showPaywall();
+}
+function revealTodaysPick() {
+  if (typeof isSubscriber !== 'undefined' && isSubscriber) {
+    showToast('Today’s premium pick is unlocked.', 'success');
+    showTab('odds');
+    return;
+  }
+
+  if (typeof currentEmail !== 'undefined' && currentEmail && currentEmail.toLowerCase() === 'damianciero@gmail.com') {
+    showToast('Owner access unlocked.', 'success');
+    showTab('odds');
+    return;
+  }
+
+  if (typeof showPaywall === 'function') {
+    showPaywall();
+    return;
+  }
+
+  const overlay = document.getElementById('paywallOverlay');
+  if (overlay) {
+    overlay.style.display = 'flex';
+  }
 }
 function selectPlan(p) {
   selectedPlan = p;
