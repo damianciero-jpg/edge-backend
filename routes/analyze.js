@@ -13,6 +13,7 @@ const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const OWNER_EMAILS = ['damianciero@gmail.com'];
 
 const MODELS = {
   quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5',
@@ -182,6 +183,16 @@ router.post('/', async (req, res) => {
     return fail(res, 503, { text: 'Temporary storage issue', error: 'Storage unavailable', meta: { mode } });
   }
 
+  const isOwner = OWNER_EMAILS.includes(String(userId || '').toLowerCase());
+
+  if (isOwner) {
+    user = {
+      ...user,
+      isSubscriber: true,
+      credits: 9999,
+    };
+  }
+
   if (!user.isSubscriber && user.credits <= 0) {
     return fail(res, 402, {
       text: 'No credits remaining',
@@ -249,7 +260,7 @@ router.post('/', async (req, res) => {
     }
 
     Promise.all([
-      !user.isSubscriber
+      !user.isSubscriber && !isOwner
         ? withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch(e => console.error(e.message))
         : Promise.resolve(),
       withTimeout(incrementGlobalCount(), 3000, 'incr global').catch(e => console.error(e.message)),
