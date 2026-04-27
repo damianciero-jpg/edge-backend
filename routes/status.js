@@ -7,6 +7,7 @@ const { ok, fail } = require('../lib/http');
 const OWNER_EMAILS = [
   'damianciero@gmail.com',
   'ffanning@comcast.net',
+  'afelt1991@yahoo.com',
 ];
 
 router.get('/', async (req, res) => {

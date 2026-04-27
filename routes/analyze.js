@@ -16,6 +16,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const OWNER_EMAILS = [
   'damianciero@gmail.com',
   'ffanning@comcast.net',
+  'afelt1991@yahoo.com',
 ];
 
 const MODELS = {
