@@ -637,6 +637,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <button class="sp" data-sport="icehockey_nhl" onclick="selectSport(this)">🏒 NHL</button>
       <button class="sp" data-sport="soccer_epl" onclick="selectSport(this)">⚽ EPL</button>
       <button class="sp" data-sport="soccer_usa_mls" onclick="selectSport(this)">⚽ MLS</button>
+      <button class="sp" data-sport="mma_mixed_martial_arts" onclick="selectSport(this)">🥊 UFC</button>
     </div>
     <div class="games-scroll" id="gamesList"><div class="sb-empty">LOADING GAMES...</div></div>
     <button class="sb-refresh" onclick="fetchGames()">↻ REFRESH ODDS</button>
@@ -1320,7 +1321,9 @@ async function fetchGames() {
     if (!allGames.length) {
       currentGame = null;
       currentGameIndex = null;
-      list.innerHTML = '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
+      list.innerHTML = currentSport === 'mma_mixed_martial_arts'
+        ? '<div class="sb-empty">NO UPCOMING UFC ODDS AVAILABLE.<br>TRY AGAIN CLOSER TO FIGHT NIGHT.</div>'
+        : '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
       countEl.textContent = '0 GAMES';
       syncMarketsGames();
       return;
@@ -1343,7 +1346,8 @@ async function fetchGames() {
 
 const SPORT_LABELS = {
   americanfootball_nfl:'🏈 NFL', basketball_nba:'🏀 NBA', baseball_mlb:'⚾ MLB',
-  icehockey_nhl:'🏒 NHL', soccer_epl:'⚽ EPL', soccer_usa_mls:'⚽ MLS'
+  icehockey_nhl:'🏒 NHL', soccer_epl:'⚽ EPL', soccer_usa_mls:'⚽ MLS',
+  mma_mixed_martial_arts:'🥊 UFC'
 };
 
 function renderGamesList() {
