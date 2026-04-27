@@ -1086,13 +1086,9 @@ function updatePickTeaserLock() {
   });
 }
 function revealTodayPick() {
-  if (hasPremiumAccess()) {
-    updatePickTeaserLock();
-    return;
-  }
-  showPaywall();
+  return revealTodaysPick();
 }
-function revealTodaysPick() {
+function revealTodaysPickLegacy() {
   const isOwner =
     typeof currentEmail !== 'undefined' &&
     currentEmail &&
@@ -1159,6 +1155,97 @@ function revealTodaysPick() {
   welcome.insertAdjacentHTML('beforeend', pickHtml);
 
   showToast('Pick of the Day unlocked.', 'success');
+}
+
+function renderTodaysPick(pick) {
+  const existing = document.getElementById('todaysPickResult');
+  if (existing) existing.remove();
+
+  const gameTime = pick.commenceTime
+    ? new Date(pick.commenceTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'Today';
+  const pickHtml = `
+    <div id="todaysPickResult" class="sec ai-result" style="margin-top:18px;">
+      <div class="sec-hdr"> PICK OF THE DAY</div>
+      <div class="sec-body">
+        <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px;">
+          ${escapeHtml(pick.game || 'Premium Pick Unlocked')}
+        </div>
+
+        <div style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:12px;">
+          ${escapeHtml(pick.sport || 'Sports')} &bull; ${escapeHtml(gameTime)}
+        </div>
+
+        <div class="verdict lean">
+          <div class="v-icon">EDGE</div>
+          <div>
+            <div class="v-sub">EDGE VERDICT</div>
+            <div class="v-txt">${escapeHtml(pick.pick || 'Daily Pick')}</div>
+          </div>
+        </div>
+
+        <div class="ev-row">
+          <div class="ev-card">
+            <div class="ev-label">PICK</div>
+            <div class="ev-val pos">${escapeHtml(pick.pick || 'N/A')}</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">ODDS</div>
+            <div class="ev-val neu">${escapeHtml(pick.odds ?? 'N/A')}</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">CONFIDENCE</div>
+            <div class="ev-val pos">${escapeHtml(pick.confidence || 'N/A')}</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">RISK</div>
+            <div class="ev-val wrn">${escapeHtml(pick.risk || 'N/A')}</div>
+          </div>
+        </div>
+
+        <div class="sec" style="margin-top:14px;">
+          <div class="sec-hdr">WHY THIS PICK</div>
+          <div class="sec-body">${escapeHtml(pick.reason || "EDGE found an available moneyline pick from today's odds board.")}</div>
+        </div>
+
+        <button class="analyze-btn" onclick="showTab('odds')">
+          Browse Live Games
+        </button>
+      </div>
+    </div>
+  `;
+
+  const welcome = document.querySelector('.welcome') || document.getElementById('oddsMain') || document.body;
+  welcome.insertAdjacentHTML('beforeend', pickHtml);
+  document.getElementById('todaysPickResult')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function revealTodaysPick() {
+  const existing = document.getElementById('todaysPickResult');
+  if (existing) {
+    existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  try {
+    showToast('Loading Pick of the Day...', 'info');
+    const res = await fetch('/api/pick-of-the-day');
+    const data = await res.json();
+
+    if (data.paywall) {
+      showPaywall();
+      return;
+    }
+
+    if (!res.ok || !data.pick) {
+      throw new Error(data.error || 'Pick of the Day is not available right now.');
+    }
+
+    renderTodaysPick(data.pick);
+    showToast('Pick of the Day unlocked.', 'success');
+  } catch (err) {
+    showToast(err.message || 'Could not load Pick of the Day.', 'error');
+  }
 }
 function selectPlan(p) {
   selectedPlan = p;
