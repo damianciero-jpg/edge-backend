@@ -575,19 +575,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="pick-card">
         <div class="pick-label">AI DETECTED EDGE</div>
 
-        <div class="pick-match blurred">
+        <div class="pick-match blurred" id="pickMatch">
           ⚽ Team A vs Team B
         </div>
 
-        <div class="pick-confidence blurred">
+        <div class="pick-confidence blurred" id="pickConfidence">
           Confidence: 87%
         </div>
 
-        <div class="pick-value blurred">
+        <div class="pick-value blurred" id="pickValue">
           +12.4% Expected Value
         </div>
 
-        <button class="pw-cta" onclick="showPaywall()">
+        <button class="pw-cta" onclick="revealTodayPick()">
            Reveal Today’s Pick
         </button>
 
@@ -820,6 +820,15 @@ let selectedPlan = "sub";
 let bets = JSON.parse(localStorage.getItem('edge_bets') || '[]');
 let lastTrackerGameValue = '';
 let lastTrackerPickValue = '';
+const OWNER_EMAIL = "damianciero@gmail.com";
+
+function isOwnerUser() {
+  return (window.userEmail || '').toLowerCase() === OWNER_EMAIL;
+}
+
+function hasPremiumAccess() {
+  return isSubscriber || isOwnerUser();
+}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateCreditUI();
@@ -864,6 +873,9 @@ async function authInit() {
     const { email } = await res.json();
     if (email) {
       currentEmail = email;
+      window.userEmail = email;
+      console.log("USER EMAIL:", window.userEmail);
+      updatePickTeaserLock();
       document.getElementById('auth-overlay').style.display = 'none';
       const el = document.getElementById('acct-email-display');
       if (el) el.textContent = email;
@@ -917,6 +929,9 @@ async function authVerifyOTP() {
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Invalid code'; btn.disabled = false; btn.textContent = 'VERIFY CODE'; return; }
     currentEmail = data.email;
+    window.userEmail = data.email;
+    console.log("USER EMAIL:", window.userEmail);
+    updatePickTeaserLock();
     document.getElementById('auth-overlay').style.display = 'none';
     const el = document.getElementById('acct-email-display');
     if (el) el.textContent = data.email;
@@ -937,6 +952,7 @@ function authBack() {
 async function authLogout() {
   await fetch('/api/auth/logout', { method: 'POST' });
   currentEmail = null;
+  window.userEmail = '';
   document.getElementById('auth-overlay').style.display = 'flex';
   document.getElementById('auth-email-inp').value = '';
   document.getElementById('auth-otp-inp').value = '';
@@ -959,7 +975,12 @@ async function syncUserStatus() {
     const data = await res.json();
     credits = data.credits;
     isSubscriber = data.isSubscriber;
+    if (isOwnerUser()) {
+      isSubscriber = true;
+      credits = 9999;
+    }
     updateCreditUI();
+    updatePickTeaserLock();
   } catch(e) { console.log('Offline mode, using local credits'); }
 }
 
@@ -1002,7 +1023,7 @@ function updateCreditUI() {
   const pill = document.getElementById('creditPill');
   const acctC = document.getElementById('acct-credits');
   const acctT = document.getElementById('acct-type');
-  if (isSubscriber) {
+  if (hasPremiumAccess()) {
     pill.textContent = '∞ UNLIMITED';
     pill.className = 'credit-pill';
     if (acctC) { acctC.textContent = '∞'; acctT.textContent = 'ACTIVE SUBSCRIPTION'; }
@@ -1014,7 +1035,7 @@ function updateCreditUI() {
 }
 
 function useCredit() {
-  if (isSubscriber) return true;
+  if (hasPremiumAccess()) return true;
   if (credits <= 0) { showPaywall(); return false; }
   credits--;
   saveCredits();
@@ -1023,6 +1044,7 @@ function useCredit() {
 }
 
 function showPaywall() {
+  if (hasPremiumAccess()) return;
   document.getElementById('paywallOverlay').style.display = 'flex';
 }
 function closePaywall() {
@@ -1031,6 +1053,20 @@ function closePaywall() {
 function goToAccount() {
   closePaywall();
   showTab('account');
+}
+function updatePickTeaserLock() {
+  const locked = !hasPremiumAccess();
+  ['pickMatch','pickConfidence','pickValue'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('blurred', locked);
+  });
+}
+function revealTodayPick() {
+  if (hasPremiumAccess()) {
+    updatePickTeaserLock();
+    return;
+  }
+  showPaywall();
 }
 function selectPlan(p) {
   selectedPlan = p;
@@ -1319,7 +1355,7 @@ function renderMarketTable(game, mkt) {
 // ─── AI ANALYSIS ──────────────────────────────────────────────────────────────
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
-  if (!isSubscriber && credits <= 0) { showPaywall(); return; }
+  if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
 
   const btn = document.getElementById('analyzeBtn');
   const btnR = document.getElementById('analyzeResearchBtn');
@@ -1405,7 +1441,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     clearTimeout(clientTimeout);
     clearInterval(ticker);
 
-    if (res.status === 402) { showPaywall(); btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return; }
+    if (res.status === 402) { if (!isOwnerUser()) showPaywall(); btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return; }
     if (!res.ok) {
       let errMsg = `HTTP ${res.status}`;
       try { const e = await res.json(); errMsg = e.error || errMsg; } catch {}
@@ -1470,7 +1506,8 @@ function escapeHtml(value) {
 }
 
 function renderAIResultShell(contentHtml, showOverlay) {
-  const overlay = showOverlay ? `
+  const showPaywallOverlay = showOverlay && !isOwnerUser();
+  const overlay = showPaywallOverlay ? `
   <div class="ai-paywall-overlay" id="aiPaywall">
     <div class="ai-paywall-box">
       <div class="pw-title"> Unlock Full Analysis</div>
@@ -1506,7 +1543,7 @@ function renderPlainAnalysis(title, text) {
   if (!area) return;
   const resultText = String(text || '');
   const preview = resultText.slice(0, 250);
-  const showOverlay = !isSubscriber;
+  const showOverlay = !hasPremiumAccess();
   const displayText = showOverlay ? preview : resultText;
   const contentHtml = `<div class="sec"><div class="sec-hdr">${escapeHtml(title)}</div><div class="sec-body">${escapeHtml(displayText).replace(/\n/g,'<br>')}</div></div>`;
   area.innerHTML = renderAIResultShell(contentHtml, showOverlay);
@@ -1550,7 +1587,7 @@ function renderAIResult(r, rawText = '') {
   const factors = toList(r.key_factors || r.keyFactors).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${escapeHtml(f)}</span></div>`).join('');
   const resultText = rawText || JSON.stringify(r, null, 2);
   const preview = resultText.slice(0, 250);
-  const showOverlay = !isSubscriber;
+  const showOverlay = !hasPremiumAccess();
 
   if (showOverlay) {
     const contentHtml = `<div class="sec"><div class="sec-hdr">AI ANALYSIS PREVIEW</div><div class="sec-body">${escapeHtml(preview).replace(/\n/g,'<br>')}</div></div>`;
