@@ -100,9 +100,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:12px;}
 .welcome h2{font-size:26px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .welcome p{color:var(--muted);font-size:13px;max-width:360px;line-height:1.7;}
-.welcome-steps{display:flex;gap:36px;margin-top:28px;}
+.welcome-steps{display:flex;margin-top:24px;margin-bottom:22px;gap:28px;}
 .blurred{filter:blur(6px);opacity:0.6;}
-.pick-teaser{width:min(420px,92vw);margin-top:8px;margin-bottom:20px;}
+.pick-teaser{width:min(420px,92vw);margin-top:14px;margin-bottom:20px;}
 .pick-card{background:var(--surface);border:1px solid var(--border2);padding:18px;text-align:center;}
 .pick-header{font-size:12px;letter-spacing:3px;color:var(--accent);margin-bottom:8px;}
 .pick-label{font-size:10px;color:var(--muted);margin-bottom:10px;}
@@ -110,8 +110,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .pick-confidence,.pick-value{font-family:var(--mono);font-size:12px;margin-bottom:4px;}
 .pick-note{font-size:10px;color:var(--muted2);margin-top:10px;}
 .ws{display:flex;flex-direction:column;align-items:center;gap:8px;}
-.ws-n{font-family:var(--mono);font-size:9px;color:var(--accent);border:1px solid var(--border2);width:26px;height:26px;display:flex;align-items:center;justify-content:center;}
-.ws-t{font-size:11px;color:var(--muted);text-align:center;max-width:90px;line-height:1.5;}
+.ws-n{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--accent);background:rgba(0,229,255,0.06);width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
+.ws-t{font-size:12px;color:var(--text);text-align:center;max-width:110px;line-height:1.5;}
 
 .detail-hdr{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;}
 .detail-title{font-size:17px;font-weight:800;}
@@ -300,9 +300,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .detail-hdr .analyze-btn{width:auto;margin-top:0;padding:7px 10px;font-size:8px;letter-spacing:0px;}
   .back-btn{display:flex;}
   .scrollable{padding:16px;padding-bottom:32px;}
-  .welcome{padding:20px;}
+  .welcome{justify-content:flex-start;padding:20px;padding-top:28px;height:auto !important;min-height:100%;}
   .welcome h2{font-size:20px;}
-  .welcome-steps{gap:20px;}
+  .welcome-steps{width:100%;justify-content:center;gap:14px;margin-top:22px;margin-bottom:20px;}
+  .ws-n{width:32px;height:32px;}
+  .ws-t{font-size:11px;max-width:88px;}
+  .manual-help,.pick-teaser{width:100%;max-width:420px;}
   header{padding:10px 16px;}
   .logo{font-size:17px;letter-spacing:5px;}
   .pw-plans{flex-direction:column;}
@@ -397,7 +400,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 }
 
 .manual-help {
-  margin-top: 20px;
+  margin-top: 8px;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border2);
@@ -522,6 +525,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   <div class="welcome" style="height:100%">
     <h2>FIND YOUR EDGE</h2>
     <p>AI-powered expected value analysis with live odds and real-time stats.</p>
+    <div class="welcome-steps">
+      <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
+        <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
+      </button>
+      <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
+      <div class="ws"><div class="ws-n">03</div><div class="ws-t">Run analysis</div></div>
+    </div>
     <div class="manual-help">
       <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
 
@@ -567,13 +577,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
           Updated in real-time • AI verified • Limited access
         </div>
       </div>
-    </div>
-    <div class="welcome-steps">
-      <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
-        <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
-      </button>
-      <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
-      <div class="ws"><div class="ws-n">03</div><div class="ws-t">Hit Analyze EV</div></div>
     </div>
   </div>
 </div>
