@@ -97,21 +97,22 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .scrollable::-webkit-scrollbar{width:3px;}
 .scrollable::-webkit-scrollbar-thumb{background:var(--border2);}
 
-.welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:12px;}
+.welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:10px;}
 .welcome h2{font-size:26px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .welcome p{color:var(--muted);font-size:13px;max-width:360px;line-height:1.7;}
-.welcome-steps{display:flex;margin-top:24px;margin-bottom:22px;gap:28px;}
+.welcome-steps{display:flex;margin-top:30px;margin-bottom:18px;gap:36px;justify-content:center;}
+.welcome-cta{min-height:52px;min-width:220px;margin-bottom:18px;}
 .blurred{filter:blur(6px);opacity:0.6;}
-.pick-teaser{width:min(420px,92vw);margin-top:14px;margin-bottom:20px;}
+.pick-teaser{width:min(420px,92vw);margin-top:18px;margin-bottom:20px;}
 .pick-card{background:var(--surface);border:1px solid var(--border2);padding:18px;text-align:center;}
 .pick-header{font-size:12px;letter-spacing:3px;color:var(--accent);margin-bottom:8px;}
 .pick-label{font-size:10px;color:var(--muted);margin-bottom:10px;}
 .pick-match{font-size:14px;font-weight:700;margin-bottom:6px;}
 .pick-confidence,.pick-value{font-family:var(--mono);font-size:12px;margin-bottom:4px;}
 .pick-note{font-size:10px;color:var(--muted2);margin-top:10px;}
-.ws{display:flex;flex-direction:column;align-items:center;gap:8px;}
-.ws-n{font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--accent);background:rgba(0,229,255,0.06);width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
-.ws-t{font-size:12px;color:var(--text);text-align:center;max-width:110px;line-height:1.5;}
+.ws{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.ws-n{font-family:var(--mono);font-size:12px;color:var(--accent);border:1px solid var(--accent);background:rgba(0,229,255,0.06);width:38px;height:38px;display:flex;align-items:center;justify-content:center;}
+.ws-t{font-size:13px;color:var(--text);text-align:center;max-width:118px;line-height:1.5;font-weight:700;}
 
 .detail-hdr{padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;}
 .detail-title{font-size:17px;font-weight:800;}
@@ -166,6 +167,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .verdict.pass .v-sub,.verdict.pass .v-txt{color:var(--red);}
 .verdict.lean .v-sub,.verdict.lean .v-txt{color:var(--yellow);}
 .v-txt{font-size:17px;font-weight:800;}
+.result-topline{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin-bottom:18px;}
+.rt-card{background:var(--surface);border:1px solid var(--border);padding:15px 16px;}
+.rt-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:7px;}
+.rt-value{font-size:18px;font-weight:900;line-height:1.25;}
+.rt-value.bet{color:var(--green);}
+.rt-value.pass{color:var(--red);}
+.rt-value.lean{color:var(--yellow);}
 
 .loading-state{display:flex;flex-direction:column;align-items:center;padding:50px;gap:18px;}
 .bars{display:flex;gap:5px;align-items:flex-end;height:36px;}
@@ -302,9 +310,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .scrollable{padding:16px;padding-bottom:32px;}
   .welcome{justify-content:flex-start;padding:20px;padding-top:28px;height:auto !important;min-height:100%;}
   .welcome h2{font-size:20px;}
-  .welcome-steps{width:100%;justify-content:center;gap:14px;margin-top:22px;margin-bottom:20px;}
+  .welcome-steps{width:100%;justify-content:center;gap:18px;margin-top:24px;margin-bottom:16px;}
+  .welcome-cta{width:100%;max-width:320px;min-height:52px;}
   .ws-n{width:32px;height:32px;}
   .ws-t{font-size:11px;max-width:88px;}
+  .result-topline{grid-template-columns:1fr;gap:8px;}
   .manual-help,.pick-teaser{width:100%;max-width:420px;}
   header{padding:10px 16px;}
   .logo{font-size:17px;letter-spacing:5px;}
@@ -400,7 +410,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 }
 
 .manual-help {
-  margin-top: 8px;
+  margin-top: 24px;
   padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border2);
@@ -532,6 +542,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
       <div class="ws"><div class="ws-n">03</div><div class="ws-t">Run analysis</div></div>
     </div>
+    <button class="analyze-btn welcome-cta" onclick="showTab('odds')">
+       Run AI Analysis
+    </button>
     <div class="manual-help">
       <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
 
@@ -650,7 +663,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="form-grid">
         <div class="form-field">
           <div class="form-label">GAME / MATCHUP</div>
-          <input class="form-inp" id="f-game" placeholder="e.g. Lakers vs Celtics">
+          <input class="form-inp" id="f-game" placeholder="Try: Eagles vs Cowboys (-110)">
         </div>
         <div class="form-field">
           <div class="form-label">BET ON</div>
@@ -1516,10 +1529,18 @@ function renderAIResult(r, rawText = '') {
   const betOn = r.bet_on || r.betOn || r.team || r.pick || '';
 
   const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
-  const vi = verdict==='BET'?'✅':verdict==='PASS'?'❌':'⚠️';
-  const vm = verdict==='BET'?`BET — ${escapeHtml(betOn)}`:verdict==='PASS'?'PASS — NO EDGE':`LEAN — ${escapeHtml(betOn || verdict)}`;
   const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
-  const cc = confidence==='HIGH'?'pos':confidence==='MEDIUM'?'wrn':'neu';
+  const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
+  const confScore = r.confidence_score ?? r.confidenceScore ?? r.confidence_pct ?? r.confidencePct ?? (confidence==='HIGH'?82:confidence==='MEDIUM'?68:54);
+  const confText = `${confLabel} (${escapeHtml(confScore)}%)`;
+  const homeEV = r.home_ev ?? r.homeEV;
+  const awayEV = r.away_ev ?? r.awayEV;
+  const betLower = betOn.toString().toLowerCase();
+  const homeName = currentGame?.home_team?.toLowerCase?.() || '';
+  const awayName = currentGame?.away_team?.toLowerCase?.() || '';
+  const value = r.value || r.expected_value || r.expectedValue ||
+    (homeName && betLower.includes(homeName) ? homeEV : awayName && betLower.includes(awayName) ? awayEV : homeEV || awayEV || 'N/A');
+  const betSummary = verdict==='PASS' ? 'NO EDGE' : escapeHtml(betOn || 'Best available play');
   const toList = v => Array.isArray(v) ? v : v ? [v] : [];
   const factors = toList(r.key_factors || r.keyFactors).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${escapeHtml(f)}</span></div>`).join('');
   const resultText = rawText || JSON.stringify(r, null, 2);
@@ -1533,16 +1554,16 @@ function renderAIResult(r, rawText = '') {
   }
 
   const contentHtml = `<div class="ai-result">
-    <div class="verdict ${vc}">
-      <div class="v-icon">${vi}</div>
-      <div><div class="v-sub">AI RECOMMENDATION</div><div class="v-txt">${vm}</div></div>
-      <div style="margin-left:auto;text-align:right"><div class="v-sub">CONFIDENCE</div><div class="ev-val ${cc}" style="font-size:15px">${escapeHtml(r.confidence||'MEDIUM')}</div></div>
+    <div class="result-topline">
+      <div class="rt-card"><div class="rt-label">BET</div><div class="rt-value ${vc}">${betSummary}</div></div>
+      <div class="rt-card"><div class="rt-label">CONFIDENCE</div><div class="rt-value">${confText}</div></div>
+      <div class="rt-card"><div class="rt-label">VALUE</div><div class="rt-value ${ec(value)}">${escapeHtml(value)}</div></div>
     </div>
     <div class="ev-row">
       <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.home_true_prob ?? 'N/A')}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
       <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.away_true_prob ?? 'N/A')}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(r.home_ev)}">${escapeHtml(r.home_ev ?? 'N/A')}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(r.away_ev)}">${escapeHtml(r.away_ev ?? 'N/A')}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(homeEV)}">${escapeHtml(homeEV ?? 'N/A')}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(awayEV)}">${escapeHtml(awayEV ?? 'N/A')}</div></div>
     </div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factors}</div></div>
     <div class="sec"><div class="sec-hdr">AI REASONING</div><div class="sec-body">${escapeHtml(r.reasoning || rawText || 'No reasoning returned.')}</div></div>
