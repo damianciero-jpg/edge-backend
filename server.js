@@ -67,6 +67,7 @@ app.get('/', (_req, res, next) => {
       .replace(/<script[^>]+src=["']\/home-upgrades\.js[^>]*><\/script>\s*/g, '')
       .replace('</body>', `${upgradeScript}\n</body>`);
 
+    res.set('Cache-Control', 'no-store');
     res.type('html').send(upgradedHtml);
   });
 });

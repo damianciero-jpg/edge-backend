@@ -1210,7 +1210,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
       btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
     }
 
-    renderAIResult(result);
+    renderAIResult(result, txt);
     syncUserStatus();
     // Scroll results into view on all devices
     setTimeout(() => {
@@ -1229,38 +1229,66 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
   btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH';
 }
 
-function renderAIResult(r) {
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderPlainAnalysis(title, text) {
   const area = document.getElementById('aiResultArea');
   if (!area) return;
+  area.innerHTML = `<div class="sec"><div class="sec-hdr">${escapeHtml(title)}</div><div class="sec-body">${escapeHtml(text).replace(/\n/g,'<br>')}</div></div>`;
+}
+
+function renderAIResult(r, rawText = '') {
+  const area = document.getElementById('aiResultArea');
+  if (!area) return;
+
+  if (r.error || r.message) {
+    renderPlainAnalysis(r.error || 'AI ANALYSIS', r.message || rawText);
+    return;
+  }
+
+  const hasAnalysisFields = ['home_true_prob', 'away_true_prob', 'home_ev', 'away_ev', 'reasoning', 'key_factors']
+    .some(key => r[key] !== undefined);
+  if (!hasAnalysisFields) {
+    renderPlainAnalysis('AI ANALYSIS', rawText || JSON.stringify(r, null, 2));
+    return;
+  }
 
   // Normalize — Haiku sometimes returns lowercase or alternate casing
   const verdict = (r.verdict || r.recommendation || 'LEAN').toString().toUpperCase();
   const confidence = (r.confidence || 'MEDIUM').toString().toUpperCase();
-  const betOn = r.bet_on || r.betOn || r.team || '';
+  const betOn = r.bet_on || r.betOn || r.team || r.pick || '';
 
   const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
   const vi = verdict==='BET'?'✅':verdict==='PASS'?'❌':'⚠️';
-  const vm = verdict==='BET'?`BET — ${betOn}`:verdict==='PASS'?'PASS — NO EDGE':`LEAN — ${betOn}`;
+  const vm = verdict==='BET'?`BET — ${escapeHtml(betOn)}`:verdict==='PASS'?'PASS — NO EDGE':`LEAN — ${escapeHtml(betOn || verdict)}`;
   const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
   const cc = confidence==='HIGH'?'pos':confidence==='MEDIUM'?'wrn':'neu';
-  const factors = (r.key_factors||r.keyFactors||[]).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${f}</span></div>`).join('');
+  const toList = v => Array.isArray(v) ? v : v ? [v] : [];
+  const factors = toList(r.key_factors || r.keyFactors).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${escapeHtml(f)}</span></div>`).join('');
 
   area.innerHTML = `<div class="ai-result">
     <div class="verdict ${vc}">
       <div class="v-icon">${vi}</div>
       <div><div class="v-sub">AI RECOMMENDATION</div><div class="v-txt">${vm}</div></div>
-      <div style="margin-left:auto;text-align:right"><div class="v-sub">CONFIDENCE</div><div class="ev-val ${cc}" style="font-size:15px">${r.confidence||'MEDIUM'}</div></div>
+      <div style="margin-left:auto;text-align:right"><div class="v-sub">CONFIDENCE</div><div class="ev-val ${cc}" style="font-size:15px">${escapeHtml(r.confidence||'MEDIUM')}</div></div>
     </div>
     <div class="ev-row">
-      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${r.home_true_prob}%</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${r.away_true_prob}%</div></div>
-      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(r.home_ev)}">${r.home_ev}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(r.away_ev)}">${r.away_ev}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.home_true_prob ?? 'N/A')}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.away_true_prob ?? 'N/A')}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(r.home_ev)}">${escapeHtml(r.home_ev ?? 'N/A')}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(r.away_ev)}">${escapeHtml(r.away_ev ?? 'N/A')}</div></div>
     </div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factors}</div></div>
-    <div class="sec"><div class="sec-hdr">AI REASONING</div><div class="sec-body">${r.reasoning}</div></div>
-    ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${r.risk_notes}</div></div>`:''}
-    ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${r.stats_found}</div></div>`:''}
+    <div class="sec"><div class="sec-hdr">AI REASONING</div><div class="sec-body">${escapeHtml(r.reasoning || rawText || 'No reasoning returned.')}</div></div>
+    ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
+    ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
   </div>`;
 }
 
