@@ -101,6 +101,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .welcome h2{font-size:26px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .welcome p{color:var(--muted);font-size:13px;max-width:360px;line-height:1.7;}
 .welcome-steps{display:flex;gap:36px;margin-top:28px;}
+.pick-teaser{width:min(420px,92vw);background:var(--surface);border:1px solid var(--border2);padding:16px 18px;margin-top:8px;text-align:left;position:relative;}
+.pick-teaser::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.pick-kicker{font-family:var(--mono);font-size:8px;color:var(--accent);letter-spacing:3px;margin-bottom:6px;}
+.pick-title{font-size:15px;font-weight:800;margin-bottom:6px;}
+.pick-copy{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;}
+.pick-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:var(--bg);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;padding:10px 14px;cursor:pointer;width:100%;}
+.pick-btn:hover{opacity:0.9;}
 .ws{display:flex;flex-direction:column;align-items:center;gap:8px;}
 .ws-n{font-family:var(--mono);font-size:9px;color:var(--accent);border:1px solid var(--border2);width:26px;height:26px;display:flex;align-items:center;justify-content:center;}
 .ws-t{font-size:11px;color:var(--muted);text-align:center;max-width:90px;line-height:1.5;}
@@ -327,6 +334,66 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .select-hint p{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;line-height:1.8;}
 .gi-time.today{color:var(--green);}
 .gi-time.tomorrow{color:var(--yellow);}
+
+.ai-result-wrapper {
+  position: relative;
+}
+
+.ai-paywall-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(8,12,16,0.2), rgba(8,12,16,0.95));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ai-paywall-box {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  padding: 20px;
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+}
+
+.pw-title {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.pw-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.pw-note {
+  font-size: 10px;
+  color: var(--muted2);
+  margin-top: 10px;
+}
+
+.paywall-modal .pw-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.paywall-modal .pw-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 26px;
+  line-height: 1.7;
+}
+
+.paywall-modal .pw-note {
+  margin-bottom: 12px;
+}
 </style>
 </head>
 <body>
@@ -335,8 +402,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <div class="paywall-overlay" id="paywallOverlay" style="display:none;">
   <div class="paywall-modal">
     <div class="pw-icon">⚡</div>
-    <div class="pw-title">UNLOCK EDGE</div>
-    <div class="pw-sub">You've used your 2 free analyses.<br>Upgrade to keep finding edges.</div>
+    <div class="pw-title">Unlock Full EDGE Analysis</div>
+    <div class="pw-sub">See the full breakdown, confidence score, risk rating, and recommended play before you bet.</div>
     <div class="pw-plans">
       <div class="pw-plan" id="planCredits" onclick="selectPlan('credits')">
         <div class="pp-name">CREDIT PACK</div>
@@ -354,8 +421,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
         <div class="pp-desc">Best value</div>
       </div>
     </div>
-    <button class="pw-cta" onclick="goToStripe()">💳 SUBSCRIBE WITH STRIPE</button>
-    <button class="pw-close" onclick="closePaywall()">← MAYBE LATER</button>
+    <button class="pw-cta" onclick="goToStripe()">Unlock Full Access</button>
+    <div class="pw-note">Limited free analyses available today.</div>
+    <button class="pw-close" onclick="closePaywall()">Continue Free</button>
   </div>
 </div>
 
@@ -413,6 +481,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   <div class="welcome" style="height:100%">
     <h2>FIND YOUR EDGE</h2>
     <p>AI-powered expected value analysis with live odds and real-time stats.</p>
+    <div class="pick-teaser">
+      <div class="pick-kicker">PICK OF THE DAY</div>
+      <div class="pick-title">Premium edge detected</div>
+      <div class="pick-copy">Unlock today’s AI-reviewed betting insight, confidence score, and risk breakdown.</div>
+      <button class="pick-btn" onclick="showPaywall()">Unlock Today’s Pick</button>
+    </div>
     <div class="welcome-steps">
       <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
         <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
@@ -581,7 +655,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
             <div class="pc-price">$14.99 <span>one-time</span></div>
           </div>
         </div>
-        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">💳 BUY 50 CREDITS — $14.99</button>
+        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">Reveal Full Analysis — $14.99</button>
         <div class="stripe-note">Powered by Stripe. Cancel anytime.</div>
       </div>
 
@@ -608,7 +682,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
             <span style="color:var(--green)">✓</span> Early access to new features
           </div>
         </div>
-        <button class="stripe-btn" onclick="goToStripeSub()">💳 SUBSCRIBE NOW</button>
+        <button class="stripe-btn" onclick="goToStripeSub()">Get EDGE Premium</button>
         <div class="stripe-note">Billed monthly. Cancel anytime.<br>Secure payment via Stripe.</div>
       </div>
 
@@ -637,10 +711,13 @@ let credits = parseInt(localStorage.getItem('edge_credits') ?? FREE_CREDITS);
 let isSubscriber = localStorage.getItem('edge_sub') === '1';
 let allGames = [];
 let currentGame = null;
+let currentGameIndex = null;
 let currentSport = "americanfootball_nfl";
 let currentMarket = "h2h";
 let selectedPlan = "sub";
 let bets = JSON.parse(localStorage.getItem('edge_bets') || '[]');
+let lastTrackerGameValue = '';
+let lastTrackerPickValue = '';
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 updateCreditUI();
@@ -662,7 +739,11 @@ function showTab(tab) {
   document.getElementById('view-'+tab).style.display = (tab === 'odds' || tab === 'markets') ? 'grid' : 'block';
   document.getElementById('tab-'+tab)?.classList.add('active');
   document.getElementById('bn-'+tab)?.classList.add('active');
-  if (tab === 'markets') syncMarketsGames();
+  if (tab === 'markets') {
+    syncMarketsGames();
+    syncSelectedGameToMarkets();
+  }
+  if (tab === 'tracker') prefillTrackerFromCurrentGame();
 }
 
 function closeDetail() {
@@ -806,7 +887,7 @@ async function handleStripeReturn() {
     const data = await res.json();
     if (data.success) {
       await syncUserStatus();
-      showToast('Payment successful! Your account has been upgraded.', 'success', 5000);
+      showToast('Payment successful! EDGE Premium is active.', 'success', 5000);
       window.history.replaceState({}, '', '/');
     }
   } catch(e) { console.log('Could not verify session:', e.message); }
@@ -845,15 +926,19 @@ function showPaywall() {
 function closePaywall() {
   document.getElementById('paywallOverlay').style.display = 'none';
 }
+function goToAccount() {
+  closePaywall();
+  showTab('account');
+}
 function selectPlan(p) {
   selectedPlan = p;
   ['credits','sub','big'].forEach(id => document.getElementById('plan'+id.charAt(0).toUpperCase()+id.slice(1))?.classList.remove('selected'));
   const map = {credits:'planCredits',sub:'planSub',big:'planBig'};
   document.getElementById(map[p])?.classList.add('selected');
   const btn = document.querySelector('.pw-cta');
-  if (p === 'sub') { btn.textContent = '💳 SUBSCRIBE — $20/MO'; }
-  else if (p === 'credits') { btn.textContent = '💳 BUY 10 CREDITS — $4.99'; }
-  else { btn.textContent = '💳 BUY 50 CREDITS — $14.99'; }
+  if (p === 'sub') { btn.textContent = 'Get EDGE Premium'; }
+  else if (p === 'credits') { btn.textContent = 'Reveal Full Analysis — $4.99'; }
+  else { btn.textContent = 'Unlock Full Access — $14.99'; }
 }
 async function goToStripe() {
   const planMap = { sub: 'sub', credits: 'credits_10', big: 'credits_50' };
@@ -867,7 +952,7 @@ function selectCreditPack(pack) {
   document.getElementById('pc-10').classList.toggle('selected-pack', pack === 'credits_10');
   document.getElementById('pc-50').classList.toggle('selected-pack', pack === 'credits_50');
   const btn = document.getElementById('buyCreditsBtn');
-  btn.textContent = pack === 'credits_10' ? '💳 BUY 10 CREDITS — $4.99' : '💳 BUY 50 CREDITS — $14.99';
+  btn.textContent = pack === 'credits_10' ? 'Reveal Full Analysis — $4.99' : 'Reveal Full Analysis — $14.99';
 }
 async function goToStripeCredits() { await checkout(selectedCreditPack); }
 
@@ -900,6 +985,8 @@ function selectSport(btn) {
   document.querySelectorAll('.sp').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentSport = btn.dataset.sport;
+  currentGame = null;
+  currentGameIndex = null;
   fetchGames();
 }
 
@@ -913,7 +1000,14 @@ async function fetchGames() {
     const res = await fetch(url);
     if (!res.ok) { const e = await res.json(); list.innerHTML = `<div class="sb-empty">ERROR<br>${e.message||res.status}</div>`; return; }
     allGames = await res.json();
-    if (!allGames.length) { list.innerHTML = '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>'; countEl.textContent = '0 GAMES'; return; }
+    if (!allGames.length) {
+      currentGame = null;
+      currentGameIndex = null;
+      list.innerHTML = '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
+      countEl.textContent = '0 GAMES';
+      syncMarketsGames();
+      return;
+    }
     countEl.textContent = allGames.length + ' GAME' + (allGames.length !== 1 ? 'S' : '');
     renderGamesList();
     syncMarketsGames();
@@ -960,18 +1054,50 @@ function syncMarketsGames() {
   list.innerHTML = '';
   allGames.forEach((g, i) => {
     const el = document.createElement('div');
-    el.className = 'game-item';
+    el.className = 'game-item' + (i === currentGameIndex ? ' active' : '');
+    el.dataset.index = i;
     el.innerHTML = `<div class="gi-sport">MARKETS</div><div class="gi-teams">${g.away_team}<br>@ ${g.home_team}</div>`;
     el.onclick = () => { selectGameMarkets(i, el); showTab('markets'); };
     list.appendChild(el);
   });
 }
 
+function syncSelectedGameToMarkets() {
+  if (currentGameIndex == null || !allGames[currentGameIndex]) return;
+  currentGame = allGames[currentGameIndex];
+  renderMarketsDetail(currentGame, currentMarket || 'h2h');
+  document.querySelectorAll('#marketsGamesList .game-item').forEach(c => {
+    c.classList.toggle('active', Number(c.dataset.index) === currentGameIndex);
+  });
+  if (isMobile()) document.getElementById('view-markets').classList.add('detail-open');
+}
+
+function prefillTrackerFromCurrentGame() {
+  if (!currentGame) return;
+  const gameInput = document.getElementById('f-game');
+  const pickInput = document.getElementById('f-pick');
+  const marketInput = document.getElementById('f-market');
+  const gameValue = `${currentGame.away_team} @ ${currentGame.home_team}`;
+  const pickValue = `${currentGame.home_team} ML`;
+  if (gameInput && (!gameInput.value.trim() || gameInput.value === lastTrackerGameValue)) {
+    gameInput.value = gameValue;
+    lastTrackerGameValue = gameValue;
+  }
+  if (pickInput && (!pickInput.value.trim() || pickInput.value === lastTrackerPickValue)) {
+    pickInput.value = pickValue;
+    lastTrackerPickValue = pickValue;
+  }
+  if (marketInput && !marketInput.value) marketInput.value = 'Moneyline';
+}
+
 function selectGame(i, el) {
   document.querySelectorAll('#gamesList .game-item').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
+  currentGameIndex = i;
   currentGame = allGames[i];
   renderOddsDetail(currentGame);
+  prefillTrackerFromCurrentGame();
+  syncSelectedGameToMarkets();
   if (isMobile()) document.getElementById('view-odds').classList.add('detail-open');
 }
 
@@ -1037,14 +1163,17 @@ function renderOddsDetail(game) {
 function selectGameMarkets(i, el) {
   document.querySelectorAll('#marketsGamesList .game-item').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
+  currentGameIndex = i;
   currentGame = allGames[i];
   renderMarketsDetail(currentGame, 'h2h');
+  prefillTrackerFromCurrentGame();
   if (isMobile()) document.getElementById('view-markets').classList.add('detail-open');
 }
 
 function renderMarketsDetail(game, mkt) {
   const main = document.getElementById('marketsMain');
   const dt = new Date(game.commence_time);
+  currentMarket = mkt;
 
   main.innerHTML = `
     <div class="detail-hdr">
@@ -1238,10 +1367,47 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function renderAIResultShell(contentHtml, showOverlay) {
+  const overlay = showOverlay ? `
+  <div class="ai-paywall-overlay" id="aiPaywall">
+    <div class="ai-paywall-box">
+      <div class="pw-title"> Unlock Full Analysis</div>
+      <div class="pw-sub">
+        See the full breakdown, confidence score, risk rating, and recommended play before you bet.
+      </div>
+
+      <button class="pw-cta" onclick="goToAccount()">
+        Unlock Full Access
+      </button>
+
+      <div class="pw-note">
+        Limited free analyses available today.
+      </div>
+
+      <div class="pw-note">
+        AI-powered insights • Risk scoring • Best value bets
+      </div>
+    </div>
+  </div>` : '';
+
+  return `<div class="ai-result-wrapper">
+  <div class="ai-result-content">
+    ${contentHtml}
+  </div>
+
+  ${overlay}
+</div>`;
+}
+
 function renderPlainAnalysis(title, text) {
   const area = document.getElementById('aiResultArea');
   if (!area) return;
-  area.innerHTML = `<div class="sec"><div class="sec-hdr">${escapeHtml(title)}</div><div class="sec-body">${escapeHtml(text).replace(/\n/g,'<br>')}</div></div>`;
+  const resultText = String(text || '');
+  const preview = resultText.slice(0, 250);
+  const showOverlay = !isSubscriber;
+  const displayText = showOverlay ? preview : resultText;
+  const contentHtml = `<div class="sec"><div class="sec-hdr">${escapeHtml(title)}</div><div class="sec-body">${escapeHtml(displayText).replace(/\n/g,'<br>')}</div></div>`;
+  area.innerHTML = renderAIResultShell(contentHtml, showOverlay);
 }
 
 function renderAIResult(r, rawText = '') {
@@ -1272,8 +1438,17 @@ function renderAIResult(r, rawText = '') {
   const cc = confidence==='HIGH'?'pos':confidence==='MEDIUM'?'wrn':'neu';
   const toList = v => Array.isArray(v) ? v : v ? [v] : [];
   const factors = toList(r.key_factors || r.keyFactors).map(f=>`<div style="display:flex;gap:10px;margin-bottom:8px"><span style="color:var(--accent);font-family:var(--mono)">▸</span><span>${escapeHtml(f)}</span></div>`).join('');
+  const resultText = rawText || JSON.stringify(r, null, 2);
+  const preview = resultText.slice(0, 250);
+  const showOverlay = !isSubscriber;
 
-  area.innerHTML = `<div class="ai-result">
+  if (showOverlay) {
+    const contentHtml = `<div class="sec"><div class="sec-hdr">AI ANALYSIS PREVIEW</div><div class="sec-body">${escapeHtml(preview).replace(/\n/g,'<br>')}</div></div>`;
+    area.innerHTML = renderAIResultShell(contentHtml, true);
+    return;
+  }
+
+  const contentHtml = `<div class="ai-result">
     <div class="verdict ${vc}">
       <div class="v-icon">${vi}</div>
       <div><div class="v-sub">AI RECOMMENDATION</div><div class="v-txt">${vm}</div></div>
@@ -1290,6 +1465,7 @@ function renderAIResult(r, rawText = '') {
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
   </div>`;
+  area.innerHTML = renderAIResultShell(contentHtml, false);
 }
 
 // ─── TRACKER ──────────────────────────────────────────────────────────────────
