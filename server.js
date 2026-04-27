@@ -19,7 +19,11 @@ const authRouter = require('./routes/auth');
 const alertsRouter = require('./routes/alerts');
 
 const app = express();
-const OWNER_EMAIL = 'damianciero@gmail.com';
+const OWNER_EMAILS = [
+  'damianciero@gmail.com',
+  'ffanning@comcast.net',
+  'afelt1991@yahoo.com',
+];
 const DEFAULT_ODDS_API_KEY = 'e37bbddd4d0947ae8c39052cf8d75b61';
 const PICK_SPORTS = [
   'americanfootball_nfl',
@@ -165,7 +169,7 @@ app.get('/api/pick-of-the-day', async (req, res) => {
   try {
     const session = verifySession(req.cookies?.edge_session);
     const userId = String(session?.email || '').toLowerCase();
-    const isOwner = userId === OWNER_EMAIL;
+    const isOwner = OWNER_EMAILS.includes(userId);
 
     if (!userId) return res.json({ paywall: true });
 
