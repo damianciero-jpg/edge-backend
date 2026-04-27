@@ -1092,7 +1092,7 @@ function revealTodayPick() {
   }
   showPaywall();
 }
-async function revealTodaysPick() {
+function revealTodaysPick() {
   const isOwner =
     typeof currentEmail !== 'undefined' &&
     currentEmail &&
@@ -1103,30 +1103,62 @@ async function revealTodaysPick() {
     return;
   }
 
-  showTab('odds');
-
-  if (!Array.isArray(allGames) || allGames.length === 0) {
-    showToast('Loading today’s games...', 'info');
-    await fetchGames();
-  }
-
-  if (!Array.isArray(allGames) || allGames.length === 0) {
-    showToast('No games available yet. Try refreshing odds.', 'error');
+  const existing = document.getElementById('todaysPickResult');
+  if (existing) {
+    existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
 
-  currentGameIndex = 0;
-  currentGame = allGames[0];
+  const pickHtml = `
+    <div id="todaysPickResult" class="sec ai-result" style="margin-top:18px;">
+      <div class="sec-hdr"> PICK OF THE DAY</div>
+      <div class="sec-body">
+        <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px;">
+          Premium Pick Unlocked
+        </div>
 
-  renderOddsDetail(currentGame);
-  prefillTrackerFromCurrentGame();
-  syncMarketsGames();
+        <div style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:12px;">
+          EDGE has unlocked your premium pick area. Use this section to display your daily AI-reviewed pick once your live odds feed is connected.
+        </div>
 
-  if (isMobile()) {
-    document.getElementById('view-odds').classList.add('detail-open');
-  }
+        <div class="verdict lean">
+          <div class="v-icon">⚡</div>
+          <div>
+            <div class="v-sub">EDGE VERDICT</div>
+            <div class="v-txt">READY FOR DAILY PICK</div>
+          </div>
+        </div>
 
-  showToast('Today’s pick unlocked. Run AI Analysis for the full breakdown.', 'success');
+        <div class="ev-row">
+          <div class="ev-card">
+            <div class="ev-label">CONFIDENCE</div>
+            <div class="ev-val neu">HIGH</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">RISK</div>
+            <div class="ev-val wrn">MEDIUM</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">EDGE</div>
+            <div class="ev-val pos">STRONG</div>
+          </div>
+          <div class="ev-card">
+            <div class="ev-label">ACCESS</div>
+            <div class="ev-val pos">UNLOCKED</div>
+          </div>
+        </div>
+
+        <button class="analyze-btn" onclick="showTab('odds')">
+          Browse Live Games
+        </button>
+      </div>
+    </div>
+  `;
+
+  const welcome = document.querySelector('.welcome') || document.getElementById('oddsMain') || document.body;
+  welcome.insertAdjacentHTML('beforeend', pickHtml);
+
+  showToast('Pick of the Day unlocked.', 'success');
 }
 function selectPlan(p) {
   selectedPlan = p;
