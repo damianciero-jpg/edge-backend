@@ -101,13 +101,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .welcome h2{font-size:26px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .welcome p{color:var(--muted);font-size:13px;max-width:360px;line-height:1.7;}
 .welcome-steps{display:flex;gap:36px;margin-top:28px;}
-.pick-teaser{width:min(420px,92vw);background:var(--surface);border:1px solid var(--border2);padding:16px 18px;margin-top:8px;text-align:left;position:relative;}
-.pick-teaser::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
-.pick-kicker{font-family:var(--mono);font-size:8px;color:var(--accent);letter-spacing:3px;margin-bottom:6px;}
-.pick-title{font-size:15px;font-weight:800;margin-bottom:6px;}
-.pick-copy{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px;}
-.pick-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:var(--bg);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;padding:10px 14px;cursor:pointer;width:100%;}
-.pick-btn:hover{opacity:0.9;}
+.blurred{filter:blur(6px);opacity:0.6;}
+.pick-teaser{width:min(420px,92vw);margin-top:8px;margin-bottom:20px;}
+.pick-card{background:var(--surface);border:1px solid var(--border2);padding:18px;text-align:center;}
+.pick-header{font-size:12px;letter-spacing:3px;color:var(--accent);margin-bottom:8px;}
+.pick-label{font-size:10px;color:var(--muted);margin-bottom:10px;}
+.pick-match{font-size:14px;font-weight:700;margin-bottom:6px;}
+.pick-confidence,.pick-value{font-family:var(--mono);font-size:12px;margin-bottom:4px;}
+.pick-note{font-size:10px;color:var(--muted2);margin-top:10px;}
 .ws{display:flex;flex-direction:column;align-items:center;gap:8px;}
 .ws-n{font-family:var(--mono);font-size:9px;color:var(--accent);border:1px solid var(--border2);width:26px;height:26px;display:flex;align-items:center;justify-content:center;}
 .ws-t{font-size:11px;color:var(--muted);text-align:center;max-width:90px;line-height:1.5;}
@@ -394,6 +395,46 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .paywall-modal .pw-note {
   margin-bottom: 12px;
 }
+
+.manual-help {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  text-align: left;
+  max-width: 420px;
+}
+
+.mh-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.mh-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mh-step {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.mh-step span {
+  color: var(--accent);
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+.mh-note {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 10px;
+  line-height: 1.5;
+}
 </style>
 </head>
 <body>
@@ -421,8 +462,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
         <div class="pp-desc">Best value</div>
       </div>
     </div>
-    <button class="pw-cta" onclick="goToStripe()">Unlock Full Access</button>
-    <div class="pw-note">Limited free analyses available today.</div>
+    <button class="pw-cta" onclick="goToStripe()">Unlock Full Analysis</button>
+    <div class="pw-note">Only a few free analyses remain today.</div>
     <button class="pw-close" onclick="closePaywall()">Continue Free</button>
   </div>
 </div>
@@ -481,11 +522,51 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   <div class="welcome" style="height:100%">
     <h2>FIND YOUR EDGE</h2>
     <p>AI-powered expected value analysis with live odds and real-time stats.</p>
+    <div class="manual-help">
+      <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
+
+      <div class="mh-steps">
+        <div class="mh-step">
+          <span>1.</span> Enter a matchup (e.g. Eagles vs Cowboys)
+        </div>
+        <div class="mh-step">
+          <span>2.</span> Add odds or line (e.g. -110, +150, spread, total)
+        </div>
+        <div class="mh-step">
+          <span>3.</span> Run AI analysis to evaluate value and risk
+        </div>
+      </div>
+
+      <div class="mh-note">
+        Tip: Use manual entry when you already have a bet in mind or want to compare sportsbook odds.
+      </div>
+    </div>
     <div class="pick-teaser">
-      <div class="pick-kicker">PICK OF THE DAY</div>
-      <div class="pick-title">Premium edge detected</div>
-      <div class="pick-copy">Unlock today’s AI-reviewed betting insight, confidence score, and risk breakdown.</div>
-      <button class="pick-btn" onclick="showPaywall()">Unlock Today’s Pick</button>
+      <div class="pick-header"> PICK OF THE DAY</div>
+
+      <div class="pick-card">
+        <div class="pick-label">AI DETECTED EDGE</div>
+
+        <div class="pick-match blurred">
+          ⚽ Team A vs Team B
+        </div>
+
+        <div class="pick-confidence blurred">
+          Confidence: 87%
+        </div>
+
+        <div class="pick-value blurred">
+          +12.4% Expected Value
+        </div>
+
+        <button class="pw-cta" onclick="showPaywall()">
+           Reveal Today’s Pick
+        </button>
+
+        <div class="pick-note">
+          Updated in real-time • AI verified • Limited access
+        </div>
+      </div>
     </div>
     <div class="welcome-steps">
       <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
@@ -655,7 +736,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
             <div class="pc-price">$14.99 <span>one-time</span></div>
           </div>
         </div>
-        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">Reveal Full Analysis — $14.99</button>
+        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">Get AI Betting Edge — $14.99</button>
         <div class="stripe-note">Powered by Stripe. Cancel anytime.</div>
       </div>
 
@@ -682,7 +763,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
             <span style="color:var(--green)">✓</span> Early access to new features
           </div>
         </div>
-        <button class="stripe-btn" onclick="goToStripeSub()">Get EDGE Premium</button>
+        <button class="stripe-btn" onclick="goToStripeSub()">Unlock Full Analysis</button>
         <div class="stripe-note">Billed monthly. Cancel anytime.<br>Secure payment via Stripe.</div>
       </div>
 
@@ -936,9 +1017,9 @@ function selectPlan(p) {
   const map = {credits:'planCredits',sub:'planSub',big:'planBig'};
   document.getElementById(map[p])?.classList.add('selected');
   const btn = document.querySelector('.pw-cta');
-  if (p === 'sub') { btn.textContent = 'Get EDGE Premium'; }
-  else if (p === 'credits') { btn.textContent = 'Reveal Full Analysis — $4.99'; }
-  else { btn.textContent = 'Unlock Full Access — $14.99'; }
+  if (p === 'sub') { btn.textContent = 'Unlock Full Analysis'; }
+  else if (p === 'credits') { btn.textContent = 'Get AI Betting Edge — $4.99'; }
+  else { btn.textContent = 'Get AI Betting Edge — $14.99'; }
 }
 async function goToStripe() {
   const planMap = { sub: 'sub', credits: 'credits_10', big: 'credits_50' };
@@ -952,7 +1033,7 @@ function selectCreditPack(pack) {
   document.getElementById('pc-10').classList.toggle('selected-pack', pack === 'credits_10');
   document.getElementById('pc-50').classList.toggle('selected-pack', pack === 'credits_50');
   const btn = document.getElementById('buyCreditsBtn');
-  btn.textContent = pack === 'credits_10' ? 'Reveal Full Analysis — $4.99' : 'Reveal Full Analysis — $14.99';
+  btn.textContent = pack === 'credits_10' ? 'Get AI Betting Edge — $4.99' : 'Get AI Betting Edge — $14.99';
 }
 async function goToStripeCredits() { await checkout(selectedCreditPack); }
 
@@ -1377,11 +1458,11 @@ function renderAIResultShell(contentHtml, showOverlay) {
       </div>
 
       <button class="pw-cta" onclick="goToAccount()">
-        Unlock Full Access
+        Unlock Full Analysis
       </button>
 
       <div class="pw-note">
-        Limited free analyses available today.
+        Only a few free analyses remain today.
       </div>
 
       <div class="pw-note">
