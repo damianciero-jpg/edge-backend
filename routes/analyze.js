@@ -269,6 +269,9 @@ router.post('/', async (req, res) => {
 
     return ok(res, {
       text: result.text,
+      data: {
+        content: [{ type: 'text', text: result.text }],
+      },
       meta: {
         mode,
         provider: result.provider,
