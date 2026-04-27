@@ -1092,28 +1092,41 @@ function revealTodayPick() {
   }
   showPaywall();
 }
-function revealTodaysPick() {
-  if (typeof isSubscriber !== 'undefined' && isSubscriber) {
-    showToast('Today’s premium pick is unlocked.', 'success');
-    showTab('odds');
-    return;
-  }
+async function revealTodaysPick() {
+  const isOwner =
+    typeof currentEmail !== 'undefined' &&
+    currentEmail &&
+    currentEmail.toLowerCase() === 'damianciero@gmail.com';
 
-  if (typeof currentEmail !== 'undefined' && currentEmail && currentEmail.toLowerCase() === 'damianciero@gmail.com') {
-    showToast('Owner access unlocked.', 'success');
-    showTab('odds');
-    return;
-  }
-
-  if (typeof showPaywall === 'function') {
+  if (!isSubscriber && !isOwner) {
     showPaywall();
     return;
   }
 
-  const overlay = document.getElementById('paywallOverlay');
-  if (overlay) {
-    overlay.style.display = 'flex';
+  showTab('odds');
+
+  if (!Array.isArray(allGames) || allGames.length === 0) {
+    showToast('Loading today’s games...', 'info');
+    await fetchGames();
   }
+
+  if (!Array.isArray(allGames) || allGames.length === 0) {
+    showToast('No games available yet. Try refreshing odds.', 'error');
+    return;
+  }
+
+  currentGameIndex = 0;
+  currentGame = allGames[0];
+
+  renderOddsDetail(currentGame);
+  prefillTrackerFromCurrentGame();
+  syncMarketsGames();
+
+  if (isMobile()) {
+    document.getElementById('view-odds').classList.add('detail-open');
+  }
+
+  showToast('Today’s pick unlocked. Run AI Analysis for the full breakdown.', 'success');
 }
 function selectPlan(p) {
   selectedPlan = p;
