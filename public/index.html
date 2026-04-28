@@ -121,7 +121,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .mkt-tab{font-family:var(--mono);font-size:9px;padding:6px 12px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;}
 .mkt-tab:hover,.mkt-tab.active{border-color:var(--accent);color:var(--accent);}
 .mkt-tab.active{background:rgba(0,229,255,0.08);}
-.analyze-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;padding:9px 18px;cursor:pointer;transition:opacity 0.2s,transform 0.2s,box-shadow 0.2s;}
+.analyze-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:14px;color:white;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;padding:11px 20px;min-height:44px;cursor:pointer;transition:opacity 0.2s,transform 0.2s,box-shadow 0.2s;box-shadow:0 10px 22px rgba(0,122,255,0.18);}
 .analyze-btn:hover{opacity:0.9;transform:translateY(-1px);}
 .analyze-btn:disabled{opacity:0.4;cursor:not-allowed;transform:none;}
 
@@ -143,13 +143,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .bk-o{font-family:var(--mono);font-size:10px;color:var(--text);}
 .bk-o.best{color:var(--green);}
 
-.sec{background:var(--surface);border:1px solid var(--border);margin-bottom:14px;}
+.sec{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:14px;box-shadow:0 10px 24px rgba(16,32,48,0.05);overflow:hidden;}
 .sec-hdr{padding:11px 16px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:3px;}
 .sec-body{padding:14px 16px;font-size:13px;line-height:1.8;color:var(--text);}
 .sec-body strong{color:var(--text);}
 
 .ev-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}
-.ev-card{background:var(--surface);border:1px solid var(--border);padding:14px;}
+.ev-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px;box-shadow:0 8px 18px rgba(16,32,48,0.04);}
 .ev-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:7px;}
 .ev-val{font-family:var(--mono);font-size:19px;font-weight:700;}
 .ev-val.pos{color:var(--green);}
@@ -167,23 +167,23 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .verdict.pass .v-sub,.verdict.pass .v-txt{color:var(--red);}
 .verdict.lean .v-sub,.verdict.lean .v-txt{color:var(--yellow);}
 .v-txt{font-size:17px;font-weight:800;}
-.result-topline{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin-bottom:18px;}
-.rt-card{background:var(--surface);border:1px solid var(--border);padding:15px 16px;}
+.result-topline{display:grid;grid-template-columns:1.25fr 1fr 1fr 1.35fr;gap:10px;margin-bottom:18px;}
+.rt-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 8px 18px rgba(16,32,48,0.05);}
 .rt-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:7px;}
 .rt-value{font-size:18px;font-weight:900;line-height:1.25;}
 .rt-value.bet{color:var(--green);}
 .rt-value.pass{color:var(--red);}
 .rt-value.lean{color:var(--yellow);}
-.edge-decision-card{background:var(--surface);border:1px solid var(--border);border-radius:22px;box-shadow:0 14px 34px rgba(16,32,48,0.10);padding:18px;margin-bottom:14px;}
+.edge-decision-card{background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border:1px solid var(--border2);border-radius:20px;box-shadow:0 18px 42px rgba(16,32,48,0.12);padding:22px;margin-bottom:16px;}
 .ed-eyebrow{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:3px;margin-bottom:8px;}
 .ed-verdict{font-size:34px;font-weight:900;line-height:1;color:var(--text);margin-bottom:14px;}
 .ed-verdict.bet{color:var(--green);}
 .ed-verdict.pass{color:var(--red);}
 .ed-verdict.lean{color:var(--yellow);}
-.ed-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
-.ed-metric{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:11px;}
+.ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.ed-metric{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;box-shadow:0 8px 18px rgba(16,32,48,0.04);}
 .ed-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;}
-.ed-value{font-family:var(--mono);font-size:12px;font-weight:800;color:var(--text);}
+.ed-value{font-family:var(--mono);font-size:12px;font-weight:800;color:var(--text);line-height:1.35;}
 .confidence-meter{height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-top:8px;}
 .confidence-fill{height:100%;border-radius:999px;}
 .confidence-fill.high{background:var(--green);}
@@ -198,6 +198,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .algo-badge{font-size:10px;letter-spacing:1.5px;color:var(--accent);margin-bottom:6px;}
 .algo-note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;}
 .algo-mini{font-size:10px;color:var(--muted2);}
+.trust-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:min(680px,92vw);margin:0 auto 18px;}
+.trust-item{background:rgba(255,255,255,0.82);border:1px solid var(--border);border-radius:14px;padding:11px 12px;font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;color:var(--text);box-shadow:0 8px 18px rgba(16,32,48,0.05);}
+.result-disclaimer{font-size:10px;color:var(--muted2);line-height:1.5;margin-top:12px;text-align:center;}
 
 .loading-state{display:flex;flex-direction:column;align-items:center;padding:50px;gap:18px;}
 .bars{display:flex;gap:5px;align-items:flex-end;height:36px;}
@@ -337,6 +340,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .welcome h2{font-size:24px;}
   .welcome p{font-size:14px;line-height:1.7;}
   .welcome-steps{width:100%;justify-content:center;gap:18px;margin-top:24px;margin-bottom:16px;}
+  .trust-strip{grid-template-columns:1fr 1fr;width:100%;gap:8px;}
+  .trust-item{min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;}
   .welcome-cta{width:100%;max-width:320px;min-height:52px;}
   .ws-n{width:32px;height:32px;}
   .ws-t{font-size:11px;max-width:88px;}
@@ -497,7 +502,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <div class="paywall-overlay" id="paywallOverlay" style="display:none;">
   <div class="paywall-modal">
     <div class="pw-icon">⚡</div>
-    <div class="pw-title">Unlock Full EDGE Analysis</div>
+    <div class="pw-title">Unlock Full EDGE Evaluation</div>
     <div class="pw-sub">See the exact recommended play, confidence score, risk rating, and full reasoning before you bet.</div>
     <div class="pw-plans">
       <div class="pw-plan" id="planCredits" onclick="selectPlan('credits')">
@@ -575,8 +580,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <div id="view-home" style="height:calc(100vh - 102px);">
   <div class="welcome" style="height:100%">
     <h2>FIND YOUR EDGE</h2>
-    <p>Proprietary expected value analysis with live odds and real-time stats.</p>
-    <span class="algo-mini">AI-assisted • Proprietary EDGE scoring</span>
+    <p>EDGE uses a proprietary scoring algorithm to evaluate odds, risk, confidence, and potential value before you bet.</p>
+    <span class="algo-mini">Proprietary EDGE scoring • Real-time market context</span>
     <div class="welcome-steps">
       <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
         <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
@@ -584,8 +589,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
       <div class="ws"><div class="ws-n">03</div><div class="ws-t">Run analysis</div></div>
     </div>
+    <div class="trust-strip">
+      <div class="trust-item">Proprietary EDGE Score</div>
+      <div class="trust-item">Risk Rating</div>
+      <div class="trust-item">Confidence Meter</div>
+      <div class="trust-item">Value Signal</div>
+    </div>
     <button class="analyze-btn welcome-cta" onclick="showTab('odds')">
-       Run EDGE Analysis
+       Run EDGE Evaluation
     </button>
     <div class="manual-help">
       <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
@@ -598,7 +609,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
           <span>2.</span> Add odds or line (e.g. -110, +150, spread, total)
         </div>
         <div class="mh-step">
-          <span>3.</span> Run EDGE analysis to evaluate value and risk
+          <span>3.</span> Run EDGE evaluation to evaluate value and risk
         </div>
       </div>
 
@@ -659,7 +670,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
     <div id="oddsMain">
       <div class="select-hint" style="height:calc(100vh - 102px)" id="welcomeState">
         <div class="select-hint-arrow">←</div>
-        <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE ANALYSIS</p>
+        <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE EVALUATION</p>
         <div style="font-size:44px;margin-bottom:8px">⚡</div>
       </div>
   </div>
@@ -1347,7 +1358,7 @@ async function fetchGames() {
     // Update welcome state to select hint once games are loaded
     const welcome = document.getElementById('welcomeState');
     if (welcome) {
-      welcome.innerHTML = `<div class="select-hint"><div class="select-hint-arrow">←</div><p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE ANALYSIS</p></div>`;
+      welcome.innerHTML = `<div class="select-hint"><div class="select-hint-arrow">←</div><p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE EVALUATION</p></div>`;
       welcome.className = '';
       welcome.style.height = 'calc(100vh - 102px)';
       welcome.style.display = 'flex';
@@ -1473,12 +1484,12 @@ function renderOddsDetail(game) {
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
       <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${game.bookmakers?.length||0} BOOKS</div></div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK</button>
-        <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH</button>
+        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
+        <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
       </div>
     </div>
     <div class="scrollable">
-      <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);padding:4px 0 12px;letter-spacing:1px;">⚡ QUICK = instant &nbsp;|&nbsp; 🔍 RESEARCH = live web search, 60–120s</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);padding:4px 0 12px;letter-spacing:1px;">⚡ QUICK EVALUATION = instant &nbsp;|&nbsp; 🔍 RESEARCH MODE = live market research, 60–120s</div>
       <div class="section-lbl">BEST AVAILABLE ODDS (AWAY / HOME)</div>
       <div class="odds-row">
         <div class="odds-card oc-a"><div class="oc-label">AWAY — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
@@ -1488,7 +1499,7 @@ function renderOddsDetail(game) {
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
       <div id="aiResultArea">
-        <div class="sec"><div class="sec-hdr">EDGE ANALYSIS</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run the EDGE scoring engine with live stats and real-time injury data.</div></div>
+        <div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run the EDGE scoring engine with live stats and real-time injury data.</div></div>
       </div>
     </div>`;
 }
@@ -1548,7 +1559,7 @@ function renderMarketTable(game, mkt) {
   return html;
 }
 
-// ─── EDGE ANALYSIS ───────────────────────────────────────────────────────────
+// ─── EDGE EVALUATION ─────────────────────────────────────────────────────────
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
   if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
@@ -1557,15 +1568,15 @@ async function runAnalysis(useSearch) {
   const btnR = document.getElementById('analyzeResearchBtn');
   const area = document.getElementById('aiResultArea');
   btn.disabled = true; btnR.disabled = true;
-  btn.textContent = useSearch ? '⚡ QUICK' : 'RUNNING...';
-  btnR.textContent = useSearch ? 'SEARCHING...' : '🔍 RESEARCH';
+  btn.textContent = useSearch ? '⚡ QUICK EVALUATION' : 'RUNNING...';
+  btnR.textContent = useSearch ? 'RESEARCHING...' : '🔍 RESEARCH MODE';
 
   // Frontend-only staged loading state
   let elapsed = 0;
   const stagedMsgs = ['Checking odds...', 'Reviewing matchup...', 'Scoring risk...', 'Finding edge...'];
   function loadingHtml() {
     const msgIdx = Math.min(Math.floor(elapsed / (useSearch ? 18 : 2)), stagedMsgs.length - 1);
-    const sub = useSearch ? 'Live web search typically takes 60–120 seconds' : 'Quick EDGE evaluation in progress...';
+    const sub = useSearch ? 'Research Mode typically takes 60–120 seconds' : 'Quick Evaluation in progress...';
     return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">${stagedMsgs[msgIdx]} · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">${sub}</div></div>`;
   }
   area.innerHTML = loadingHtml();
@@ -1635,12 +1646,12 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     clearTimeout(clientTimeout);
     clearInterval(ticker);
 
-    if (res.status === 402) { if (!isOwnerUser()) showPaywall(); btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return; }
+    if (res.status === 402) { if (!isOwnerUser()) showPaywall(); btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return; }
     if (!res.ok) {
       let errMsg = `HTTP ${res.status}`;
       try { const e = await res.json(); errMsg = e.error || errMsg; } catch {}
       area.innerHTML = `<div class="err-msg">API ERROR: ${errMsg}</div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
+      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
     const data = await res.json();
@@ -1652,7 +1663,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
     if (!txt.trim()) {
       area.innerHTML = `<div class="err-msg">API ERROR: Empty analysis response</div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
+      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
     let result;
@@ -1667,8 +1678,8 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         throw new Error('Empty JSON');
       }
     } catch {
-      area.innerHTML = `<div class="sec"><div class="sec-hdr">EDGE ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
+      area.innerHTML = `<div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
+      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
     renderAIResult(result, txt);
@@ -1682,12 +1693,12 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     clearTimeout(clientTimeout);
     clearInterval(ticker);
     const msg = e.name === 'AbortError'
-      ? (useSearch ? 'Research timed out after 200s — try ⚡ QUICK for an instant result' : 'Request timed out — try again')
+      ? (useSearch ? 'Research timed out after 200s — try Quick Evaluation for an instant result' : 'Request timed out — try again')
       : e.message;
     area.innerHTML = `<div class="err-msg">ERROR: ${msg}</div>`;
   }
 
-  btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH';
+  btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE';
 }
 
 function escapeHtml(value) {
@@ -1773,7 +1784,7 @@ function renderAIResultShell(contentHtml, showOverlay) {
   const overlay = showPaywallOverlay ? `
   <div class="ai-paywall-overlay" id="aiPaywall">
     <div class="ai-paywall-box">
-      <div class="pw-title">Unlock Full EDGE Analysis</div>
+      <div class="pw-title">Unlock Full EDGE Evaluation</div>
       <div class="pw-sub">
         See the exact recommended play, confidence score, risk rating, and full reasoning before you bet.
       </div>
@@ -1817,14 +1828,14 @@ function renderAIResult(r, rawText = '') {
   if (!area) return;
 
   if (r.error || r.message) {
-    renderPlainAnalysis(r.error || 'EDGE ANALYSIS', r.message || rawText);
+    renderPlainAnalysis(r.error || 'EDGE EVALUATION', r.message || rawText);
     return;
   }
 
   const hasAnalysisFields = ['home_true_prob', 'away_true_prob', 'home_ev', 'away_ev', 'reasoning', 'key_factors', 'edgeScore', 'impliedProb', 'projectedProb', 'reason']
     .some(key => r[key] !== undefined);
   if (!hasAnalysisFields) {
-    renderPlainAnalysis('EDGE ANALYSIS', rawText || JSON.stringify(r, null, 2));
+    renderPlainAnalysis('EDGE EVALUATION', rawText || JSON.stringify(r, null, 2));
     return;
   }
 
@@ -1872,9 +1883,10 @@ function renderAIResult(r, rawText = '') {
     <div class="ed-eyebrow">EDGE VERDICT</div>
     <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
     <div class="ed-grid">
+      <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(r.edgeScore ?? value)}</div></div>
       <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">${escapeHtml(confidence)}</div></div>
       <div class="ed-metric"><div class="ed-label">RISK</div><div class="ed-value">${escapeHtml(risk)}</div></div>
-      <div class="ed-metric"><div class="ed-label">EDGE STRENGTH</div><div class="ed-value">${escapeHtml(edgeStrength)}</div></div>
+      <div class="ed-metric"><div class="ed-label">RECOMMENDED ACTION</div><div class="ed-value">${escapeHtml(action)}</div></div>
     </div>
     <div class="ed-label">CONFIDENCE METER · ${confScore}%</div>
     <div class="confidence-meter"><div class="confidence-fill ${meterBand}" style="width:${confScore}%"></div></div>
@@ -1883,7 +1895,7 @@ function renderAIResult(r, rawText = '') {
   const playHtml = `<div class="locked-play">
     <div class="rt-label">EXACT PLAY</div>
     <div class="rt-value ${vc} ${lockedPlayClass}">${escapeHtml(exactPlay)}</div>
-    ${showOverlay ? `<div class="pw-note" style="text-align:left;margin-top:10px;">Exact team/play is included with Full EDGE Analysis.</div>` : ''}
+    ${showOverlay ? `<div class="pw-note" style="text-align:left;margin-top:10px;">Exact team/play is included with Full EDGE Evaluation.</div>` : ''}
   </div>`;
 
   if (showOverlay) {
@@ -1893,6 +1905,7 @@ function renderAIResult(r, rawText = '') {
       <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
       <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
       <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
+      <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
       <button class="pw-cta" onclick="revealFullAnalysis()" style="margin-top:2px;">Reveal Full Analysis</button>
       ${resultActionsHtml(true)}
     </div>`;
@@ -1907,6 +1920,7 @@ function renderAIResult(r, rawText = '') {
       <div class="rt-card"><div class="rt-label">BET</div><div class="rt-value ${vc}">${escapeHtml(exactPlay)}</div></div>
       <div class="rt-card"><div class="rt-label">CONFIDENCE</div><div class="rt-value">${confText}</div></div>
       <div class="rt-card"><div class="rt-label">EDGE SCORE</div><div class="rt-value ${ec(value)}">${escapeHtml(value)}</div></div>
+      <div class="rt-card"><div class="rt-label">RECOMMENDED ACTION</div><div class="rt-value">${escapeHtml(action)}</div></div>
     </div>
     <div class="ev-row">
       <div class="ev-card"><div class="ev-label">IMPLIED PROBABILITY</div><div class="ev-val neu">${escapeHtml(pct(r.impliedProb))}</div></div>
@@ -1921,6 +1935,7 @@ function renderAIResult(r, rawText = '') {
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
     <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
+    <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
     ${resultActionsHtml(false)}
