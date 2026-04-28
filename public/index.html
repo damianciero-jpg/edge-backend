@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EDGE — AI Sports Betting Analytics</title>
+<title>EDGE — Proprietary Sports Betting Analytics</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#f4f8fb">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -195,6 +195,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .result-action{min-height:48px;border-radius:14px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;cursor:pointer;box-shadow:0 8px 18px rgba(16,32,48,0.06);transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s;}
 .result-action:hover{transform:translateY(-1px);border-color:var(--accent);box-shadow:0 12px 24px rgba(0,122,255,0.16);}
 .result-action.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;box-shadow:0 8px 18px rgba(0,122,255,0.18);}
+.algo-badge{font-size:10px;letter-spacing:1.5px;color:var(--accent);margin-bottom:6px;}
+.algo-note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;}
+.algo-mini{font-size:10px;color:var(--muted2);}
 
 .loading-state{display:flex;flex-direction:column;align-items:center;padding:50px;gap:18px;}
 .bars{display:flex;gap:5px;align-items:flex-end;height:36px;}
@@ -522,7 +525,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <!-- AUTH OVERLAY -->
 <div id="auth-overlay">
   <div class="auth-box">
-    <div class="auth-logo">EDGE<small>AI BETTING ANALYTICS</small></div>
+    <div class="auth-logo">EDGE<small>PROPRIETARY BETTING ANALYTICS</small></div>
     <div class="auth-tagline">SIGN IN TO CONTINUE</div>
 
     <!-- Step 1: Email -->
@@ -549,7 +552,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 
 <!-- HEADER -->
 <header>
-  <div class="logo">EDGE<small>AI BETTING ANALYTICS</small></div>
+  <div class="logo">EDGE<small>PROPRIETARY BETTING ANALYTICS</small></div>
   <div class="hdr-right">
     <div class="live-pill">LIVE DATA</div>
     <div class="credit-pill" id="creditPill" onclick="showTab('account')">2 FREE CREDITS</div>
@@ -572,7 +575,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <div id="view-home" style="height:calc(100vh - 102px);">
   <div class="welcome" style="height:100%">
     <h2>FIND YOUR EDGE</h2>
-    <p>AI-powered expected value analysis with live odds and real-time stats.</p>
+    <p>Proprietary expected value analysis with live odds and real-time stats.</p>
+    <span class="algo-mini">AI-assisted • Proprietary EDGE scoring</span>
     <div class="welcome-steps">
       <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
         <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
@@ -581,7 +585,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="ws"><div class="ws-n">03</div><div class="ws-t">Run analysis</div></div>
     </div>
     <button class="analyze-btn welcome-cta" onclick="showTab('odds')">
-       Run AI Analysis
+       Run EDGE Analysis
     </button>
     <div class="manual-help">
       <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
@@ -594,7 +598,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
           <span>2.</span> Add odds or line (e.g. -110, +150, spread, total)
         </div>
         <div class="mh-step">
-          <span>3.</span> Run AI analysis to evaluate value and risk
+          <span>3.</span> Run EDGE analysis to evaluate value and risk
         </div>
       </div>
 
@@ -606,7 +610,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="pick-header"> PICK OF THE DAY</div>
 
       <div class="pick-card">
-        <div class="pick-label">AI DETECTED EDGE</div>
+        <div class="pick-label">EDGE SCORING ENGINE DETECTED VALUE</div>
 
         <div class="pick-match blurred" id="pickMatch">
           ⚽ Team A vs Team B
@@ -625,7 +629,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
         </button>
 
         <div class="pick-note">
-          Updated in real-time • AI verified • Limited access
+          Updated in real-time • EDGE verified • Limited access
         </div>
       </div>
     </div>
@@ -655,7 +659,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
     <div id="oddsMain">
       <div class="select-hint" style="height:calc(100vh - 102px)" id="welcomeState">
         <div class="select-hint-arrow">←</div>
-        <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN AI ANALYSIS</p>
+        <p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE ANALYSIS</p>
         <div style="font-size:44px;margin-bottom:8px">⚡</div>
       </div>
   </div>
@@ -775,7 +779,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <!-- Credit Status -->
       <div class="acct-card">
         <div class="acct-title">YOUR CREDITS</div>
-        <div class="acct-sub">Credits are used for AI analysis runs. Subscribers get unlimited access.</div>
+        <div class="acct-sub">Credits are used for EDGE analysis runs. Subscribers get unlimited access.</div>
         <div class="credit-display" id="acct-credits">2</div>
         <div class="credit-type" id="acct-type">FREE CREDITS REMAINING</div>
         <div class="pricing-cards">
@@ -791,19 +795,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
             <div class="pc-price">$14.99 <span>one-time</span></div>
           </div>
         </div>
-        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">Get AI Betting Edge — $14.99</button>
+        <button class="stripe-btn" id="buyCreditsBtn" onclick="goToStripeCredits()">Get EDGE Betting Edge — $14.99</button>
         <div class="stripe-note">Powered by Stripe. Cancel anytime.</div>
       </div>
 
       <!-- Subscription -->
       <div class="acct-card">
         <div class="acct-title">UNLIMITED PLAN</div>
-        <div class="acct-sub">Unlimited AI analyses, priority processing, and all future features included.</div>
+        <div class="acct-sub">Unlimited EDGE evaluations, priority processing, and all future features included.</div>
         <div class="credit-display" style="font-size:28px;margin-bottom:2px;">$20</div>
         <div class="credit-type">/MONTH — UNLIMITED ANALYSES</div>
         <div style="margin-bottom:18px;">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12px;color:var(--text);">
-            <span style="color:var(--green)">✓</span> Unlimited AI analyses
+            <span style="color:var(--green)">✓</span> Unlimited EDGE evaluations
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12px;color:var(--text);">
             <span style="color:var(--green)">✓</span> All sports & markets
@@ -1124,7 +1128,7 @@ function revealTodaysPickLegacy() {
         </div>
 
         <div style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:12px;">
-          EDGE has unlocked your premium pick area. Use this section to display your daily AI-reviewed pick once your live odds feed is connected.
+          EDGE has unlocked your premium pick area. Use this section to display your daily EDGE-reviewed pick once your live odds feed is connected.
         </div>
 
         <div class="verdict lean">
@@ -1264,8 +1268,8 @@ function selectPlan(p) {
   document.getElementById(map[p])?.classList.add('selected');
   const btn = document.querySelector('.pw-cta');
   if (p === 'sub') { btn.textContent = 'Unlock Full Analysis'; }
-  else if (p === 'credits') { btn.textContent = 'Get AI Betting Edge — $4.99'; }
-  else { btn.textContent = 'Get AI Betting Edge — $14.99'; }
+  else if (p === 'credits') { btn.textContent = 'Get EDGE Betting Edge — $4.99'; }
+  else { btn.textContent = 'Get EDGE Betting Edge — $14.99'; }
 }
 async function goToStripe() {
   const planMap = { sub: 'sub', credits: 'credits_10', big: 'credits_50' };
@@ -1279,7 +1283,7 @@ function selectCreditPack(pack) {
   document.getElementById('pc-10').classList.toggle('selected-pack', pack === 'credits_10');
   document.getElementById('pc-50').classList.toggle('selected-pack', pack === 'credits_50');
   const btn = document.getElementById('buyCreditsBtn');
-  btn.textContent = pack === 'credits_10' ? 'Get AI Betting Edge — $4.99' : 'Get AI Betting Edge — $14.99';
+  btn.textContent = pack === 'credits_10' ? 'Get EDGE Betting Edge — $4.99' : 'Get EDGE Betting Edge — $14.99';
 }
 async function goToStripeCredits() { await checkout(selectedCreditPack); }
 
@@ -1343,7 +1347,7 @@ async function fetchGames() {
     // Update welcome state to select hint once games are loaded
     const welcome = document.getElementById('welcomeState');
     if (welcome) {
-      welcome.innerHTML = `<div class="select-hint"><div class="select-hint-arrow">←</div><p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN AI ANALYSIS</p></div>`;
+      welcome.innerHTML = `<div class="select-hint"><div class="select-hint-arrow">←</div><p>SELECT A GAME<br>TO VIEW ODDS &amp;<br>RUN EDGE ANALYSIS</p></div>`;
       welcome.className = '';
       welcome.style.height = 'calc(100vh - 102px)';
       welcome.style.display = 'flex';
@@ -1484,7 +1488,7 @@ function renderOddsDetail(game) {
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
       <div id="aiResultArea">
-        <div class="sec"><div class="sec-hdr">AI ANALYSIS</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run Claude's EV model with live stats and real-time injury data.</div></div>
+        <div class="sec"><div class="sec-hdr">EDGE ANALYSIS</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run the EDGE scoring engine with live stats and real-time injury data.</div></div>
       </div>
     </div>`;
 }
@@ -1544,7 +1548,7 @@ function renderMarketTable(game, mkt) {
   return html;
 }
 
-// ─── AI ANALYSIS ──────────────────────────────────────────────────────────────
+// ─── EDGE ANALYSIS ───────────────────────────────────────────────────────────
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
   if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
@@ -1561,7 +1565,7 @@ async function runAnalysis(useSearch) {
   const stagedMsgs = ['Checking odds...', 'Reviewing matchup...', 'Scoring risk...', 'Finding edge...'];
   function loadingHtml() {
     const msgIdx = Math.min(Math.floor(elapsed / (useSearch ? 18 : 2)), stagedMsgs.length - 1);
-    const sub = useSearch ? 'Live web search typically takes 60–120 seconds' : 'Quick analysis using AI training data...';
+    const sub = useSearch ? 'Live web search typically takes 60–120 seconds' : 'Quick EDGE evaluation in progress...';
     return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">${stagedMsgs[msgIdx]} · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">${sub}</div></div>`;
   }
   area.innerHTML = loadingHtml();
@@ -1663,7 +1667,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         throw new Error('Empty JSON');
       }
     } catch {
-      area.innerHTML = `<div class="sec"><div class="sec-hdr">AI ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
+      area.innerHTML = `<div class="sec"><div class="sec-hdr">EDGE ANALYSIS</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
       btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK'; btnR.textContent='🔍 RESEARCH'; return;
     }
 
@@ -1783,7 +1787,7 @@ function renderAIResultShell(contentHtml, showOverlay) {
       </div>
 
       <div class="pw-note">
-        AI-powered insights • Risk scoring • Best value bets
+        EDGE scoring insights • Risk scoring • Best value bets
       </div>
     </div>
   </div>` : '';
@@ -1813,14 +1817,14 @@ function renderAIResult(r, rawText = '') {
   if (!area) return;
 
   if (r.error || r.message) {
-    renderPlainAnalysis(r.error || 'AI ANALYSIS', r.message || rawText);
+    renderPlainAnalysis(r.error || 'EDGE ANALYSIS', r.message || rawText);
     return;
   }
 
   const hasAnalysisFields = ['home_true_prob', 'away_true_prob', 'home_ev', 'away_ev', 'reasoning', 'key_factors', 'edgeScore', 'impliedProb', 'projectedProb', 'reason']
     .some(key => r[key] !== undefined);
   if (!hasAnalysisFields) {
-    renderPlainAnalysis('AI ANALYSIS', rawText || JSON.stringify(r, null, 2));
+    renderPlainAnalysis('EDGE ANALYSIS', rawText || JSON.stringify(r, null, 2));
     return;
   }
 
@@ -1864,6 +1868,7 @@ function renderAIResult(r, rawText = '') {
   const reasonText = r.reason || r.reasoning || rawText || 'No reasoning returned.';
 
   const decisionHtml = `<div class="edge-decision-card">
+    <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
     <div class="ed-eyebrow">EDGE VERDICT</div>
     <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
     <div class="ed-grid">
@@ -1885,7 +1890,7 @@ function renderAIResult(r, rawText = '') {
     const contentHtml = `<div class="ai-result">
       ${decisionHtml}
       ${playHtml}
-      <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
+      <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
       <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
       <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
       <button class="pw-cta" onclick="revealFullAnalysis()" style="margin-top:2px;">Reveal Full Analysis</button>
@@ -1915,7 +1920,7 @@ function renderAIResult(r, rawText = '') {
     <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
-    <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}</div></div>
+    <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
     ${resultActionsHtml(false)}
