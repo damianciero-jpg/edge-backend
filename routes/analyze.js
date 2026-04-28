@@ -112,48 +112,144 @@ function roundNumber(value, digits = 4) {
   return Number(value.toFixed(digits));
 }
 
+function percent(value) {
+  return `${roundNumber(value * 100, 1)}%`;
+}
+
 function extractAmericanOdds(text) {
   const source = String(text || '');
   const contextualMatch = source.match(/\b(?:odds|price|line|moneyline|ml|@)\s*:?\s*([+-]\d{2,4})\b/i);
+  const moneylineMatch = source.match(/\b[A-Z][A-Za-z .'-]{1,40}\s+([+-]\d{2,4})(?:\s|\/|$)/);
   const fallbackMatch = source.match(/\b([+-]\d{2,4})\b/);
-  const odds = Number((contextualMatch || fallbackMatch || [])[1]);
+  const odds = Number((contextualMatch || moneylineMatch || fallbackMatch || [])[1]);
 
-  return Number.isFinite(odds) && odds !== 0 ? odds : null;
+  if (!Number.isFinite(odds) || odds === 0) return null;
+  if (Math.abs(odds) < 100 || Math.abs(odds) > 2500) return null;
+
+  return odds;
+}
+
+function promptBody(prompt) {
+  return String(prompt || '').split(/\nINSTRUCTIONS:/i)[0];
+}
+
+function keywordScore(text, positivePatterns, negativePatterns) {
+  const source = String(text || '').toLowerCase();
+  const positives = positivePatterns.reduce((sum, pattern) => sum + (pattern.test(source) ? 1 : 0), 0);
+  const negatives = negativePatterns.reduce((sum, pattern) => sum + (pattern.test(source) ? 1 : 0), 0);
+
+  return Math.max(-10, Math.min(10, (positives - negatives) * 3));
+}
+
+function getRisk(confidence, score) {
+  if (confidence === 'HIGH') return score > 12 ? 'LOW' : 'MEDIUM';
+  if (confidence === 'MEDIUM') return 'MEDIUM';
+  return 'HIGH';
+}
+
+function getEdgeStrength(score) {
+  if (score > 8) return 'STRONG';
+  if (score > 3) return 'MODERATE';
+  if (score > 0) return 'WEAK';
+  return 'NONE';
+}
+
+function getRecommendedAction(verdict, confidence) {
+  if (verdict === 'BET') {
+    return confidence === 'HIGH'
+      ? 'Bet only if the current line is still available.'
+      : 'Small bet only if the price has not moved against the projection.';
+  }
+  if (verdict === 'LEAN') return 'Track the line and only bet if the price improves.';
+  return 'Pass unless new odds create a stronger EDGE score.';
+}
+
+function getSignalFactors(prompt, odds) {
+  const source = promptBody(prompt);
+  const form = keywordScore(
+    source,
+    [/\bhot\b/, /\bstrong form\b/, /\bwon\b/, /\bwinning streak\b/, /\brest advantage\b/],
+    [/\bcold\b/, /\bslump\b/, /\blost\b/, /\blosing streak\b/, /\bfatigue\b/]
+  );
+  const matchup = keywordScore(
+    source,
+    [/\bmatchup advantage\b/, /\bfavorable matchup\b/, /\bhome advantage\b/, /\bhealthy\b/],
+    [/\bbad matchup\b/, /\bunfavorable matchup\b/, /\binjur(?:y|ies|ed)\b/, /\bquestionable\b/]
+  );
+  const market = odds > 0 ? Math.min(20, Math.max(0, (odds - 100) / 20)) : 0;
+
+  return { form, matchup, market: roundNumber(market, 2) };
+}
+
+function fallbackReason(oddsDetected, score) {
+  if (!oddsDetected) {
+    return 'Odds were not detected, so EDGE cannot calculate a reliable value signal.';
+  }
+  if (score > 8) return 'The calculated EDGE score clears the BET threshold based on the projected probability versus the market price.';
+  if (score > 3) return 'The calculated EDGE score shows a modest value signal, but it does not clear the strongest betting threshold.';
+  return 'The calculated EDGE score does not show enough value over the implied market probability.';
+}
+
+function fallbackTopFactors(evaluation) {
+  return [
+    `Market implied probability: ${percent(evaluation.impliedProb)}`,
+    `EDGE projection: ${percent(evaluation.projectedProb)}`,
+    `Score threshold result: ${evaluation.verdict}`,
+  ];
+}
+
+function normalizeTopFactors(value, evaluation) {
+  if (Array.isArray(value)) return value.slice(0, 4).map(item => String(item));
+  if (value) return [String(value)];
+  return fallbackTopFactors(evaluation);
 }
 
 function buildEdgeEvaluation(prompt) {
   const odds = extractAmericanOdds(prompt);
-  const implied = odds == null ? 0.5 : impliedProb(odds);
-  const projected = clampProbability(implied + 0.075);
-  const edgeScore = computeEdgeScore({ implied, projected });
+  const oddsDetected = odds != null;
+  const implied = oddsDetected ? impliedProb(odds) : 0.5;
+  const projected = oddsDetected ? clampProbability(implied + 0.03) : 0.5;
+  const factors = oddsDetected ? getSignalFactors(prompt, odds) : { form: 0, matchup: 0, market: 0 };
+  const edgeScore = oddsDetected ? computeEdgeScore({ implied, projected, ...factors }) : 0;
   const verdict = getVerdict(edgeScore);
   const confidence = getConfidence(edgeScore);
+  const risk = getRisk(confidence, edgeScore);
+  const edgeStrength = getEdgeStrength(edgeScore);
+  const recommendedAction = getRecommendedAction(verdict, confidence);
 
   return {
     odds,
+    oddsDetected,
     impliedProb: roundNumber(implied),
     projectedProb: roundNumber(projected),
     edgeScore: roundNumber(edgeScore, 2),
     verdict,
     confidence,
+    risk,
+    edgeStrength,
+    recommendedAction,
   };
 }
 
 function buildScoredPrompt(prompt, evaluation) {
   return [
+    'Game / bet prompt:',
     prompt,
     '',
-    'PROPRIETARY EDGE SCORE:',
-    `- American odds used: ${evaluation.odds == null ? 'not supplied; default baseline used' : evaluation.odds}`,
-    `- Implied probability: ${evaluation.impliedProb}`,
-    `- Projected probability: ${evaluation.projectedProb}`,
-    `- Edge score: ${evaluation.edgeScore}`,
+    'Algorithm values:',
+    `- Implied Probability: ${evaluation.impliedProb}`,
+    `- Projected Probability: ${evaluation.projectedProb}`,
+    `- Edge Score: ${evaluation.edgeScore}`,
     `- Verdict: ${evaluation.verdict}`,
+    `- Confidence: ${evaluation.confidence}`,
+    `- Risk: ${evaluation.risk}`,
+    `- Edge Strength: ${evaluation.edgeStrength}`,
     '',
-    'Explain the reasoning for this pick based on the calculated edge score.',
+    'Instruction:',
+    'Explain the reasoning for this pick based on the calculated EDGE score. Do not change the verdict. Return strict JSON only.',
     '',
-    'Include these calculated fields in the returned JSON exactly:',
-    '"verdict", "confidence", "edgeScore", "impliedProb", "projectedProb", "reason"',
+    'Return this JSON shape only:',
+    '{"reason":"2-3 sentence explanation","topFactors":["factor 1","factor 2","factor 3"]}',
   ].join('\n');
 }
 
@@ -163,6 +259,24 @@ function parseJsonObject(text) {
   } catch {
     return null;
   }
+}
+
+function buildStructuredResult(evaluation, aiText) {
+  const parsed = parseJsonObject(aiText) || {};
+  const reason = parsed.reason || parsed.reasoning || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
+
+  return {
+    verdict: evaluation.verdict,
+    confidence: evaluation.confidence,
+    risk: evaluation.risk,
+    edgeStrength: evaluation.edgeStrength,
+    edgeScore: evaluation.edgeScore,
+    impliedProb: evaluation.impliedProb,
+    projectedProb: evaluation.projectedProb,
+    reason,
+    topFactors: normalizeTopFactors(parsed.topFactors || parsed.key_factors || parsed.keyFactors, evaluation),
+    recommendedAction: evaluation.recommendedAction,
+  };
 }
 
 async function callAnthropic(prompt, mode) {
@@ -335,15 +449,23 @@ router.post('/', async (req, res) => {
     const evaluation = buildEdgeEvaluation(prompt);
     const scoredPrompt = buildScoredPrompt(prompt, evaluation);
 
-    try {
-      result = await callAnthropic(scoredPrompt, mode);
-    } catch (err) {
-      if (!process.env.OPENAI_API_KEY) throw err;
-      result = await withTimeout(callOpenAI(scoredPrompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
-      fallbackUsed = true;
+    if (evaluation.oddsDetected) {
+      try {
+        result = await callAnthropic(scoredPrompt, mode);
+      } catch (err) {
+        if (!process.env.OPENAI_API_KEY) throw err;
+        result = await withTimeout(callOpenAI(scoredPrompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
+        fallbackUsed = true;
+      }
+    } else {
+      result = {
+        provider: 'edge-scoring',
+        model: 'deterministic-fallback',
+        text: JSON.stringify(buildStructuredResult(evaluation, '')),
+      };
     }
 
-    if (!fallbackUsed && secondLayer && process.env.OPENAI_API_KEY) {
+    if (evaluation.oddsDetected && !fallbackUsed && secondLayer && process.env.OPENAI_API_KEY) {
       try {
         const review = await withTimeout(callOpenAI(scoredPrompt, mode, result.text), 12000, 'openai reviewer');
         if (review.text) {
@@ -363,17 +485,8 @@ router.post('/', async (req, res) => {
       withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
     ]).catch(e => console.error(e.message));
 
-    const parsed = parseJsonObject(result.text) || {};
-    const reason = parsed.reason || parsed.reasoning || result.text;
-    const structured = {
-      verdict: evaluation.verdict,
-      confidence: evaluation.confidence,
-      edgeScore: evaluation.edgeScore,
-      impliedProb: evaluation.impliedProb,
-      projectedProb: evaluation.projectedProb,
-      reason,
-    };
-    result.text = JSON.stringify({ ...parsed, ...structured });
+    const structured = buildStructuredResult(evaluation, result.text);
+    result.text = JSON.stringify(structured);
 
     return ok(res, {
       text: result.text,

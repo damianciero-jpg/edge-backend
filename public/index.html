@@ -1817,7 +1817,7 @@ function renderAIResult(r, rawText = '') {
     return;
   }
 
-  const hasAnalysisFields = ['home_true_prob', 'away_true_prob', 'home_ev', 'away_ev', 'reasoning', 'key_factors']
+  const hasAnalysisFields = ['home_true_prob', 'away_true_prob', 'home_ev', 'away_ev', 'reasoning', 'key_factors', 'edgeScore', 'impliedProb', 'projectedProb', 'reason']
     .some(key => r[key] !== undefined);
   if (!hasAnalysisFields) {
     renderPlainAnalysis('AI ANALYSIS', rawText || JSON.stringify(r, null, 2));
@@ -1831,6 +1831,11 @@ function renderAIResult(r, rawText = '') {
 
   const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
   const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
+  const pct = v => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 'N/A';
+    return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
+  };
   const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
   const confScore = confidenceScoreFrom(confidence, r.confidence_score ?? r.confidenceScore ?? r.confidence_pct ?? r.confidencePct);
   const confText = `${confLabel} (${confScore}%)`;
@@ -1840,12 +1845,12 @@ function renderAIResult(r, rawText = '') {
   const homeName = currentGame?.home_team?.toLowerCase?.() || '';
   const awayName = currentGame?.away_team?.toLowerCase?.() || '';
   const value = r.value || r.expected_value || r.expectedValue ||
-    (homeName && betLower.includes(homeName) ? homeEV : awayName && betLower.includes(awayName) ? awayEV : homeEV || awayEV || 'N/A');
+    r.edgeScore ?? (homeName && betLower.includes(homeName) ? homeEV : awayName && betLower.includes(awayName) ? awayEV : homeEV || awayEV || 'N/A');
   const toList = v => Array.isArray(v) ? v : v ? [v] : [];
-  const sourceFactors = toList(r.key_factors || r.keyFactors);
-  const risk = String(r.risk_rating || r.riskRating || inferRisk(confidence, r.risk_notes)).toUpperCase();
-  const edgeStrength = String(r.edge_strength || r.edgeStrength || inferEdgeStrength(value, verdict)).toUpperCase();
-  const action = recommendedAction(verdict, confidence, risk);
+  const sourceFactors = toList(r.topFactors || r.top_factors || r.key_factors || r.keyFactors);
+  const risk = String(r.risk || r.risk_rating || r.riskRating || inferRisk(confidence, r.risk_notes)).toUpperCase();
+  const edgeStrength = String(r.edgeStrength || r.edge_strength || inferEdgeStrength(value, verdict)).toUpperCase();
+  const action = r.recommendedAction || r.recommended_action || recommendedAction(verdict, confidence, risk);
   const exactPlay = verdict==='PASS' ? 'No edge detected' : (betOn || 'Best available play');
   const factorRows = [
     ['Market / line movement', sourceFactors[0] || 'Compare the available line against the projected edge before placing a bet.'],
@@ -1856,6 +1861,7 @@ function renderAIResult(r, rawText = '') {
   const showOverlay = !hasPremiumAccess();
   const meterBand = confidenceBand(confScore);
   const lockedPlayClass = showOverlay ? 'blurred' : '';
+  const reasonText = r.reason || r.reasoning || rawText || 'No reasoning returned.';
 
   const decisionHtml = `<div class="edge-decision-card">
     <div class="ed-eyebrow">EDGE VERDICT</div>
@@ -1895,9 +1901,12 @@ function renderAIResult(r, rawText = '') {
     <div class="result-topline">
       <div class="rt-card"><div class="rt-label">BET</div><div class="rt-value ${vc}">${escapeHtml(exactPlay)}</div></div>
       <div class="rt-card"><div class="rt-label">CONFIDENCE</div><div class="rt-value">${confText}</div></div>
-      <div class="rt-card"><div class="rt-label">VALUE</div><div class="rt-value ${ec(value)}">${escapeHtml(value)}</div></div>
+      <div class="rt-card"><div class="rt-label">EDGE SCORE</div><div class="rt-value ${ec(value)}">${escapeHtml(value)}</div></div>
     </div>
     <div class="ev-row">
+      <div class="ev-card"><div class="ev-label">IMPLIED PROBABILITY</div><div class="ev-val neu">${escapeHtml(pct(r.impliedProb))}</div></div>
+      <div class="ev-card"><div class="ev-label">EDGE PROJECTION</div><div class="ev-val neu">${escapeHtml(pct(r.projectedProb))}</div></div>
+      <div class="ev-card"><div class="ev-label">EDGE SCORE</div><div class="ev-val ${ec(r.edgeScore)}">${escapeHtml(r.edgeScore ?? 'N/A')}</div></div>
       <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.home_true_prob ?? 'N/A')}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
       <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.away_true_prob ?? 'N/A')}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
       <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(homeEV)}">${escapeHtml(homeEV ?? 'N/A')}</div></div>
@@ -1906,7 +1915,7 @@ function renderAIResult(r, rawText = '') {
     <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
-    <div class="sec"><div class="sec-hdr">AI REASONING</div><div class="sec-body">${escapeHtml(r.reasoning || rawText || 'No reasoning returned.')}</div></div>
+    <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}</div></div>
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
     ${resultActionsHtml(false)}
