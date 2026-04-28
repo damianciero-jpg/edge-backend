@@ -995,8 +995,9 @@ async function syncUserStatus() {
   try {
     const res = await fetch('/api/user-status');
     const data = await res.json();
-    credits = data.credits;
-    isSubscriber = data.isSubscriber;
+    const payload = data.data || data;
+    isSubscriber = !!payload.isSubscriber;
+    credits = payload.credits ?? credits;
     if (isOwnerUser()) {
       isSubscriber = true;
       credits = 9999;
@@ -1046,13 +1047,19 @@ function updateCreditUI() {
   const acctC = document.getElementById('acct-credits');
   const acctT = document.getElementById('acct-type');
   if (hasPremiumAccess()) {
-    pill.textContent = '∞ UNLIMITED';
-    pill.className = 'credit-pill';
-    if (acctC) { acctC.textContent = '∞'; acctT.textContent = 'ACTIVE SUBSCRIPTION'; }
+    if (pill) {
+      pill.textContent = '∞ UNLIMITED';
+      pill.className = 'credit-pill';
+    }
+    if (acctC) acctC.textContent = '∞';
+    if (acctT) acctT.textContent = 'ACTIVE SUBSCRIPTION';
   } else {
-    pill.textContent = credits + ' CREDIT' + (credits !== 1 ? 'S' : '') + ' LEFT';
-    pill.className = 'credit-pill' + (credits <= 1 ? ' warn' : '') + (credits === 0 ? ' empty' : '');
-    if (acctC) { acctC.textContent = credits; acctT.textContent = 'FREE CREDITS REMAINING'; }
+    if (pill) {
+      pill.textContent = credits + ' CREDIT' + (credits !== 1 ? 'S' : '') + ' LEFT';
+      pill.className = 'credit-pill' + (credits <= 1 ? ' warn' : '') + (credits === 0 ? ' empty' : '');
+    }
+    if (acctC) acctC.textContent = credits;
+    if (acctT) acctT.textContent = 'FREE CREDITS REMAINING';
   }
 }
 
