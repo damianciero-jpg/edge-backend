@@ -854,11 +854,16 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 
 <script>
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
+window.addEventListener('error', function(e) {
+  console.error('EDGE JS ERROR:', e.message, e.filename, e.lineno, e.colno);
+});
+
 const FREE_CREDITS = 2;
 const ODDS_KEY_DEFAULT = "e37bbddd4d0947ae8c39052cf8d75b61";
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let credits = parseInt(localStorage.getItem('edge_credits') ?? FREE_CREDITS);
+let storedCredits = localStorage.getItem('edge_credits');
+let credits = parseInt(storedCredits != null ? storedCredits : FREE_CREDITS);
 let isSubscriber = localStorage.getItem('edge_sub') === '1';
 let allGames = [];
 let currentGame = null;
@@ -893,12 +898,16 @@ function isMobile() { return window.innerWidth <= 768; }
 function showTab(tab) {
   ['home','odds','markets','tracker','account'].forEach(t => {
     document.getElementById('view-'+t).style.display = 'none';
-    document.getElementById('tab-'+t)?.classList.remove('active');
-    document.getElementById('bn-'+t)?.classList.remove('active');
+    const tabEl = document.getElementById('tab-'+t);
+    const bnEl = document.getElementById('bn-'+t);
+    if (tabEl) tabEl.classList.remove('active');
+    if (bnEl) bnEl.classList.remove('active');
   });
   document.getElementById('view-'+tab).style.display = (tab === 'odds' || tab === 'markets') ? 'grid' : 'block';
-  document.getElementById('tab-'+tab)?.classList.add('active');
-  document.getElementById('bn-'+tab)?.classList.add('active');
+  const activeTab = document.getElementById('tab-'+tab);
+  const activeBn = document.getElementById('bn-'+tab);
+  if (activeTab) activeTab.classList.add('active');
+  if (activeBn) activeBn.classList.add('active');
   if (tab === 'markets') {
     syncMarketsGames();
     syncSelectedGameToMarkets();
@@ -928,7 +937,7 @@ async function authInit() {
       document.getElementById('auth-overlay').style.display = 'none';
       const el = document.getElementById('acct-email-display');
       if (el) el.textContent = email;
-      syncUserStatus();
+      await syncUserStatus();
     }
     // else: overlay stays visible
   } catch {
@@ -959,7 +968,7 @@ async function legacyAuthVerifyOTP() {
     document.getElementById('auth-overlay').style.display = 'none';
     const el = document.getElementById('acct-email-display');
     if (el) el.textContent = data.email;
-    syncUserStatus();
+    await syncUserStatus();
   } catch {
     errEl.textContent = 'Network error — try again';
     btn.disabled = false; btn.textContent = 'VERIFY CODE';
@@ -987,24 +996,20 @@ async function authLogout() {
 }
 
 // ─── ENTER on auth inputs ─────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  authInit();
-});
-
 async function syncUserStatus() {
   try {
     const res = await fetch('/api/user-status');
+    if (!res.ok) return;
     const data = await res.json();
     const payload = data.data || data;
     isSubscriber = !!payload.isSubscriber;
-    credits = payload.credits ?? credits;
-    if (isOwnerUser()) {
-      isSubscriber = true;
-      credits = 9999;
-    }
+    credits = payload.credits != null ? payload.credits : credits;
+    localStorage.setItem('edge_sub', isSubscriber ? '1' : '0');
+    localStorage.setItem('edge_credits', String(credits));
     updateCreditUI();
-    updatePickTeaserLock();
-  } catch(e) { console.log('Offline mode, using local credits'); }
+  } catch (e) {
+    console.log('Could not sync user status:', e.message);
+  }
 }
 
 async function checkout(plan) {
@@ -1046,21 +1051,23 @@ function updateCreditUI() {
   const pill = document.getElementById('creditPill');
   const acctC = document.getElementById('acct-credits');
   const acctT = document.getElementById('acct-type');
-  if (hasPremiumAccess()) {
+  if (isSubscriber) {
     if (pill) {
       pill.textContent = '∞ UNLIMITED';
       pill.className = 'credit-pill';
     }
     if (acctC) acctC.textContent = '∞';
     if (acctT) acctT.textContent = 'ACTIVE SUBSCRIPTION';
-  } else {
-    if (pill) {
-      pill.textContent = credits + ' CREDIT' + (credits !== 1 ? 'S' : '') + ' LEFT';
-      pill.className = 'credit-pill' + (credits <= 1 ? ' warn' : '') + (credits === 0 ? ' empty' : '');
-    }
-    if (acctC) acctC.textContent = credits;
-    if (acctT) acctT.textContent = 'FREE CREDITS REMAINING';
+    return;
   }
+
+  if (pill) {
+    pill.textContent = credits + ' CREDIT' + (credits !== 1 ? 'S' : '') + ' LEFT';
+    pill.className = 'credit-pill' + (credits <= 1 ? ' warn' : '') + (credits === 0 ? ' empty' : '');
+  }
+
+  if (acctC) acctC.textContent = credits;
+  if (acctT) acctT.textContent = 'FREE CREDITS REMAINING';
 }
 
 function useCredit() {
@@ -1196,7 +1203,7 @@ function renderTodaysPick(pick) {
           </div>
           <div class="ev-card">
             <div class="ev-label">ODDS</div>
-            <div class="ev-val neu">${escapeHtml(pick.odds ?? 'N/A')}</div>
+            <div class="ev-val neu">${escapeHtml(pick.odds != null ? pick.odds : 'N/A')}</div>
           </div>
           <div class="ev-card">
             <div class="ev-label">CONFIDENCE</div>
@@ -1222,7 +1229,8 @@ function renderTodaysPick(pick) {
 
   const welcome = document.querySelector('.welcome') || document.getElementById('oddsMain') || document.body;
   welcome.insertAdjacentHTML('beforeend', pickHtml);
-  document.getElementById('todaysPickResult')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const pickResult = document.getElementById('todaysPickResult');
+  if (pickResult) pickResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function revealTodaysPick() {
@@ -1254,9 +1262,13 @@ async function revealTodaysPick() {
 }
 function selectPlan(p) {
   selectedPlan = p;
-  ['credits','sub','big'].forEach(id => document.getElementById('plan'+id.charAt(0).toUpperCase()+id.slice(1))?.classList.remove('selected'));
+  ['credits','sub','big'].forEach(id => {
+    const planEl = document.getElementById('plan'+id.charAt(0).toUpperCase()+id.slice(1));
+    if (planEl) planEl.classList.remove('selected');
+  });
   const map = {credits:'planCredits',sub:'planSub',big:'planBig'};
-  document.getElementById(map[p])?.classList.add('selected');
+  const selectedEl = document.getElementById(map[p]);
+  if (selectedEl) selectedEl.classList.add('selected');
   const btn = document.querySelector('.pw-cta');
   if (p === 'sub') { btn.textContent = 'Unlock Full Analysis'; }
   else if (p === 'credits') { btn.textContent = 'Get EDGE Betting Edge — $4.99'; }
@@ -1360,9 +1372,14 @@ function renderGamesList() {
   allGames.forEach((g, i) => {
     const { label: t, cls } = formatGameTime(g.commence_time);
     let aOdds = null, hOdds = null;
-    if (g.bookmakers?.length) {
-      const h2h = g.bookmakers[0].markets?.find(m=>m.key==='h2h');
-      if (h2h) { aOdds = h2h.outcomes.find(o=>o.name===g.away_team)?.price; hOdds = h2h.outcomes.find(o=>o.name===g.home_team)?.price; }
+    if (g.bookmakers && g.bookmakers.length) {
+      const h2h = (g.bookmakers[0].markets || []).find(m=>m.key==='h2h');
+      if (h2h) {
+        const awayOutcome = h2h.outcomes.find(o=>o.name===g.away_team);
+        const homeOutcome = h2h.outcomes.find(o=>o.name===g.home_team);
+        aOdds = awayOutcome ? awayOutcome.price : undefined;
+        hOdds = homeOutcome ? homeOutcome.price : undefined;
+      }
     }
     const el = document.createElement('div');
     el.className = 'game-item';
@@ -1433,10 +1450,10 @@ function toImplied(v) { const d = toDecimal(v); return d ? (1/d*100).toFixed(1) 
 
 function getBest(game, team) {
   let best = -Infinity;
-  game.bookmakers?.forEach(bk => {
-    const h2h = bk.markets?.find(m=>m.key==='h2h');
-    const o = h2h?.outcomes?.find(o=>o.name===team);
-    if (o?.price > best) best = o.price;
+  (game.bookmakers || []).forEach(bk => {
+    const h2h = (bk.markets || []).find(m=>m.key==='h2h');
+    const o = h2h && h2h.outcomes ? h2h.outcomes.find(o=>o.name===team) : null;
+    if (o && o.price > best) best = o.price;
   });
   return best === -Infinity ? null : best;
 }
@@ -1449,10 +1466,12 @@ function renderOddsDetail(game) {
   const vig = hImp && aImp ? (parseFloat(hImp)+parseFloat(aImp)-100).toFixed(1) : null;
 
   let bkRows = '';
-  game.bookmakers?.slice(0,8).forEach(bk => {
-    const h2h = bk.markets?.find(m=>m.key==='h2h');
-    const hO = h2h?.outcomes?.find(o=>o.name===game.home_team)?.price;
-    const aO = h2h?.outcomes?.find(o=>o.name===game.away_team)?.price;
+  (game.bookmakers || []).slice(0,8).forEach(bk => {
+    const h2h = (bk.markets || []).find(m=>m.key==='h2h');
+    const hOutcome = h2h && h2h.outcomes ? h2h.outcomes.find(o=>o.name===game.home_team) : null;
+    const aOutcome = h2h && h2h.outcomes ? h2h.outcomes.find(o=>o.name===game.away_team) : null;
+    const hO = hOutcome ? hOutcome.price : undefined;
+    const aO = aOutcome ? aOutcome.price : undefined;
     bkRows += `<div class="bk-row"><div class="bk-name">${bk.title.substring(0,18)}</div><div class="bk-odds-row"><div class="bk-o ${aO===aBest?'best':''}">${fmt(aO)}</div><div class="bk-o" style="color:var(--muted2)">|</div><div class="bk-o ${hO===hBest?'best':''}">${fmt(hO)}</div></div></div>`;
   });
 
@@ -1462,7 +1481,7 @@ function renderOddsDetail(game) {
   main.innerHTML = `
     <div class="detail-hdr" style="flex-wrap:nowrap;">
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
-      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${game.bookmakers?.length||0} BOOKS</div></div>
+      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${(game.bookmakers || []).length} BOOKS</div></div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
         <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
         <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
@@ -1474,7 +1493,7 @@ function renderOddsDetail(game) {
       <div class="odds-row">
         <div class="odds-card oc-a"><div class="oc-label">AWAY — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
         <div class="odds-card oc-h"><div class="oc-label">HOME — ${game.home_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.home_team}</div><div class="oc-val">${fmt(hBest)}</div><div class="oc-sub">${hImp?hImp+'% IMPLIED':''}</div></div>
-        <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${game.bookmakers?.length||0} BOOKS COMPARED</div></div>
+        <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${(game.bookmakers || []).length} BOOKS COMPARED</div></div>
       </div>
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
@@ -1516,17 +1535,17 @@ function renderMarketsDetail(game, mkt) {
 function renderMarketTable(game, mkt) {
   let html = `<div class="section-lbl">${mkt.toUpperCase()} — ALL BOOKS</div>`;
   let bestVals = {};
-  game.bookmakers?.forEach(bk => {
-    const m = bk.markets?.find(mm=>mm.key===mkt);
-    m?.outcomes?.forEach(o => {
+  (game.bookmakers || []).forEach(bk => {
+    const m = (bk.markets || []).find(mm=>mm.key===mkt);
+    if (m && m.outcomes) m.outcomes.forEach(o => {
       const key = o.name + (o.point||'');
       if (!bestVals[key] || o.price > bestVals[key]) bestVals[key] = o.price;
     });
   });
 
   html += `<div class="sec"><div class="sec-hdr">${mkt === 'h2h' ? 'MONEYLINE' : mkt === 'spreads' ? 'POINT SPREAD' : 'GAME TOTAL'}</div><div class="sec-body">`;
-  game.bookmakers?.forEach(bk => {
-    const m = bk.markets?.find(mm=>mm.key===mkt);
+  (game.bookmakers || []).forEach(bk => {
+    const m = (bk.markets || []).find(mm=>mm.key===mkt);
     if (!m) return;
     html += `<div class="mkt-item"><div><div class="mkt-item-label">${bk.title}</div></div><div style="display:flex;gap:20px;">`;
     m.outcomes.forEach(o => {
@@ -1564,11 +1583,13 @@ async function runAnalysis(useSearch) {
 
   const game = currentGame;
   let oddsCtx = '';
-  game.bookmakers?.slice(0,5).forEach(bk => {
-    const h2h = bk.markets?.find(m=>m.key==='h2h');
+  (game.bookmakers || []).slice(0,5).forEach(bk => {
+    const h2h = (bk.markets || []).find(m=>m.key==='h2h');
     if (!h2h) return;
-    const hO = h2h.outcomes.find(o=>o.name===game.home_team)?.price;
-    const aO = h2h.outcomes.find(o=>o.name===game.away_team)?.price;
+    const hOutcome = h2h.outcomes.find(o=>o.name===game.home_team);
+    const aOutcome = h2h.outcomes.find(o=>o.name===game.away_team);
+    const hO = hOutcome ? hOutcome.price : undefined;
+    const aO = aOutcome ? aOutcome.price : undefined;
     oddsCtx += `${bk.title}: ${game.away_team} ${fmt(aO)} / ${game.home_team} ${fmt(hO)}\n`;
   });
 
@@ -1682,7 +1703,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 }
 
 function escapeHtml(value) {
-  return String(value ?? '')
+  return String(value != null ? value : '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -1707,6 +1728,13 @@ function confidenceBand(score) {
   if (score >= 75) return 'high';
   if (score >= 55) return 'medium';
   return 'low';
+}
+
+function firstDefined() {
+  for (let i = 0; i < arguments.length; i++) {
+    if (arguments[i] !== undefined && arguments[i] !== null) return arguments[i];
+  }
+  return undefined;
 }
 
 function inferRisk(confidence, riskNotes) {
@@ -1832,15 +1860,15 @@ function renderAIResult(r, rawText = '') {
     return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
   };
   const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
-  const confScore = confidenceScoreFrom(confidence, r.confidence_score ?? r.confidenceScore ?? r.confidence_pct ?? r.confidencePct);
+  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct));
   const confText = `${confLabel} (${confScore}%)`;
-  const homeEV = r.home_ev ?? r.homeEV;
-  const awayEV = r.away_ev ?? r.awayEV;
+  const homeEV = firstDefined(r.home_ev, r.homeEV);
+  const awayEV = firstDefined(r.away_ev, r.awayEV);
   const betLower = betOn.toString().toLowerCase();
-  const homeName = currentGame?.home_team?.toLowerCase?.() || '';
-  const awayName = currentGame?.away_team?.toLowerCase?.() || '';
+  const homeName = currentGame && currentGame.home_team ? currentGame.home_team.toLowerCase() : '';
+  const awayName = currentGame && currentGame.away_team ? currentGame.away_team.toLowerCase() : '';
   const value = r.value || r.expected_value || r.expectedValue ||
-    r.edgeScore ?? (homeName && betLower.includes(homeName) ? homeEV : awayName && betLower.includes(awayName) ? awayEV : homeEV || awayEV || 'N/A');
+    firstDefined(r.edgeScore, (homeName && betLower.includes(homeName) ? homeEV : awayName && betLower.includes(awayName) ? awayEV : homeEV || awayEV || 'N/A'));
   const toList = v => Array.isArray(v) ? v : v ? [v] : [];
   const sourceFactors = toList(r.topFactors || r.top_factors || r.key_factors || r.keyFactors);
   const risk = String(r.risk || r.risk_rating || r.riskRating || inferRisk(confidence, r.risk_notes)).toUpperCase();
@@ -1863,7 +1891,7 @@ function renderAIResult(r, rawText = '') {
     <div class="ed-eyebrow">EDGE VERDICT</div>
     <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
     <div class="ed-grid">
-      <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(r.edgeScore ?? value)}</div></div>
+      <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(firstDefined(r.edgeScore, value))}</div></div>
       <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">${escapeHtml(confidence)}</div></div>
       <div class="ed-metric"><div class="ed-label">RISK</div><div class="ed-value">${escapeHtml(risk)}</div></div>
       <div class="ed-metric"><div class="ed-label">RECOMMENDED ACTION</div><div class="ed-value">${escapeHtml(action)}</div></div>
@@ -1905,11 +1933,11 @@ function renderAIResult(r, rawText = '') {
     <div class="ev-row">
       <div class="ev-card"><div class="ev-label">IMPLIED PROBABILITY</div><div class="ev-val neu">${escapeHtml(pct(r.impliedProb))}</div></div>
       <div class="ev-card"><div class="ev-label">EDGE PROJECTION</div><div class="ev-val neu">${escapeHtml(pct(r.projectedProb))}</div></div>
-      <div class="ev-card"><div class="ev-label">EDGE SCORE</div><div class="ev-val ${ec(r.edgeScore)}">${escapeHtml(r.edgeScore ?? 'N/A')}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.home_true_prob ?? 'N/A')}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(r.away_true_prob ?? 'N/A')}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(homeEV)}">${escapeHtml(homeEV ?? 'N/A')}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(awayEV)}">${escapeHtml(awayEV ?? 'N/A')}</div></div>
+      <div class="ev-card"><div class="ev-label">EDGE SCORE</div><div class="ev-val ${ec(r.edgeScore)}">${escapeHtml(firstDefined(r.edgeScore, 'N/A'))}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(firstDefined(r.home_true_prob, 'N/A'))}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(firstDefined(r.away_true_prob, 'N/A'))}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(homeEV)}">${escapeHtml(firstDefined(homeEV, 'N/A'))}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(awayEV)}">${escapeHtml(firstDefined(awayEV, 'N/A'))}</div></div>
     </div>
     <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
@@ -2017,6 +2045,16 @@ function saveKeys() {
   if (oddsKey) { document.getElementById('oddsKey').value = oddsKey; fetchGames(); }
   showToast('API keys saved', 'success');
 }
+
+window.showTab = showTab;
+window.selectSport = selectSport;
+window.fetchGames = fetchGames;
+window.runAnalysis = runAnalysis;
+window.showPaywall = showPaywall;
+window.closePaywall = closePaywall;
+window.goToStripe = goToStripe;
+window.authLogout = authLogout;
+window.revealTodaysPick = revealTodaysPick;
 </script>
 <script>
 window.authSendOTP = async function authSendOTP() {
@@ -2154,6 +2192,10 @@ window.authVerifyOTP = async function authVerifyOTP() {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
+  if (typeof authInit === 'function') {
+    authInit();
+  }
+
   var sendBtn = document.getElementById('auth-send-btn');
   var emailInput = document.getElementById('auth-email-inp');
   var verifyBtn = document.getElementById('auth-verify-btn');
