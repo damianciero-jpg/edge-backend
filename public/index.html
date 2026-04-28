@@ -936,61 +936,6 @@ async function authInit() {
   }
 }
 
-window.authSendOTP = async function authSendOTP() {
-  const emailEl = document.getElementById('auth-email-inp');
-  const errEl = document.getElementById('auth-email-err');
-  const btn = document.getElementById('auth-send-btn');
-
-  if (!emailEl || !errEl || !btn) {
-    console.error('Auth elements missing');
-    alert('Login form error. Refresh and try again.');
-    return;
-  }
-
-  const email = emailEl.value.trim().toLowerCase();
-  errEl.textContent = '';
-
-  if (!email || !email.includes('@') || !email.includes('.')) {
-    errEl.textContent = 'Enter a valid email address';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'SENDING...';
-  try {
-    console.log('Sending OTP to', email);
-
-    const res = await fetch('/api/auth/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
-    });
-    const data = await res.json().catch(() => ({}));
-    console.log('OTP response', res.status, data);
-
-    if (!res.ok) {
-      errEl.textContent = data.error || data.text || 'Failed to send code';
-      btn.disabled = false;
-      btn.textContent = 'SEND CODE';
-      return;
-    }
-    document.getElementById('auth-email-display').textContent = email;
-    document.getElementById('auth-email-step').style.display = 'none';
-    document.getElementById('auth-otp-step').style.display = 'block';
-
-    setTimeout(() => {
-      const otp = document.getElementById('auth-otp-inp');
-      if (otp) otp.focus();
-    }, 100);
-
-  } catch (err) {
-    console.error('Send OTP failed', err);
-    errEl.textContent = 'Network error — try again';
-    btn.disabled = false;
-    btn.textContent = 'SEND CODE';
-  }
-};
-
 async function authVerifyOTP() {
   const email = document.getElementById('auth-email-inp').value.trim();
   const otp = document.getElementById('auth-otp-inp').value.trim();
@@ -2083,6 +2028,85 @@ function saveKeys() {
   if (oddsKey) { document.getElementById('oddsKey').value = oddsKey; fetchGames(); }
   showToast('API keys saved', 'success');
 }
+</script>
+<script>
+window.authSendOTP = async function authSendOTP() {
+  var emailEl = document.getElementById('auth-email-inp');
+  var errEl = document.getElementById('auth-email-err');
+  var btn = document.getElementById('auth-send-btn');
+
+  if (!emailEl || !errEl || !btn) {
+    console.error('Auth elements missing');
+    alert('Login form error. Refresh and try again.');
+    return;
+  }
+
+  var email = emailEl.value.trim().toLowerCase();
+  errEl.textContent = '';
+
+  if (!email || email.indexOf('@') === -1 || email.indexOf('.') === -1) {
+    errEl.textContent = 'Enter a valid email address';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'SENDING...';
+
+  try {
+    console.log('Sending OTP to', email);
+
+    var res = await fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    });
+
+    var data = {};
+    try {
+      data = await res.json();
+    } catch (_err) {
+      data = {};
+    }
+
+    console.log('OTP response', res.status, data);
+
+    if (!res.ok) {
+      errEl.textContent = data.error || data.text || 'Failed to send code';
+      btn.disabled = false;
+      btn.textContent = 'SEND CODE';
+      return;
+    }
+
+    document.getElementById('auth-email-display').textContent = email;
+    document.getElementById('auth-email-step').style.display = 'none';
+    document.getElementById('auth-otp-step').style.display = 'block';
+
+    setTimeout(function() {
+      var otp = document.getElementById('auth-otp-inp');
+      if (otp) otp.focus();
+    }, 100);
+  } catch (err) {
+    console.error('Send OTP failed', err);
+    errEl.textContent = 'Network error — try again';
+    btn.disabled = false;
+    btn.textContent = 'SEND CODE';
+  }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+  var sendBtn = document.getElementById('auth-send-btn');
+  var emailInput = document.getElementById('auth-email-inp');
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', window.authSendOTP);
+  }
+
+  if (emailInput) {
+    emailInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') window.authSendOTP();
+    });
+  }
+});
 </script>
 </body>
 </html>
