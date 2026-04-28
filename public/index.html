@@ -941,23 +941,35 @@ async function authSendOTP() {
   const errEl = document.getElementById('auth-email-err');
   const btn = document.getElementById('auth-send-btn');
   errEl.textContent = '';
-  if (!email || !email.includes('@')) { errEl.textContent = 'Enter a valid email address'; return; }
 
-  btn.disabled = true; btn.textContent = 'SENDING...';
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Enter a valid email address';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'SENDING...';
   try {
     const res = await fetch('/api/auth/send-otp', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
     });
     const data = await res.json();
-    if (!res.ok) { errEl.textContent = data.error || 'Failed to send code'; btn.disabled = false; btn.textContent = 'SEND CODE'; return; }
+    if (!res.ok) {
+      errEl.textContent = data.error || data.text || 'Failed to send code';
+      btn.disabled = false;
+      btn.textContent = 'SEND CODE';
+      return;
+    }
     document.getElementById('auth-email-display').textContent = email;
     document.getElementById('auth-email-step').style.display = 'none';
     document.getElementById('auth-otp-step').style.display = 'block';
     setTimeout(() => document.getElementById('auth-otp-inp').focus(), 100);
-  } catch {
+  } catch (err) {
     errEl.textContent = 'Network error — try again';
-    btn.disabled = false; btn.textContent = 'SEND CODE';
+    btn.disabled = false;
+    btn.textContent = 'SEND CODE';
   }
 }
 
