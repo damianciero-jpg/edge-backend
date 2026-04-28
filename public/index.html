@@ -538,7 +538,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="auth-title">YOUR EMAIL</div>
       <div class="auth-sub">We'll send a 6-digit code. No password needed.</div>
       <input class="auth-inp" id="auth-email-inp" type="email" placeholder="you@example.com" autocomplete="email">
-      <button class="auth-btn" id="auth-send-btn" onclick="authSendOTP()">SEND CODE</button>
+      <button class="auth-btn" id="auth-send-btn" type="button">SEND CODE</button>
       <div class="auth-err" id="auth-email-err"></div>
       <div class="auth-note">New users get 2 free analyses.<br>Credits are tied to your email — no farming.</div>
     </div>
@@ -936,13 +936,21 @@ async function authInit() {
   }
 }
 
-async function authSendOTP() {
-  const email = document.getElementById('auth-email-inp').value.trim();
+window.authSendOTP = async function authSendOTP() {
+  const emailEl = document.getElementById('auth-email-inp');
   const errEl = document.getElementById('auth-email-err');
   const btn = document.getElementById('auth-send-btn');
+
+  if (!emailEl || !errEl || !btn) {
+    console.error('Auth elements missing');
+    alert('Login form error. Refresh and try again.');
+    return;
+  }
+
+  const email = emailEl.value.trim().toLowerCase();
   errEl.textContent = '';
 
-  if (!email || !email.includes('@')) {
+  if (!email || !email.includes('@') || !email.includes('.')) {
     errEl.textContent = 'Enter a valid email address';
     return;
   }
@@ -950,12 +958,16 @@ async function authSendOTP() {
   btn.disabled = true;
   btn.textContent = 'SENDING...';
   try {
+    console.log('Sending OTP to', email);
+
     const res = await fetch('/api/auth/send-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    console.log('OTP response', res.status, data);
+
     if (!res.ok) {
       errEl.textContent = data.error || data.text || 'Failed to send code';
       btn.disabled = false;
@@ -965,13 +977,19 @@ async function authSendOTP() {
     document.getElementById('auth-email-display').textContent = email;
     document.getElementById('auth-email-step').style.display = 'none';
     document.getElementById('auth-otp-step').style.display = 'block';
-    setTimeout(() => document.getElementById('auth-otp-inp').focus(), 100);
+
+    setTimeout(() => {
+      const otp = document.getElementById('auth-otp-inp');
+      if (otp) otp.focus();
+    }, 100);
+
   } catch (err) {
+    console.error('Send OTP failed', err);
     errEl.textContent = 'Network error — try again';
     btn.disabled = false;
     btn.textContent = 'SEND CODE';
   }
-}
+};
 
 async function authVerifyOTP() {
   const email = document.getElementById('auth-email-inp').value.trim();
@@ -1025,8 +1043,24 @@ async function authLogout() {
 
 // ─── ENTER on auth inputs ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('auth-email-inp').addEventListener('keydown', e => { if (e.key === 'Enter') authSendOTP(); });
-  document.getElementById('auth-otp-inp').addEventListener('keydown', e => { if (e.key === 'Enter') authVerifyOTP(); });
+  const sendBtn = document.getElementById('auth-send-btn');
+  const emailInput = document.getElementById('auth-email-inp');
+  const otpInput = document.getElementById('auth-otp-inp');
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', window.authSendOTP);
+  }
+
+  if (emailInput) {
+    emailInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') window.authSendOTP();
+    });
+  }
+
+  if (otpInput) {
+    otpInput.addEventListener('keydown', e => { if (e.key === 'Enter') authVerifyOTP(); });
+  }
+
   authInit();
 });
 
