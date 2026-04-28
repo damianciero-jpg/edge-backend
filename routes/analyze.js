@@ -75,6 +75,96 @@ function cleanJsonText(text) {
     .trim();
 }
 
+function impliedProb(odds) {
+  return odds > 0
+    ? 100 / (odds + 100)
+    : Math.abs(odds) / (Math.abs(odds) + 100);
+}
+
+function computeEdgeScore({ implied, projected, form = 0, matchup = 0, market = 0 }) {
+  let score = 0;
+
+  score += (projected - implied) * 100 * 0.5;
+  score += form * 0.2;
+  score += matchup * 0.15;
+  score += market * 0.15;
+
+  return score;
+}
+
+function getVerdict(score) {
+  if (score > 8) return 'BET';
+  if (score > 3) return 'LEAN';
+  return 'PASS';
+}
+
+function getConfidence(score) {
+  if (score > 10) return 'HIGH';
+  if (score > 5) return 'MEDIUM';
+  return 'LOW';
+}
+
+function clampProbability(value) {
+  return Math.min(0.99, Math.max(0.01, value));
+}
+
+function roundNumber(value, digits = 4) {
+  return Number(value.toFixed(digits));
+}
+
+function extractAmericanOdds(text) {
+  const source = String(text || '');
+  const contextualMatch = source.match(/\b(?:odds|price|line|moneyline|ml|@)\s*:?\s*([+-]\d{2,4})\b/i);
+  const fallbackMatch = source.match(/\b([+-]\d{2,4})\b/);
+  const odds = Number((contextualMatch || fallbackMatch || [])[1]);
+
+  return Number.isFinite(odds) && odds !== 0 ? odds : null;
+}
+
+function buildEdgeEvaluation(prompt) {
+  const odds = extractAmericanOdds(prompt);
+  const implied = odds == null ? 0.5 : impliedProb(odds);
+  const projected = clampProbability(implied + 0.075);
+  const edgeScore = computeEdgeScore({ implied, projected });
+  const verdict = getVerdict(edgeScore);
+  const confidence = getConfidence(edgeScore);
+
+  return {
+    odds,
+    impliedProb: roundNumber(implied),
+    projectedProb: roundNumber(projected),
+    edgeScore: roundNumber(edgeScore, 2),
+    verdict,
+    confidence,
+  };
+}
+
+function buildScoredPrompt(prompt, evaluation) {
+  return [
+    prompt,
+    '',
+    'PROPRIETARY EDGE SCORE:',
+    `- American odds used: ${evaluation.odds == null ? 'not supplied; default baseline used' : evaluation.odds}`,
+    `- Implied probability: ${evaluation.impliedProb}`,
+    `- Projected probability: ${evaluation.projectedProb}`,
+    `- Edge score: ${evaluation.edgeScore}`,
+    `- Verdict: ${evaluation.verdict}`,
+    '',
+    'Explain the reasoning for this pick based on the calculated edge score.',
+    '',
+    'Include these calculated fields in the returned JSON exactly:',
+    '"verdict", "confidence", "edgeScore", "impliedProb", "projectedProb", "reason"',
+  ].join('\n');
+}
+
+function parseJsonObject(text) {
+  try {
+    return JSON.parse(cleanJsonText(text));
+  } catch {
+    return null;
+  }
+}
+
 async function callAnthropic(prompt, mode) {
   const model = MODELS[mode];
   const params = {
@@ -242,18 +332,20 @@ router.post('/', async (req, res) => {
     let result;
     let fallbackUsed = false;
     let reviewed = false;
+    const evaluation = buildEdgeEvaluation(prompt);
+    const scoredPrompt = buildScoredPrompt(prompt, evaluation);
 
     try {
-      result = await callAnthropic(prompt, mode);
+      result = await callAnthropic(scoredPrompt, mode);
     } catch (err) {
       if (!process.env.OPENAI_API_KEY) throw err;
-      result = await withTimeout(callOpenAI(prompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
+      result = await withTimeout(callOpenAI(scoredPrompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
       fallbackUsed = true;
     }
 
     if (!fallbackUsed && secondLayer && process.env.OPENAI_API_KEY) {
       try {
-        const review = await withTimeout(callOpenAI(prompt, mode, result.text), 12000, 'openai reviewer');
+        const review = await withTimeout(callOpenAI(scoredPrompt, mode, result.text), 12000, 'openai reviewer');
         if (review.text) {
           result.text = review.text;
           reviewed = true;
@@ -271,10 +363,23 @@ router.post('/', async (req, res) => {
       withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
     ]).catch(e => console.error(e.message));
 
+    const parsed = parseJsonObject(result.text) || {};
+    const reason = parsed.reason || parsed.reasoning || result.text;
+    const structured = {
+      verdict: evaluation.verdict,
+      confidence: evaluation.confidence,
+      edgeScore: evaluation.edgeScore,
+      impliedProb: evaluation.impliedProb,
+      projectedProb: evaluation.projectedProb,
+      reason,
+    };
+    result.text = JSON.stringify({ ...parsed, ...structured });
+
     return ok(res, {
       text: result.text,
       data: {
         content: [{ type: 'text', text: result.text }],
+        ...structured,
       },
       meta: {
         mode,
