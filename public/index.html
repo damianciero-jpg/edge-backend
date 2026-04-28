@@ -548,7 +548,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
       <div class="auth-title">CHECK YOUR EMAIL</div>
       <div class="auth-sub">Enter the 6-digit code sent to <span id="auth-email-display" style="color:var(--accent)"></span></div>
       <input class="auth-inp otp-inp" id="auth-otp-inp" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code">
-      <button class="auth-btn" id="auth-verify-btn" onclick="authVerifyOTP()">VERIFY CODE</button>
+      <button class="auth-btn" id="auth-verify-btn" type="button">VERIFY CODE</button>
       <button class="auth-btn ghost" onclick="authBack()" style="margin-top:4px;">← BACK</button>
       <div class="auth-err" id="auth-otp-err"></div>
     </div>
@@ -936,7 +936,7 @@ async function authInit() {
   }
 }
 
-async function authVerifyOTP() {
+async function legacyAuthVerifyOTP() {
   const email = document.getElementById('auth-email-inp').value.trim();
   const otp = document.getElementById('auth-otp-inp').value.trim();
   const errEl = document.getElementById('auth-otp-err');
@@ -988,24 +988,6 @@ async function authLogout() {
 
 // ─── ENTER on auth inputs ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const sendBtn = document.getElementById('auth-send-btn');
-  const emailInput = document.getElementById('auth-email-inp');
-  const otpInput = document.getElementById('auth-otp-inp');
-
-  if (sendBtn) {
-    sendBtn.addEventListener('click', window.authSendOTP);
-  }
-
-  if (emailInput) {
-    emailInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') window.authSendOTP();
-    });
-  }
-
-  if (otpInput) {
-    otpInput.addEventListener('keydown', e => { if (e.key === 'Enter') authVerifyOTP(); });
-  }
-
   authInit();
 });
 
@@ -2093,17 +2075,100 @@ window.authSendOTP = async function authSendOTP() {
   }
 };
 
+window.authVerifyOTP = async function authVerifyOTP() {
+  var emailEl = document.getElementById('auth-email-inp');
+  var otpEl = document.getElementById('auth-otp-inp');
+  var errEl = document.getElementById('auth-otp-err');
+  var btn = document.getElementById('auth-verify-btn');
+
+  if (!emailEl || !otpEl || !errEl || !btn) {
+    console.error('OTP auth elements missing');
+    alert('Login form error. Refresh and try again.');
+    return;
+  }
+
+  var email = emailEl.value.trim().toLowerCase();
+  var otp = otpEl.value.trim();
+  errEl.textContent = '';
+
+  if (otp.length !== 6) {
+    errEl.textContent = 'Enter the full 6-digit code';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'VERIFYING...';
+
+  try {
+    console.log('Verifying OTP for', email);
+
+    var res = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, otp: otp })
+    });
+
+    var data = {};
+    try {
+      data = await res.json();
+    } catch (_err) {
+      data = {};
+    }
+
+    console.log('Verify OTP response', res.status, data);
+
+    if (!res.ok) {
+      errEl.textContent = data.error || data.text || 'Invalid code';
+      btn.disabled = false;
+      btn.textContent = 'VERIFY CODE';
+      return;
+    }
+
+    var authedEmail = data.email || email;
+    window.userEmail = authedEmail;
+    try {
+      currentEmail = authedEmail;
+    } catch (_err) {}
+
+    var overlay = document.getElementById('auth-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    var accountEmail = document.getElementById('acct-email-display');
+    if (accountEmail) accountEmail.textContent = authedEmail;
+
+    if (typeof updatePickTeaserLock === 'function') updatePickTeaserLock();
+    if (typeof syncUserStatus === 'function') syncUserStatus();
+  } catch (err) {
+    console.error('Verify OTP failed', err);
+    errEl.textContent = 'Network error — try again';
+    btn.disabled = false;
+    btn.textContent = 'VERIFY CODE';
+  }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
   var sendBtn = document.getElementById('auth-send-btn');
   var emailInput = document.getElementById('auth-email-inp');
+  var verifyBtn = document.getElementById('auth-verify-btn');
+  var otpInput = document.getElementById('auth-otp-inp');
 
   if (sendBtn) {
     sendBtn.addEventListener('click', window.authSendOTP);
   }
 
+  if (verifyBtn) {
+    verifyBtn.addEventListener('click', window.authVerifyOTP);
+  }
+
   if (emailInput) {
     emailInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') window.authSendOTP();
+    });
+  }
+
+  if (otpInput) {
+    otpInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') window.authVerifyOTP();
     });
   }
 });
