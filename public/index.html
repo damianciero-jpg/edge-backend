@@ -100,6 +100,33 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:10px;}
 .welcome h2{font-size:26px;font-weight:800;letter-spacing:2px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
 .welcome p{color:var(--muted);font-size:13px;max-width:360px;line-height:1.7;}
+.home-page{width:100%;min-height:100%;padding:28px 18px 80px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.home-section{width:min(980px,100%);margin:0 auto;padding:34px 0;}
+.home-hero{min-height:calc(100dvh - 170px);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding-top:12px;}
+.home-kicker{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--accent);margin-bottom:14px;}
+.home-title{font-size:44px;line-height:1.02;font-weight:900;letter-spacing:0;color:var(--text);max-width:760px;margin-bottom:16px;}
+.home-copy{font-size:17px;line-height:1.65;color:var(--muted);max-width:620px;margin:0 auto 26px;}
+.home-actions{display:flex;flex-direction:column;gap:10px;width:min(360px,100%);margin:0 auto;}
+.home-btn{min-height:52px;border-radius:999px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:1.5px;cursor:pointer;box-shadow:0 10px 24px rgba(16,32,48,0.08);}
+.home-btn.primary{border:none;background:#111827;color:white;box-shadow:0 14px 32px rgba(16,32,48,0.18);}
+.home-card{background:rgba(255,255,255,0.86);border:1px solid var(--border);border-radius:28px;box-shadow:0 22px 55px rgba(16,32,48,0.10);padding:22px;}
+.home-section-title{font-size:28px;font-weight:900;letter-spacing:0;margin-bottom:10px;color:var(--text);}
+.home-section-copy{font-size:15px;line-height:1.65;color:var(--muted);max-width:580px;margin:0 auto 22px;}
+.home-steps{display:grid;grid-template-columns:1fr;gap:12px;}
+.home-step{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:22px;text-align:left;box-shadow:0 12px 30px rgba(16,32,48,0.06);}
+.home-step-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:2px;margin-bottom:16px;}
+.home-step-title{font-size:18px;font-weight:900;margin-bottom:8px;color:var(--text);}
+.home-step-copy{font-size:13px;line-height:1.6;color:var(--muted);}
+.home-preview{max-width:680px;margin:0 auto;text-align:left;}
+.home-preview .edge-decision-card{filter:blur(4px);opacity:0.72;pointer-events:none;margin-bottom:0;}
+.why-grid,.pricing-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+.why-item,.pricing-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:20px;text-align:left;box-shadow:0 12px 30px rgba(16,32,48,0.06);}
+.why-item{font-size:14px;line-height:1.55;color:var(--text);}
+.why-item strong{display:block;font-size:15px;margin-bottom:6px;}
+.pricing-price{font-size:34px;font-weight:900;margin:10px 0;color:var(--text);}
+.pricing-price small{font-size:13px;color:var(--muted);font-weight:700;}
+.pricing-list{display:flex;flex-direction:column;gap:8px;margin:14px 0;color:var(--muted);font-size:13px;line-height:1.5;}
+.home-disclaimer{font-size:11px;line-height:1.7;color:var(--muted2);max-width:660px;margin:0 auto;text-align:center;}
 .welcome-steps{display:flex;margin-top:30px;margin-bottom:18px;gap:36px;justify-content:center;}
 .welcome-cta{min-height:52px;min-width:220px;margin-bottom:18px;}
 .blurred{filter:blur(6px);opacity:0.6;}
@@ -339,6 +366,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .welcome{justify-content:flex-start;padding:20px;padding-top:28px;height:auto !important;min-height:100%;}
   .welcome h2{font-size:24px;}
   .welcome p{font-size:14px;line-height:1.7;}
+  .home-page{padding:22px 16px 90px;}
+  .home-section{padding:30px 0;}
+  .home-title{font-size:38px;}
+  .home-copy{font-size:16px;}
   .welcome-steps{width:100%;justify-content:center;gap:18px;margin-top:24px;margin-bottom:16px;}
   .trust-strip{grid-template-columns:1fr 1fr;width:100%;gap:8px;}
   .trust-item{min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;}
@@ -359,6 +390,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 @media (max-width:400px){
   .ev-row{grid-template-columns:1fr 1fr;}
   .form-grid{grid-template-columns:1fr;}
+}
+
+@media (min-width:769px){
+  .home-page{padding:44px 32px 96px;}
+  .home-actions{flex-direction:row;width:auto;justify-content:center;}
+  .home-btn{min-width:210px;}
+  .home-steps{grid-template-columns:repeat(3,1fr);}
+  .why-grid{grid-template-columns:repeat(4,1fr);}
+  .pricing-grid{grid-template-columns:repeat(2,1fr);max-width:720px;margin:0 auto;}
 }
 
 /* TOAST */
@@ -647,73 +687,91 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 <input type="hidden" id="oddsKey" value="e37bbddd4d0947ae8c39052cf8d75b61">
 
 <!-- HOME TAB -->
-<div id="view-home" style="height:calc(100vh - 102px);">
-  <div class="welcome" style="height:100%">
-    <h2>FIND YOUR EDGE</h2>
-    <p>EDGE uses a proprietary scoring algorithm to evaluate odds, risk, confidence, and potential value before you bet.</p>
-    <span class="algo-mini">Proprietary EDGE scoring • Real-time market context</span>
-    <div class="welcome-steps">
-      <button class="ws" type="button" onclick="showTab('odds')" style="background:transparent;border:0;cursor:pointer;font:inherit;">
-        <div class="ws-n">01</div><div class="ws-t">Pick a sport</div>
-      </button>
-      <div class="ws"><div class="ws-n">02</div><div class="ws-t">Select a matchup</div></div>
-      <div class="ws"><div class="ws-n">03</div><div class="ws-t">Run analysis</div></div>
-    </div>
-    <div class="trust-strip">
-      <div class="trust-item">Proprietary EDGE Score</div>
-      <div class="trust-item">Risk Rating</div>
-      <div class="trust-item">Confidence Meter</div>
-      <div class="trust-item">Value Signal</div>
-    </div>
-    <button class="analyze-btn welcome-cta" onclick="showTab('odds')">
-       Run EDGE Evaluation
-    </button>
-    <div class="manual-help">
-      <div class="mh-title">HOW TO USE MANUAL ENTRY</div>
+<div id="view-home" style="height:calc(100vh - 102px);overflow-y:auto;">
+  <div class="welcome home-page">
+    <section class="home-section home-hero">
+      <div class="home-kicker">PROPRIETARY SPORTS BETTING ANALYTICS</div>
+      <h1 class="home-title">Know if a bet is worth it — instantly.</h1>
+      <p class="home-copy">EDGE uses a proprietary scoring algorithm to evaluate odds, risk, confidence, and potential value before you bet.</p>
+      <div class="home-actions">
+        <button class="home-btn primary" type="button" onclick="revealTodaysPick()">VIEW TODAY’S PICK</button>
+        <button class="home-btn" type="button" onclick="showTab('odds')">Analyze a Bet</button>
+      </div>
+    </section>
 
-      <div class="mh-steps">
-        <div class="mh-step">
-          <span>1.</span> Enter a matchup (e.g. Eagles vs Cowboys)
-        </div>
-        <div class="mh-step">
-          <span>2.</span> Add odds or line (e.g. -110, +150, spread, total)
-        </div>
-        <div class="mh-step">
-          <span>3.</span> Run EDGE evaluation to evaluate value and risk
+    <section class="home-section" id="homeTodaysPick">
+      <div class="pick-teaser">
+        <div class="pick-header">TODAY’S PICK</div>
+        <div class="pick-card home-card">
+          <div class="pick-label">EDGE SCORING ENGINE DETECTED VALUE</div>
+          <div class="pick-match blurred" id="pickMatch">Premium matchup locked</div>
+          <div class="pick-confidence blurred" id="pickConfidence">Confidence: 87%</div>
+          <div class="pick-value blurred" id="pickValue">+12.4% Expected Value</div>
+          <button class="pw-cta" onclick="revealTodaysPick()">Reveal Today’s Pick</button>
+          <div class="pick-note">Updated with live market context</div>
         </div>
       </div>
+    </section>
 
-      <div class="mh-note">
-        Tip: Use manual entry when you already have a bet in mind or want to compare sportsbook odds.
+    <section class="home-section">
+      <h2 class="home-section-title">Simple by design.</h2>
+      <p class="home-section-copy">Three steps from matchup to signal.</p>
+      <div class="home-steps">
+        <div class="home-step"><div class="home-step-num">01</div><div class="home-step-title">Choose a game</div><div class="home-step-copy">Start from live odds across available sportsbooks.</div></div>
+        <div class="home-step"><div class="home-step-num">02</div><div class="home-step-title">Run EDGE</div><div class="home-step-copy">The scoring engine checks price, risk, confidence, and value.</div></div>
+        <div class="home-step"><div class="home-step-num">03</div><div class="home-step-title">Read the verdict</div><div class="home-step-copy">Get a clear BET, LEAN, or PASS with the reason behind it.</div></div>
       </div>
-    </div>
-    <div class="pick-teaser">
-      <div class="pick-header"> PICK OF THE DAY</div>
+    </section>
 
-      <div class="pick-card">
-        <div class="pick-label">EDGE SCORING ENGINE DETECTED VALUE</div>
-
-        <div class="pick-match blurred" id="pickMatch">
-          ⚽ Team A vs Team B
-        </div>
-
-        <div class="pick-confidence blurred" id="pickConfidence">
-          Confidence: 87%
-        </div>
-
-        <div class="pick-value blurred" id="pickValue">
-          +12.4% Expected Value
-        </div>
-
-        <button class="pw-cta" onclick="revealTodaysPick()">
-           Reveal Today’s Pick
-        </button>
-
-        <div class="pick-note">
-          Updated in real-time • EDGE verified • Limited access
+    <section class="home-section">
+      <h2 class="home-section-title">Preview the report.</h2>
+      <p class="home-section-copy">A clean summary of the decision before you place a wager.</p>
+      <div class="home-preview">
+        <div class="edge-decision-card">
+          <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
+          <div class="ed-eyebrow">EDGE VERDICT</div>
+          <div class="ed-verdict bet">BET</div>
+          <div class="ed-grid">
+            <div class="ed-metric"><div class="ed-label">EDGE SCORE</div><div class="ed-value">+9.4</div></div>
+            <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">HIGH</div></div>
+            <div class="ed-metric"><div class="ed-label">RISK</div><div class="ed-value">MEDIUM</div></div>
+            <div class="ed-metric"><div class="ed-label">ACTION</div><div class="ed-value">SMALL STAKE</div></div>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
+
+    <section class="home-section">
+      <h2 class="home-section-title">Why EDGE</h2>
+      <div class="why-grid">
+        <div class="why-item"><strong>Value first</strong>Compares price against projected probability.</div>
+        <div class="why-item"><strong>Risk aware</strong>Separates attractive odds from fragile spots.</div>
+        <div class="why-item"><strong>Fast reads</strong>Turns complex market data into a clear verdict.</div>
+        <div class="why-item"><strong>Built for bettors</strong>Designed around decisions, not clutter.</div>
+      </div>
+    </section>
+
+    <section class="home-section">
+      <h2 class="home-section-title">Pricing</h2>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="home-kicker">FREE</div>
+          <div class="pricing-price">$0</div>
+          <div class="pricing-list"><span>Limited evaluations</span><span>Live odds board</span><span>Basic EDGE preview</span></div>
+          <button class="home-btn" type="button" onclick="showTab('odds')">Start Free</button>
+        </div>
+        <div class="pricing-card">
+          <div class="home-kicker">PRO</div>
+          <div class="pricing-price">$9.99 <small>/ month</small></div>
+          <div class="pricing-list"><span>Full EDGE evaluations</span><span>Today’s Pick access</span><span>Confidence, risk, and value signals</span></div>
+          <button class="home-btn primary" type="button" onclick="showTab('account')">Go Pro</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section">
+      <p class="home-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Betting involves risk. Use the evaluation as one input in your decision and bet responsibly.</p>
+    </section>
   </div>
 </div>
 
