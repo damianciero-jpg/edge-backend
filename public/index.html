@@ -1441,16 +1441,8 @@ function renderGamesList() {
   list.innerHTML = '';
   allGames.forEach((g, i) => {
     const { label: t, cls } = formatGameTime(g.commence_time);
-    let aOdds = null, hOdds = null;
-    if (g.bookmakers && g.bookmakers.length) {
-      const h2h = (g.bookmakers[0].markets || []).find(m=>m.key==='h2h');
-      if (h2h) {
-        const awayOutcome = h2h.outcomes.find(o=>o.name===g.away_team);
-        const homeOutcome = h2h.outcomes.find(o=>o.name===g.home_team);
-        aOdds = awayOutcome ? awayOutcome.price : undefined;
-        hOdds = homeOutcome ? homeOutcome.price : undefined;
-      }
-    }
+    let aOdds = getBest(g, g.away_team);
+    let hOdds = getBest(g, g.home_team);
     const el = document.createElement('div');
     el.className = 'game-item';
     el.dataset.index = i;
@@ -1517,6 +1509,7 @@ function selectGame(i, el) {
 function fmt(v) { if (!v) return 'N/A'; return v > 0 ? '+'+v : ''+v; }
 function toDecimal(v) { if (!v) return null; return v > 0 ? v/100+1 : 100/Math.abs(v)+1; }
 function toImplied(v) { const d = toDecimal(v); return d ? (1/d*100).toFixed(1) : null; }
+function bookmakerName(bookmaker) { return bookmaker.title || bookmaker.key || 'Sportsbook'; }
 
 function getBest(game, team) {
   let best = -Infinity;
@@ -1530,19 +1523,23 @@ function getBest(game, team) {
 
 function renderOddsDetail(game) {
   const main = document.getElementById('oddsMain');
+  const bookmakers = game.bookmakers || [];
   const hBest = getBest(game, game.home_team);
   const aBest = getBest(game, game.away_team);
   const hImp = toImplied(hBest), aImp = toImplied(aBest);
   const vig = hImp && aImp ? (parseFloat(hImp)+parseFloat(aImp)-100).toFixed(1) : null;
+  const oneBookMessage = bookmakers.length === 1
+    ? '<div class="sec"><div class="sec-body">Only one sportsbook returned by the odds provider for this market.</div></div>'
+    : '';
 
   let bkRows = '';
-  (game.bookmakers || []).slice(0,8).forEach(bk => {
+  bookmakers.forEach(bk => {
     const h2h = (bk.markets || []).find(m=>m.key==='h2h');
     const hOutcome = h2h && h2h.outcomes ? h2h.outcomes.find(o=>o.name===game.home_team) : null;
     const aOutcome = h2h && h2h.outcomes ? h2h.outcomes.find(o=>o.name===game.away_team) : null;
     const hO = hOutcome ? hOutcome.price : undefined;
     const aO = aOutcome ? aOutcome.price : undefined;
-    bkRows += `<div class="bk-row"><div class="bk-name">${bk.title.substring(0,18)}</div><div class="bk-odds-row"><div class="bk-o ${aO===aBest?'best':''}">${fmt(aO)}</div><div class="bk-o" style="color:var(--muted2)">|</div><div class="bk-o ${hO===hBest?'best':''}">${fmt(hO)}</div></div></div>`;
+    bkRows += `<div class="bk-row"><div class="bk-name">${bookmakerName(bk).substring(0,18)}</div><div class="bk-odds-row"><div class="bk-o ${aO===aBest?'best':''}">${fmt(aO)}</div><div class="bk-o" style="color:var(--muted2)">|</div><div class="bk-o ${hO===hBest?'best':''}">${fmt(hO)}</div></div></div>`;
   });
 
   const dt = new Date(game.commence_time);
@@ -1551,7 +1548,7 @@ function renderOddsDetail(game) {
   main.innerHTML = `
     <div class="detail-hdr" style="flex-wrap:nowrap;">
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
-      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${(game.bookmakers || []).length} BOOKS</div></div>
+      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${bookmakers.length} BOOKS</div></div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
         <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
         <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
@@ -1563,8 +1560,9 @@ function renderOddsDetail(game) {
       <div class="odds-row">
         <div class="odds-card oc-a"><div class="oc-label">AWAY — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
         <div class="odds-card oc-h"><div class="oc-label">HOME — ${game.home_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.home_team}</div><div class="oc-val">${fmt(hBest)}</div><div class="oc-sub">${hImp?hImp+'% IMPLIED':''}</div></div>
-        <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${(game.bookmakers || []).length} BOOKS COMPARED</div></div>
+        <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${bookmakers.length} BOOKS COMPARED</div></div>
       </div>
+      ${oneBookMessage}
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
       <div id="aiResultArea">
@@ -1603,9 +1601,13 @@ function renderMarketsDetail(game, mkt) {
 }
 
 function renderMarketTable(game, mkt) {
+  const bookmakers = game.bookmakers || [];
   let html = `<div class="section-lbl">${mkt.toUpperCase()} — ALL BOOKS</div>`;
+  if (bookmakers.length === 1) {
+    html += '<div class="sec"><div class="sec-body">Only one sportsbook returned by the odds provider for this market.</div></div>';
+  }
   let bestVals = {};
-  (game.bookmakers || []).forEach(bk => {
+  bookmakers.forEach(bk => {
     const m = (bk.markets || []).find(mm=>mm.key===mkt);
     if (m && m.outcomes) m.outcomes.forEach(o => {
       const key = o.name + (o.point||'');
@@ -1614,10 +1616,10 @@ function renderMarketTable(game, mkt) {
   });
 
   html += `<div class="sec"><div class="sec-hdr">${mkt === 'h2h' ? 'MONEYLINE' : mkt === 'spreads' ? 'POINT SPREAD' : 'GAME TOTAL'}</div><div class="sec-body">`;
-  (game.bookmakers || []).forEach(bk => {
+  bookmakers.forEach(bk => {
     const m = (bk.markets || []).find(mm=>mm.key===mkt);
     if (!m) return;
-    html += `<div class="mkt-item"><div><div class="mkt-item-label">${bk.title}</div></div><div style="display:flex;gap:20px;">`;
+    html += `<div class="mkt-item"><div><div class="mkt-item-label">${bookmakerName(bk)}</div></div><div style="display:flex;gap:20px;">`;
     m.outcomes.forEach(o => {
       const isBest = o.price === bestVals[o.name+(o.point||'')];
       html += `<div style="text-align:right"><div style="font-family:var(--mono);font-size:9px;color:var(--muted);">${o.name}${o.point?' '+o.point:''}</div><div class="mkt-item-odds ${isBest?'':''}\" style="${isBest?'color:var(--green)':''}">${fmt(o.price)}</div></div>`;
