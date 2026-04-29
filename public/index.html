@@ -485,6 +485,76 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   margin-top: 10px;
   line-height: 1.5;
 }
+
+/* Fix research result scrolling */
+.main-area {
+  min-height: 0;
+}
+
+.scrollable {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  max-height: 100%;
+}
+
+#aiResultArea {
+  overflow: visible;
+  padding-bottom: 96px;
+}
+
+.ai-result-wrapper,
+.edge-decision-card,
+.sec,
+.sec-body {
+  overflow: visible;
+}
+
+.ai-paywall-overlay {
+  pointer-events: none;
+}
+
+.ai-paywall-box {
+  pointer-events: auto;
+}
+
+@media (max-width:768px) {
+  .app-shell,
+  #view-odds,
+  #view-markets {
+    min-height: 0;
+  }
+
+  #view-odds.detail-open .main-area,
+  #view-markets.detail-open .main-area {
+    height: calc(100dvh - 56px - 56px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #view-odds.detail-open .scrollable,
+  #view-markets.detail-open .scrollable {
+    height: 100%;
+    overflow-y: auto !important;
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  }
+
+  .result-topline,
+  .ed-grid,
+  .ev-row,
+  .result-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .edge-decision-card,
+  .sec {
+    margin-bottom: 16px;
+  }
+
+  .sec-body {
+    max-height: none;
+  }
+}
 </style>
 <!-- Google Analytics -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ETJGWSTCM4"></script>
@@ -1685,11 +1755,10 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
     renderAIResult(result, txt);
     syncUserStatus();
-    // Scroll results into view on all devices
-    setTimeout(() => {
-      const el = document.getElementById('aiResultArea');
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    const aiArea = document.getElementById('aiResultArea');
+    if (aiArea) {
+      setTimeout(() => aiArea.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    }
   } catch(e) {
     clearTimeout(clientTimeout);
     clearInterval(ticker);
