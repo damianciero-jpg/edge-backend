@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build": "node --check server.js && node --check routes/*.js && node --check lib/*.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

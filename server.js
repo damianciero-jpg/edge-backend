@@ -203,6 +203,15 @@ app.get('/api/pick-of-the-day', async (req, res) => {
 
 app.use('/api/admin', adminRouter);
 
+
+app.get('/philadelphia', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'philadelphia.html'));
+});
+
+app.get('/philly', (_req, res) => {
+  res.redirect(302, '/philadelphia');
+});
+
 app.get('/', (_req, res, next) => {
   const indexPath = path.join(__dirname, 'public', 'index.html');
   fs.readFile(indexPath, 'utf8', (err, html) => {
