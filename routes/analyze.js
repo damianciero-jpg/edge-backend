@@ -11,17 +11,13 @@ const {
 } = require('../lib/limits');
 const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
+const { OWNER_EMAILS } = require('../lib/owners');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const OWNER_EMAILS = [
-  'damianciero@gmail.com',
-  'ffanning@comcast.net',
-  'afelt1991@yahoo.com',
-];
 
 const MODELS = {
-  quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5',
-  deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-5',
+  quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5-20251001',
+  deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-6',
 };
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';

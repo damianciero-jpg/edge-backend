@@ -3,12 +3,7 @@ const router = express.Router();
 const { getUser } = require('../lib/users');
 const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
-
-const OWNER_EMAILS = [
-  'damianciero@gmail.com',
-  'ffanning@comcast.net',
-  'afelt1991@yahoo.com',
-];
+const { OWNER_EMAILS } = require('../lib/owners');
 
 router.get('/', async (req, res) => {
   const session = verifySession(req.cookies?.edge_session);

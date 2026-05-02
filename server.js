@@ -8,6 +8,7 @@ const { verifySession } = require('./lib/auth');
 const { getUser } = require('./lib/users');
 const { getCfg } = require('./lib/config');
 const { hasRedisConfig, createRedis } = require('./lib/redis');
+const { OWNER_EMAILS } = require('./lib/owners');
 
 const checkoutRouter = require('./routes/checkout');
 const webhookRouter = require('./routes/webhook');
@@ -19,11 +20,6 @@ const authRouter = require('./routes/auth');
 const alertsRouter = require('./routes/alerts');
 
 const app = express();
-const OWNER_EMAILS = [
-  'damianciero@gmail.com',
-  'ffanning@comcast.net',
-  'afelt1991@yahoo.com',
-];
 const DEFAULT_ODDS_API_KEY = 'e37bbddd4d0947ae8c39052cf8d75b61';
 const PICK_SPORTS = [
   'americanfootball_nfl',
