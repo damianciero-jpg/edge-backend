@@ -88,15 +88,32 @@ function computeEdgeScore({ implied, projected, form = 0, matchup = 0, market = 
   return score;
 }
 
+function getProjectionAdjustment(prompt, odds) {
+  const text = String(prompt || '').toLowerCase();
+  let adj = 0;
+
+  if (odds > 0) adj += 0.035;
+  if (odds >= 150) adj += 0.015;
+  if (odds <= -200) adj -= 0.02;
+
+  if (/home|home advantage/.test(text)) adj += 0.015;
+  if (/hot|strong form|winning streak|rest advantage|healthy/.test(text)) adj += 0.02;
+  if (/sharp|steam|line movement|value|best line|mispriced/.test(text)) adj += 0.025;
+
+  if (/injury|injuries|injured|questionable|fatigue|slump|cold|bad matchup/.test(text)) adj -= 0.03;
+
+  return Math.max(-0.06, Math.min(0.08, adj));
+}
+
 function getVerdict(score) {
-  if (score > 8) return 'BET';
-  if (score > 3) return 'LEAN';
+  if (score >= 5) return 'BET';
+  if (score >= 2) return 'LEAN';
   return 'PASS';
 }
 
 function getConfidence(score) {
-  if (score > 10) return 'HIGH';
-  if (score > 5) return 'MEDIUM';
+  if (score >= 7) return 'HIGH';
+  if (score >= 3) return 'MEDIUM';
   return 'LOW';
 }
 
@@ -204,11 +221,19 @@ function buildEdgeEvaluation(prompt) {
   const odds = extractAmericanOdds(prompt);
   const oddsDetected = odds != null;
   const implied = oddsDetected ? impliedProb(odds) : 0.5;
-  const projected = oddsDetected ? clampProbability(implied + 0.03) : 0.5;
+  const projected = oddsDetected ? clampProbability(implied + getProjectionAdjustment(prompt, odds)) : 0.5;
   const factors = oddsDetected ? getSignalFactors(prompt, odds) : { form: 0, matchup: 0, market: 0 };
   const edgeScore = oddsDetected ? computeEdgeScore({ implied, projected, ...factors }) : 0;
   const verdict = getVerdict(edgeScore);
   const confidence = getConfidence(edgeScore);
+  console.log('EDGE_SCORE_DEBUG', {
+    odds,
+    implied,
+    projected,
+    edgeScore,
+    verdict,
+    confidence,
+  });
   const risk = getRisk(confidence, edgeScore);
   const edgeStrength = getEdgeStrength(edgeScore);
   const recommendedAction = getRecommendedAction(verdict, confidence);
