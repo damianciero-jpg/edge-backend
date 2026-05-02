@@ -161,8 +161,8 @@ function getRisk(confidence, score) {
 }
 
 function getEdgeStrength(score) {
-  if (score > 8) return 'STRONG';
-  if (score > 3) return 'MODERATE';
+  if (score >= 7) return 'STRONG';
+  if (score >= 3) return 'MODERATE';
   if (score > 0) return 'WEAK';
   return 'NONE';
 }
@@ -198,8 +198,8 @@ function fallbackReason(oddsDetected, score) {
   if (!oddsDetected) {
     return 'Odds were not detected, so EDGE cannot calculate a reliable value signal.';
   }
-  if (score > 8) return 'The calculated EDGE score clears the BET threshold based on the projected probability versus the market price.';
-  if (score > 3) return 'The calculated EDGE score shows a modest value signal, but it does not clear the strongest betting threshold.';
+  if (score >= 5) return 'The calculated EDGE score clears the BET threshold based on the projected probability versus the market price.';
+  if (score >= 2) return 'The calculated EDGE score shows a modest value signal, but it does not clear the strongest betting threshold.';
   return 'The calculated EDGE score does not show enough value over the implied market probability.';
 }
 
