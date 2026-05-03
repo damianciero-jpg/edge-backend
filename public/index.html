@@ -233,6 +233,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .ed-verdict.bet{color:var(--green);}
 .ed-verdict.pass{color:var(--red);}
 .ed-verdict.lean{color:var(--yellow);}
+.ed-pick{font-size:24px;font-weight:900;line-height:1.18;color:var(--text);margin:-6px 0 16px;overflow-wrap:anywhere;}
+.ed-pick.bet{color:var(--green);}
+.ed-pick.pass{color:var(--red);}
+.ed-pick.lean{color:var(--yellow);}
 .ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
 .ed-metric{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;box-shadow:0 8px 18px rgba(16,32,48,0.04);}
 .ed-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;}
@@ -407,6 +411,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .result-topline{grid-template-columns:1fr;gap:8px;}
   .ed-grid{grid-template-columns:1fr;}
   .ed-verdict{font-size:30px;}
+  .ed-pick{font-size:21px;}
   .result-actions{grid-template-columns:1fr;}
   .manual-help,.pick-teaser{width:100%;max-width:420px;}
   header{padding:10px 16px;}
@@ -2105,6 +2110,80 @@ function recommendedAction(verdict, confidence, risk) {
   return 'WAIT FOR BETTER LINE';
 }
 
+function cleanPlayText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function sideOddsFromCurrentGame(side) {
+  if (!currentGame || !side) return null;
+  const text = String(side).toLowerCase();
+  const homeTeam = currentGame.home_team || '';
+  const awayTeam = currentGame.away_team || '';
+  if (homeTeam && text.includes(homeTeam.toLowerCase())) return getBest(currentGame, homeTeam);
+  if (awayTeam && text.includes(awayTeam.toLowerCase())) return getBest(currentGame, awayTeam);
+  return null;
+}
+
+function moneylinePlay(team, odds, useParens) {
+  const cleaned = cleanPlayText(team);
+  if (!cleaned) return '';
+  const formattedOdds = odds != null ? fmt(odds) : '';
+  if (/\b(ml|moneyline|over|under|spread)\b/i.test(cleaned)) {
+    return formattedOdds && !cleaned.includes(formattedOdds) ? `${cleaned} ${formattedOdds}` : cleaned;
+  }
+  return `${cleaned} ML${formattedOdds ? (useParens ? ` (${formattedOdds})` : ` ${formattedOdds}`) : ''}`;
+}
+
+function inferPlayFromCurrentGame(r, verdict) {
+  if (!currentGame || !['BET', 'LEAN'].includes(verdict)) return '';
+  const homeEV = parseFloat(firstDefined(r.home_ev, r.homeEV));
+  const awayEV = parseFloat(firstDefined(r.away_ev, r.awayEV));
+  let team = '';
+
+  if (Number.isFinite(homeEV) || Number.isFinite(awayEV)) {
+    team = homeEV >= awayEV ? currentGame.home_team : currentGame.away_team;
+  } else {
+    const homeOdds = getBest(currentGame, currentGame.home_team);
+    const awayOdds = getBest(currentGame, currentGame.away_team);
+    if (awayOdds > 0 && homeOdds <= 0) team = currentGame.away_team;
+    else if (homeOdds > 0 && awayOdds <= 0) team = currentGame.home_team;
+    else if (awayOdds != null || homeOdds != null) team = (awayOdds || -Infinity) >= (homeOdds || -Infinity) ? currentGame.away_team : currentGame.home_team;
+  }
+
+  return team ? moneylinePlay(team, getBest(currentGame, team), false) : '';
+}
+
+function resolveRecommendedPlay(r, verdict, useParens) {
+  if (verdict === 'PASS') return 'No clear edge';
+
+  const explicit = cleanPlayText(firstDefined(
+    r.pick,
+    r.exactPlay,
+    r.exact_play,
+    r.recommendedPlay,
+    r.recommended_play,
+    r.team,
+    r.play,
+    r.side,
+    r.bet_on,
+    r.betOn
+  ));
+  if (explicit) {
+    return moneylinePlay(explicit, sideOddsFromCurrentGame(explicit), useParens);
+  }
+
+  if (currentGame && ['BET', 'LEAN'].includes(verdict)) {
+    const inferred = inferPlayFromCurrentGame(r, verdict);
+    if (inferred && useParens) {
+      const side = inferred.replace(/\s+ML\s+[+-]\d+$/i, '');
+      return moneylinePlay(side, sideOddsFromCurrentGame(side), true);
+    }
+    if (inferred) return inferred;
+  }
+
+  return 'Best available play';
+}
+
 function resultActionsHtml(isLocked) {
   return `<div class="result-actions">
     <button class="result-action" onclick="analyzeAnotherBet()">Analyze Another Bet</button>
@@ -2217,7 +2296,9 @@ function renderAIResult(r, rawText = '') {
   const risk = String(r.risk || r.risk_rating || r.riskRating || inferRisk(confidence, r.risk_notes)).toUpperCase();
   const edgeStrength = String(r.edgeStrength || r.edge_strength || inferEdgeStrength(value, verdict)).toUpperCase();
   const action = r.recommendedAction || r.recommended_action || recommendedAction(verdict, confidence, risk);
-  const exactPlay = verdict==='PASS' ? 'No edge detected' : (betOn || 'Best available play');
+  const exactPlay = resolveRecommendedPlay(r, verdict, false);
+  const recommendedPlay = resolveRecommendedPlay(r, verdict, true);
+  const verdictPick = verdict === 'PASS' ? 'No clear edge' : exactPlay;
   const factorRows = [
     ['Market / line movement', sourceFactors[0] || 'Compare the available line against the projected edge before placing a bet.'],
     ['Team form / matchup', sourceFactors[1] || 'Current form and matchup profile are part of the score.'],
@@ -2232,7 +2313,8 @@ function renderAIResult(r, rawText = '') {
   const decisionHtml = `<div class="edge-decision-card">
     <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
     <div class="ed-eyebrow">EDGE VERDICT</div>
-    <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
+    <div class="ed-verdict ${vc}">${escapeHtml(verdict)}:</div>
+    <div class="ed-pick ${vc}">${escapeHtml(verdictPick.toUpperCase())}</div>
     <div class="ed-grid">
       <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(firstDefined(r.edgeScore, value))}</div></div>
       <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">${escapeHtml(confidence)}</div></div>
@@ -2244,8 +2326,8 @@ function renderAIResult(r, rawText = '') {
   </div>`;
 
   const playHtml = `<div class="locked-play">
-    <div class="rt-label">EXACT PLAY</div>
-    <div class="rt-value ${vc} ${lockedPlayClass}">${escapeHtml(exactPlay)}</div>
+    <div class="rt-label">RECOMMENDED PLAY</div>
+    <div class="rt-value ${vc} ${lockedPlayClass}">${escapeHtml(recommendedPlay)}</div>
     ${showOverlay ? `<div class="pw-note" style="text-align:left;margin-top:10px;">Exact team/play is included with Full EDGE Evaluation.</div>` : ''}
   </div>`;
 

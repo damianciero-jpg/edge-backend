@@ -160,6 +160,82 @@ function getRecommendedAction(verdict, confidence) {
   return 'Pass unless new odds create a stronger EDGE score.';
 }
 
+function formatAmericanOdds(odds) {
+  const value = Number(odds);
+  if (!Number.isFinite(value)) return '';
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function extractGameTeams(prompt) {
+  const match = String(prompt || '').match(/\bGAME:\s*([^\n@]+?)\s+@\s+([^\n]+)/i);
+  if (!match) return null;
+  return {
+    away: match[1].trim(),
+    home: match[2].trim(),
+  };
+}
+
+function extractPromptPlay(prompt) {
+  const source = promptBody(prompt);
+  const labeled = source.match(/\b(?:pick|play|bet|side)\s*:?\s*([A-Z][A-Za-z0-9 .'-]{1,60}?(?:\s+(?:ML|moneyline|spread|over|under))?(?:\s+[+-]\d{2,4})?)\b/i);
+  if (labeled && !/\bprompt\b/i.test(labeled[1])) return labeled[1].replace(/\s+/g, ' ').trim();
+
+  const moneyline = source.match(/\b([A-Z][A-Za-z .'-]{1,40}\s+(?:ML|moneyline)\s+[+-]\d{2,4})\b/i);
+  if (moneyline) return moneyline[1].replace(/\s+/g, ' ').trim();
+
+  return '';
+}
+
+function extractBookOdds(prompt) {
+  const teams = extractGameTeams(prompt);
+  if (!teams) return [];
+
+  const rows = [];
+  const lines = String(prompt || '').split(/\r?\n/);
+  const awayPattern = new RegExp(`${escapeRegExp(teams.away)}\\s+([+-]\\d{2,4})`, 'i');
+  const homePattern = new RegExp(`${escapeRegExp(teams.home)}\\s+([+-]\\d{2,4})`, 'i');
+
+  lines.forEach(line => {
+    const away = line.match(awayPattern);
+    const home = line.match(homePattern);
+    if (away) rows.push({ team: teams.away, odds: Number(away[1]) });
+    if (home) rows.push({ team: teams.home, odds: Number(home[1]) });
+  });
+
+  return rows.filter(row => Number.isFinite(row.odds));
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function pickFromPrompt(prompt, evaluation) {
+  if (evaluation.verdict === 'PASS') return 'No clear edge';
+
+  const explicit = extractPromptPlay(prompt);
+  if (explicit) return explicit;
+
+  const bookOdds = extractBookOdds(prompt);
+  const plusMoney = bookOdds
+    .filter(row => row.odds > 0)
+    .sort((a, b) => b.odds - a.odds)[0];
+  if (plusMoney && ['BET', 'LEAN'].includes(evaluation.verdict)) {
+    return `${plusMoney.team} ML ${formatAmericanOdds(plusMoney.odds)}`;
+  }
+
+  const best = bookOdds.sort((a, b) => b.odds - a.odds)[0];
+  if (best && ['BET', 'LEAN'].includes(evaluation.verdict)) {
+    return `${best.team} ML ${formatAmericanOdds(best.odds)}`;
+  }
+
+  const teams = extractGameTeams(prompt);
+  if (teams && ['BET', 'LEAN'].includes(evaluation.verdict)) {
+    return `${teams.home} ML`;
+  }
+
+  return 'Best available play';
+}
+
 function getSignalFactors(prompt, odds) {
   const source = promptBody(prompt);
   const form = keywordScore(
@@ -213,7 +289,7 @@ function buildEdgeEvaluation(prompt) {
   const edgeStrength = getEdgeStrength(edgeScore);
   const recommendedAction = getRecommendedAction(verdict, confidence);
 
-  return {
+  const evaluation = {
     odds,
     oddsDetected,
     impliedProb: roundNumber(implied),
@@ -225,6 +301,9 @@ function buildEdgeEvaluation(prompt) {
     edgeStrength,
     recommendedAction,
   };
+
+  evaluation.pick = pickFromPrompt(prompt, evaluation);
+  return evaluation;
 }
 
 function buildScoredPrompt(prompt, evaluation) {
@@ -263,6 +342,7 @@ function buildStructuredResult(evaluation, aiText) {
 
   return {
     verdict: evaluation.verdict,
+    pick: parsed.pick || parsed.exactPlay || parsed.recommendedPlay || parsed.bet_on || parsed.betOn || parsed.team || parsed.play || parsed.side || evaluation.pick,
     confidence: evaluation.confidence,
     risk: evaluation.risk,
     edgeStrength: evaluation.edgeStrength,
