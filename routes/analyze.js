@@ -280,10 +280,6 @@ function detectPickFromPrompt(prompt, verdict) {
     return selected.pick;
   }
 
-  const teams = source.match(/\b([A-Z][A-Za-z0-9.'&\-]{1,20}(?:\s+[A-Z][A-Za-z0-9.'&\-]{1,20})?)\b/g) || [];
-  const likelyTeam = teams.find(name => !/^(EDGE|INSTRUCTIONS|ODDS|LINE|BET|LEAN|PASS)$/i.test(name));
-  if (likelyTeam) return `${likelyTeam} ML`;
-
   return 'Best available play';
 }
 

@@ -2207,7 +2207,7 @@ function renderAIResult(r, rawText = '') {
   const plusSide = Number.isFinite(homeOdds) && homeOdds > 0 ? `${homeTeam} ML ${homeOdds > 0 ? '+' : ''}${homeOdds}` : Number.isFinite(awayOdds) && awayOdds > 0 ? `${awayTeam} ML ${awayOdds > 0 ? '+' : ''}${awayOdds}` : '';
   const inferredPick = (verdict === 'BET' || verdict === 'LEAN') ? (sourcePick || plusSide || (homeTeam ? `${homeTeam} ML` : '') || (awayTeam ? `${awayTeam} ML` : '') || 'Best available play') : 'No clear edge';
   const pickText = String(inferredPick || 'Best available play').trim();
-  const verdictHeadline = verdict === 'PASS' ? 'PASS: No clear edge' : `${verdict}: ${pickText}`;
+  const verdictHeadline = verdict === 'PASS' ? 'PASS: No clear edge' : `${verdict} ${pickText}`;
 
   const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
   const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
@@ -2246,8 +2246,7 @@ function renderAIResult(r, rawText = '') {
   const decisionHtml = `<div class="edge-decision-card">
     <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
     <div class="ed-eyebrow">EDGE VERDICT</div>
-    <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
-    <div class="ed-pick ${vc}">${escapeHtml(verdictHeadline)}</div>
+    <div class="ed-verdict ${vc}">${escapeHtml(verdictHeadline)}</div>
     <div class="ed-grid">
       <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(firstDefined(r.edgeScore, value))}</div></div>
       <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">${escapeHtml(confidence)}</div></div>
