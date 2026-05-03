@@ -257,9 +257,42 @@ function parseJsonObject(text) {
   }
 }
 
-function buildStructuredResult(evaluation, aiText) {
+
+function detectPickFromPrompt(prompt, verdict) {
+  const source = String(promptBody(prompt) || '');
+  const normalizedVerdict = String(verdict || '').toUpperCase();
+  if (normalizedVerdict === 'PASS') return 'No clear edge';
+
+  const linePattern = /([A-Z][A-Za-z0-9 .&'\-]{1,40})\s+(ML|MONEYLINE|SPREAD|TOTAL|OVER|UNDER)?\s*([+-]\d{2,4})/gi;
+  const candidates = [];
+  let match;
+  while ((match = linePattern.exec(source)) !== null) {
+    const team = String(match[1] || '').trim();
+    const market = String(match[2] || 'ML').trim().toUpperCase();
+    const odds = Number(match[3]);
+    if (!team || !Number.isFinite(odds)) continue;
+    candidates.push({ team, market, odds, pick: `${team} ${market === 'MONEYLINE' ? 'ML' : market} ${match[3]}`.replace(/\s+/g, ' ').trim() });
+  }
+
+  if (candidates.length) {
+    const plusMoney = candidates.filter(c => c.odds > 0).sort((a, b) => b.odds - a.odds);
+    const selected = plusMoney[0] || candidates[0];
+    return selected.pick;
+  }
+
+  const teams = source.match(/\b([A-Z][A-Za-z0-9.'&\-]{1,20}(?:\s+[A-Z][A-Za-z0-9.'&\-]{1,20})?)\b/g) || [];
+  const likelyTeam = teams.find(name => !/^(EDGE|INSTRUCTIONS|ODDS|LINE|BET|LEAN|PASS)$/i.test(name));
+  if (likelyTeam) return `${likelyTeam} ML`;
+
+  return 'Best available play';
+}
+
+function buildStructuredResult(evaluation, aiText, prompt = '') {
   const parsed = parseJsonObject(aiText) || {};
   const reason = parsed.reason || parsed.reasoning || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
+
+  const parsedPick = parsed.pick || parsed.exactPlay || parsed.recommendedPlay || parsed.team || parsed.play || parsed.side;
+  const pick = String(parsedPick || detectPickFromPrompt(prompt, evaluation.verdict) || 'Best available play').trim();
 
   return {
     verdict: evaluation.verdict,
@@ -272,6 +305,7 @@ function buildStructuredResult(evaluation, aiText) {
     reason,
     topFactors: normalizeTopFactors(parsed.topFactors || parsed.key_factors || parsed.keyFactors, evaluation),
     recommendedAction: evaluation.recommendedAction,
+    pick,
   };
 }
 
@@ -457,7 +491,7 @@ router.post('/', async (req, res) => {
       result = {
         provider: 'edge-scoring',
         model: 'deterministic-fallback',
-        text: JSON.stringify(buildStructuredResult(evaluation, '')),
+        text: JSON.stringify(buildStructuredResult(evaluation, '', prompt)),
       };
     }
 
@@ -481,7 +515,7 @@ router.post('/', async (req, res) => {
       withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
     ]).catch(e => console.error(e.message));
 
-    const structured = buildStructuredResult(evaluation, result.text);
+    const structured = buildStructuredResult(evaluation, result.text, prompt);
     result.text = JSON.stringify(structured);
 
     return ok(res, {

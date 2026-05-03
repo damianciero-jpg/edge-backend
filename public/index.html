@@ -229,7 +229,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .rt-value.lean{color:var(--yellow);}
 .edge-decision-card{background:linear-gradient(180deg,#ffffff 0%,#f8fbfd 100%);border:1px solid var(--border2);border-radius:20px;box-shadow:0 18px 42px rgba(16,32,48,0.12);padding:22px;margin-bottom:16px;}
 .ed-eyebrow{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:3px;margin-bottom:8px;}
-.ed-verdict{font-size:34px;font-weight:900;line-height:1;color:var(--text);margin-bottom:14px;}
+.ed-verdict{font-size:34px;font-weight:900;line-height:1;color:var(--text);margin-bottom:8px;}
+.ed-pick{font-family:var(--mono);font-size:26px;font-weight:900;line-height:1.25;margin-bottom:14px;word-break:break-word;}
+.ed-pick.bet{color:var(--green);}
+.ed-pick.pass{color:var(--red);}
+.ed-pick.lean{color:var(--yellow);}
 .ed-verdict.bet{color:var(--green);}
 .ed-verdict.pass{color:var(--red);}
 .ed-verdict.lean{color:var(--yellow);}
@@ -406,7 +410,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .ws-t{font-size:11px;max-width:88px;}
   .result-topline{grid-template-columns:1fr;gap:8px;}
   .ed-grid{grid-template-columns:1fr;}
-  .ed-verdict{font-size:30px;}
+  .ed-verdict{font-size:28px;}
+  .ed-pick{font-size:20px;}
   .result-actions{grid-template-columns:1fr;}
   .manual-help,.pick-teaser{width:100%;max-width:420px;}
   header{padding:10px 16px;}
@@ -2194,6 +2199,15 @@ function renderAIResult(r, rawText = '') {
   const verdict = (r.verdict || r.recommendation || 'LEAN').toString().toUpperCase();
   const confidence = (r.confidence || 'MEDIUM').toString().toUpperCase();
   const betOn = r.bet_on || r.betOn || r.team || r.pick || '';
+  const sourcePick = r.pick || r.exactPlay || r.recommendedPlay || r.team || r.play || r.side || betOn;
+  const homeOdds = Number(firstDefined(r.home_odds, r.homeOdds, r.home_ml, r.homeMoneyline));
+  const awayOdds = Number(firstDefined(r.away_odds, r.awayOdds, r.away_ml, r.awayMoneyline));
+  const homeTeam = currentGame && currentGame.home_team ? currentGame.home_team : '';
+  const awayTeam = currentGame && currentGame.away_team ? currentGame.away_team : '';
+  const plusSide = Number.isFinite(homeOdds) && homeOdds > 0 ? `${homeTeam} ML ${homeOdds > 0 ? '+' : ''}${homeOdds}` : Number.isFinite(awayOdds) && awayOdds > 0 ? `${awayTeam} ML ${awayOdds > 0 ? '+' : ''}${awayOdds}` : '';
+  const inferredPick = (verdict === 'BET' || verdict === 'LEAN') ? (sourcePick || plusSide || (homeTeam ? `${homeTeam} ML` : '') || (awayTeam ? `${awayTeam} ML` : '') || 'Best available play') : 'No clear edge';
+  const pickText = String(inferredPick || 'Best available play').trim();
+  const verdictHeadline = verdict === 'PASS' ? 'PASS: No clear edge' : `${verdict}: ${pickText}`;
 
   const vc = verdict==='BET'?'bet':verdict==='PASS'?'pass':'lean';
   const ec = v => { const n=parseFloat(v); return n>0?'pos':n<0?'neg':'neu'; };
@@ -2217,7 +2231,7 @@ function renderAIResult(r, rawText = '') {
   const risk = String(r.risk || r.risk_rating || r.riskRating || inferRisk(confidence, r.risk_notes)).toUpperCase();
   const edgeStrength = String(r.edgeStrength || r.edge_strength || inferEdgeStrength(value, verdict)).toUpperCase();
   const action = r.recommendedAction || r.recommended_action || recommendedAction(verdict, confidence, risk);
-  const exactPlay = verdict==='PASS' ? 'No edge detected' : (betOn || 'Best available play');
+  const exactPlay = verdict==='PASS' ? 'No clear edge' : pickText;
   const factorRows = [
     ['Market / line movement', sourceFactors[0] || 'Compare the available line against the projected edge before placing a bet.'],
     ['Team form / matchup', sourceFactors[1] || 'Current form and matchup profile are part of the score.'],
@@ -2233,6 +2247,7 @@ function renderAIResult(r, rawText = '') {
     <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
     <div class="ed-eyebrow">EDGE VERDICT</div>
     <div class="ed-verdict ${vc}">${escapeHtml(verdict)}</div>
+    <div class="ed-pick ${vc}">${escapeHtml(verdictHeadline)}</div>
     <div class="ed-grid">
       <div class="ed-metric"><div class="ed-label">PROPRIETARY EDGE SCORE</div><div class="ed-value">${escapeHtml(firstDefined(r.edgeScore, value))}</div></div>
       <div class="ed-metric"><div class="ed-label">CONFIDENCE</div><div class="ed-value">${escapeHtml(confidence)}</div></div>
@@ -2244,7 +2259,7 @@ function renderAIResult(r, rawText = '') {
   </div>`;
 
   const playHtml = `<div class="locked-play">
-    <div class="rt-label">EXACT PLAY</div>
+    <div class="rt-label">RECOMMENDED PLAY</div>
     <div class="rt-value ${vc} ${lockedPlayClass}">${escapeHtml(exactPlay)}</div>
     ${showOverlay ? `<div class="pw-note" style="text-align:left;margin-top:10px;">Exact team/play is included with Full EDGE Evaluation.</div>` : ''}
   </div>`;
