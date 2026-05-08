@@ -71,19 +71,128 @@ function cleanJsonText(text) {
     .trim();
 }
 
+// ─── SHARP-LINE METHODOLOGY ───────────────────────────────────────────────────
+// Based on Pinnacle-as-baseline (sharp book consensus) + Walters CLV framework.
+// Pinnacle accepts sharp action and posts the most efficient lines in the market.
+// EV is measured against Pinnacle's vig-removed true probability, not a fake +3% bump.
+
+const SHARP_BOOKS = ['pinnacle', 'pinnaclesports'];
+const SQUARE_BOOKS = ['draftkings', 'fanduel', 'betmgm', 'caesars', 'pointsbet', 'williamhill_us'];
+
 function impliedProb(odds) {
-  return odds > 0
-    ? 100 / (odds + 100)
-    : Math.abs(odds) / (Math.abs(odds) + 100);
+  const n = Number(odds);
+  if (!Number.isFinite(n) || n === 0) return 0.5;
+  return n > 0 ? 100 / (n + 100) : Math.abs(n) / (Math.abs(n) + 100);
 }
 
-function computeEdgeScore({ implied, projected, form = 0, matchup = 0, market = 0 }) {
+/**
+ * Remove vig from a two-sided market to get true probability.
+ * Given raw implied probs for both sides, divide by total overround.
+ */
+function vigRemoved(rawA, rawB) {
+  const total = rawA + rawB;
+  if (!total) return rawA;
+  return rawA / total;
+}
+
+/**
+ * Extract Pinnacle's line for a team from bookmaker data embedded in the prompt.
+ * Falls back to the best available sharp-book price, then market average.
+ */
+function extractPinnacleOdds(prompt, team, opponentTeam) {
+  // Try to find Pinnacle specifically in the prompt text
+  const lines = String(prompt || '').split(/\r?\n/);
+  const pinnacleSection = lines.findIndex(l => /pinnacle/i.test(l));
+
+  if (pinnacleSection !== -1 && team) {
+    const nearby = lines.slice(pinnacleSection, pinnacleSection + 5).join(' ');
+    const teamPattern = new RegExp(`${escapeRegExp(team)}\\s+([+-]\\d{2,4})`, 'i');
+    const match = nearby.match(teamPattern);
+    if (match) return Number(match[1]);
+  }
+
+  return null;
+}
+
+/**
+ * Calculate vig (overround) from two-sided market.
+ * A fair market = 100%. Books add vig, so typical is 102–108%.
+ * Lower vig = more liquid/efficient market = more trustworthy price.
+ */
+function calcVig(oddsA, oddsB) {
+  if (oddsA == null || oddsB == null) return null;
+  return (impliedProb(oddsA) + impliedProb(oddsB)) * 100;
+}
+
+/**
+ * Score the juice (vig) level.
+ * Low vig = sharp/liquid market = positive signal.
+ * High vig = square/retail market = penalize.
+ */
+function vigScore(vigPct) {
+  if (vigPct == null) return 0;
+  if (vigPct <= 102) return 8;   // Pinnacle-level sharp market
+  if (vigPct <= 104) return 4;   // Normal sharp book
+  if (vigPct <= 106) return 0;   // Average square book
+  if (vigPct <= 109) return -3;  // High juice = square market
+  return -6;                      // Very high juice = avoid
+}
+
+/**
+ * Score the spread between sharp (Pinnacle) and square (DraftKings/FanDuel) books.
+ * Large spread = books disagree = market uncertainty OR sharp/square divergence.
+ * We reward divergence when Pinnacle is LONGER than square books (sharp side value).
+ * We penalize when Pinnacle is SHORTER (square money pushing price, bad value).
+ */
+function sharpSquareSpreadScore(pinnacleOdds, squareOdds) {
+  if (pinnacleOdds == null || squareOdds == null) return 0;
+  const spread = Number(pinnacleOdds) - Number(squareOdds);
+  // Positive spread = Pinnacle offering more = this side has value vs square market
+  if (spread >= 15) return 8;
+  if (spread >= 8) return 5;
+  if (spread >= 3) return 2;
+  if (spread >= -3) return 0;
+  if (spread >= -8) return -3;
+  return -6; // Square books offering more = sharp fade
+}
+
+/**
+ * Main edge scoring — Pinnacle-anchored methodology.
+ *
+ * Score components:
+ * 1. EV against Pinnacle's vig-removed true probability (primary, 50% weight)
+ * 2. Juice/vig level of the market (15% weight)
+ * 3. Sharp vs square book spread (15% weight)
+ * 4. Line movement / CLV signal (10% weight)
+ * 5. Contextual keyword signals — form, matchup, injury (10% weight)
+ */
+function computeEdgeScore({
+  implied,
+  projected,        // Pinnacle vig-removed true probability (or best available)
+  form = 0,
+  matchup = 0,
+  market = 0,       // vig score
+  sharpSpread = 0,  // sharp/square spread score
+  lineMovement = 0, // CLV approximation score
+}) {
   let score = 0;
 
+  // Primary: EV against sharp-line true probability
+  // (projected - implied) measures how much value exists at the offered price
   score += (projected - implied) * 100 * 0.5;
-  score += form * 0.2;
-  score += matchup * 0.15;
+
+  // Juice quality signal
   score += market * 0.15;
+
+  // Sharp/square divergence
+  score += sharpSpread * 0.15;
+
+  // CLV / line movement direction
+  score += lineMovement * 0.10;
+
+  // Contextual signals (keyword-based from prompt text)
+  score += form * 0.05;
+  score += matchup * 0.05;
 
   return score;
 }
@@ -236,21 +345,179 @@ function pickFromPrompt(prompt, evaluation) {
   return 'Best available play';
 }
 
-function getSignalFactors(prompt, odds) {
+function normalizeOddsValue(value) {
+  const odds = Number(value);
+  if (!Number.isFinite(odds) || odds === 0) return null;
+  if (Math.abs(odds) < 100 || Math.abs(odds) > 2500) return null;
+  return odds;
+}
+
+function pickLabel(team, odds) {
+  return team ? `${team} ML${odds != null ? ` ${formatAmericanOdds(odds)}` : ''}` : 'Best available play';
+}
+
+function passPick() {
+  return 'PASS — no clear edge';
+}
+
+function candidateFromContext(prompt, context, side) {
+  const teams = extractGameTeams(prompt) || {};
+  const odds = context && context.odds;
+  const selectedTeam = String((context && context.selectedTeam) || '').trim();
+  const opponentTeam = String((context && context.opponentTeam) || '').trim();
+
+  if (side === 'away') {
+    return {
+      side: 'away',
+      team: selectedTeam || teams.away || '',
+      opponent: opponentTeam || teams.home || '',
+      market: (context && context.market) || 'h2h',
+      odds: normalizeOddsValue(odds && typeof odds === 'object' ? odds.away : odds),
+    };
+  }
+
+  if (side === 'home') {
+    return {
+      side: 'home',
+      team: selectedTeam || teams.home || '',
+      opponent: opponentTeam || teams.away || '',
+      market: (context && context.market) || 'h2h',
+      odds: normalizeOddsValue(odds && typeof odds === 'object' ? odds.home : odds),
+    };
+  }
+
+  return null;
+}
+
+function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
+  const odds = normalizeOddsValue(candidate && candidate.odds);
+  const oddsDetected = odds != null;
+
+  // Extract opponent odds for vig removal
+  const opponentOdds = normalizeOddsValue(
+    candidate && candidate.opponentOdds != null ? candidate.opponentOdds :
+    extractOpponentOdds(prompt, candidate && candidate.opponent)
+  );
+
+  // Pinnacle baseline: use their vig-removed true probability as the projected probability
+  // This replaces the fake `implied + 0.03` with real sharp-market math
+  const pinnacleOdds = oddsDetected ? extractPinnacleOdds(prompt, candidate && candidate.team, candidate && candidate.opponent) : null;
+  const pinnacleOpponentOdds = opponentOdds != null ? extractPinnacleOdds(prompt, candidate && candidate.opponent, candidate && candidate.team) : null;
+
+  let implied, projected;
+  if (!oddsDetected) {
+    implied = 0.5;
+    projected = 0.5;
+  } else if (pinnacleOdds != null && pinnacleOpponentOdds != null) {
+    // Best case: Pinnacle has both sides — use their vig-removed probability as ground truth
+    const pinnacleRawA = impliedProb(pinnacleOdds);
+    const pinnacleRawB = impliedProb(pinnacleOpponentOdds);
+    projected = clampProbability(vigRemoved(pinnacleRawA, pinnacleRawB));
+    implied = impliedProb(odds); // the price we're being offered
+  } else if (opponentOdds != null) {
+    // Fallback: use best available two-sided market for vig removal
+    const rawA = impliedProb(odds);
+    const rawB = impliedProb(opponentOdds);
+    projected = clampProbability(vigRemoved(rawA, rawB));
+    implied = rawA;
+  } else {
+    // Last resort: single-sided only, no vig removal possible
+    implied = impliedProb(odds);
+    projected = clampProbability(implied + 0.015); // minimal conservative bump
+  }
+
+  const factors = oddsDetected
+    ? getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOpponentOdds)
+    : { form: 0, matchup: 0, market: 0, sharpSpread: 0 };
+
+  const edgeScore = oddsDetected
+    ? computeEdgeScore({ implied, projected, ...factors, lineMovement: lineMovementScore })
+    : 0;
+
+  const verdict = getVerdict(edgeScore);
+  const confidence = getConfidence(edgeScore);
+  const risk = getRisk(confidence, edgeScore);
+  const edgeStrength = getEdgeStrength(edgeScore);
+  const recommendedAction = getRecommendedAction(verdict, confidence);
+  const pick = verdict === 'PASS' ? passPick() : pickLabel(candidate && candidate.team, odds);
+
+  return {
+    odds,
+    oddsDetected,
+    selectedSide: candidate && candidate.side,
+    selectedTeam: candidate && candidate.team,
+    opponentTeam: candidate && candidate.opponent,
+    market: (candidate && candidate.market) || 'h2h',
+    evaluating: pickLabel(candidate && candidate.team, odds),
+    pick,
+    impliedProb: roundNumber(implied),
+    projectedProb: roundNumber(projected),
+    pinnacleUsed: pinnacleOdds != null,
+    vigPct: factors.vigPct ? roundNumber(factors.vigPct, 1) : null,
+    sharpSpread: factors.sharpSpread || 0,
+    lineMovement: lineMovementScore,
+    edgeScore: roundNumber(edgeScore, 2),
+    verdict,
+    confidence,
+    risk,
+    edgeStrength,
+    recommendedAction,
+  };
+}
+
+function getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOpponentOdds) {
   const source = promptBody(prompt);
+
+  // Contextual keyword signals (more meaningful in Research Mode)
   const form = keywordScore(
     source,
-    [/\bhot\b/, /\bstrong form\b/, /\bwon\b/, /\bwinning streak\b/, /\brest advantage\b/],
+    [/\bhot\b/, /\bstrong form\b/, /\bwon\b/, /\bwinning streak\b/, /\brest advantage\b/, /\bback.to.back\b/],
     [/\bcold\b/, /\bslump\b/, /\blost\b/, /\blosing streak\b/, /\bfatigue\b/]
   );
   const matchup = keywordScore(
     source,
-    [/\bmatchup advantage\b/, /\bfavorable matchup\b/, /\bhome advantage\b/, /\bhealthy\b/],
-    [/\bbad matchup\b/, /\bunfavorable matchup\b/, /\binjur(?:y|ies|ed)\b/, /\bquestionable\b/]
+    [/\bmatchup advantage\b/, /\bfavorable matchup\b/, /\bhome advantage\b/, /\bhealthy\b/, /\bpace mismatch\b/],
+    [/\bbad matchup\b/, /\bunfavorable matchup\b/, /\binjur(?:y|ies|ed)\b/, /\bquestionable\b/, /\bdoubtful\b/]
   );
-  const market = odds > 0 ? Math.min(20, Math.max(0, (odds - 100) / 20)) : 0;
 
-  return { form, matchup, market: roundNumber(market, 2) };
+  // Vig quality signal
+  const vigPct = calcVig(odds, opponentOdds);
+  const market = vigScore(vigPct);
+
+  // Sharp/square spread: Pinnacle vs best square book in prompt
+  const squareOdds = extractSquareBookOdds(prompt, null);
+  const sharpSpread = sharpSquareSpreadScore(pinnacleOdds, squareOdds || odds);
+
+  return { form, matchup, market: roundNumber(market, 2), sharpSpread: roundNumber(sharpSpread, 2), vigPct };
+}
+
+function extractOpponentOdds(prompt, opponentTeam) {
+  if (!opponentTeam) return null;
+  const lines = String(prompt || '').split(/\r?\n/);
+  const pattern = new RegExp(`${escapeRegExp(opponentTeam)}\\s+([+-]\\d{2,4})`, 'i');
+  for (const line of lines) {
+    const match = line.match(pattern);
+    if (match) return normalizeOddsValue(Number(match[1]));
+  }
+  return null;
+}
+
+function extractSquareBookOdds(prompt, team) {
+  const lines = String(prompt || '').split(/\r?\n/);
+  let bestSquareOdds = null;
+  for (const book of SQUARE_BOOKS) {
+    const bookLineIdx = lines.findIndex(l => new RegExp(book, 'i').test(l));
+    if (bookLineIdx === -1) continue;
+    const nearby = lines.slice(bookLineIdx, bookLineIdx + 5).join(' ');
+    const oddsMatch = nearby.match(/([+-]\d{3,4})/);
+    if (oddsMatch) {
+      const o = Number(oddsMatch[1]);
+      if (Number.isFinite(o) && Math.abs(o) >= 100) {
+        if (bestSquareOdds === null || o > bestSquareOdds) bestSquareOdds = o;
+      }
+    }
+  }
+  return bestSquareOdds;
 }
 
 function fallbackReason(oddsDetected, score) {
@@ -262,12 +529,36 @@ function fallbackReason(oddsDetected, score) {
   return 'The calculated EDGE score does not show enough value over the implied market probability.';
 }
 
+function sideAlignedReason(evaluation) {
+  const pick = evaluation.evaluating || evaluation.pick || 'the selected pick';
+  if (evaluation.verdict === 'PASS') {
+    return `EDGE evaluated ${pick} and does not show enough value over the implied market probability.`;
+  }
+  if (evaluation.verdict === 'BET') {
+    return `EDGE evaluated ${pick} and the calculated score clears the BET threshold based on the projected probability versus the market price.`;
+  }
+  return `EDGE evaluated ${pick} and found a modest value signal, but it does not clear the strongest betting threshold.`;
+}
+
+function reasonConflictsWithSelectedSide(reason, evaluation) {
+  if (!reason || evaluation.verdict === 'PASS') return false;
+  const opponent = String(evaluation.opponentTeam || '').toLowerCase();
+  if (!opponent || !String(reason).toLowerCase().includes(opponent)) return false;
+  return /\b(bet|lean|recommend|pick|play|edge)\b/i.test(reason);
+}
+
 function fallbackTopFactors(evaluation) {
-  return [
+  const factors = [
     `Market implied probability: ${percent(evaluation.impliedProb)}`,
-    `EDGE projection: ${percent(evaluation.projectedProb)}`,
+    `Sharp-line true probability: ${percent(evaluation.projectedProb)}`,
     `Score threshold result: ${evaluation.verdict}`,
   ];
+  if (evaluation.pinnacleUsed) factors.push('Pinnacle sharp-line baseline used for vig removal');
+  if (evaluation.vigPct) factors.push(`Market vig: ${evaluation.vigPct.toFixed(1)}% (${evaluation.vigPct <= 104 ? 'sharp/liquid' : 'square/retail'})`);
+  if (evaluation.lineMovement && evaluation.lineMovement !== 0) {
+    factors.push(`Line movement: ${evaluation.lineMovement > 0 ? 'STEAM (sharp money agrees)' : 'FADE (sharp money opposing)'}`);
+  }
+  return factors.slice(0, 4);
 }
 
 function normalizeTopFactors(value, evaluation) {
@@ -276,56 +567,108 @@ function normalizeTopFactors(value, evaluation) {
   return fallbackTopFactors(evaluation);
 }
 
-function buildEdgeEvaluation(prompt) {
+function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
+  const selectedSide = String(context.selectedSide || '').toLowerCase();
+
+  // Pass opponent odds so we can do two-sided vig removal
+  const contextOdds = context.odds;
+  const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
+
+  if (context.selectedTeam) {
+    const side = selectedSide === 'away' || selectedSide === 'home' ? selectedSide : 'selected';
+    return buildCandidateEvaluation(prompt, {
+      side,
+      team: String(context.selectedTeam || '').trim(),
+      opponent: String(context.opponentTeam || '').trim(),
+      market: context.market || 'h2h',
+      odds: oddsObj ? oddsObj[selectedSide] || contextOdds : contextOdds,
+      opponentOdds: oddsObj
+        ? (selectedSide === 'away' ? oddsObj.home : oddsObj.away)
+        : null,
+    }, lineMovementScore);
+  }
+
+  if (selectedSide === 'best') {
+    const away = candidateFromContext(prompt, context, 'away');
+    const home = candidateFromContext(prompt, context, 'home');
+
+    // Wire opponent odds into each candidate for vig removal
+    if (away && home) {
+      away.opponentOdds = home.odds;
+      home.opponentOdds = away.odds;
+    }
+
+    const candidates = [away, home]
+      .filter(candidate => candidate && candidate.team)
+      .map(candidate => buildCandidateEvaluation(prompt, candidate, lineMovementScore));
+
+    if (candidates.length) {
+      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+    }
+  }
+
   const odds = extractAmericanOdds(prompt);
-  const oddsDetected = odds != null;
-  const implied = oddsDetected ? impliedProb(odds) : 0.5;
-  const projected = oddsDetected ? clampProbability(implied + 0.03) : 0.5;
-  const factors = oddsDetected ? getSignalFactors(prompt, odds) : { form: 0, matchup: 0, market: 0 };
-  const edgeScore = oddsDetected ? computeEdgeScore({ implied, projected, ...factors }) : 0;
-  const verdict = getVerdict(edgeScore);
-  const confidence = getConfidence(edgeScore);
-  const risk = getRisk(confidence, edgeScore);
-  const edgeStrength = getEdgeStrength(edgeScore);
-  const recommendedAction = getRecommendedAction(verdict, confidence);
-
-  const evaluation = {
+  const fallback = buildCandidateEvaluation(prompt, {
+    side: selectedSide || 'best',
+    team: '',
+    opponent: '',
+    market: context.market || 'h2h',
     odds,
-    oddsDetected,
-    impliedProb: roundNumber(implied),
-    projectedProb: roundNumber(projected),
-    edgeScore: roundNumber(edgeScore, 2),
-    verdict,
-    confidence,
-    risk,
-    edgeStrength,
-    recommendedAction,
-  };
-
-  evaluation.pick = pickFromPrompt(prompt, evaluation);
-  return evaluation;
+  });
+  fallback.pick = fallback.verdict === 'PASS' ? passPick() : pickFromPrompt(prompt, fallback);
+  fallback.evaluating = fallback.pick;
+  return fallback;
 }
 
 function buildScoredPrompt(prompt, evaluation) {
+  const methodologyNotes = [
+    evaluation.pinnacleUsed
+      ? 'Pinnacle sharp-line baseline used for vig-removed true probability.'
+      : 'Vig-removed probability from best available two-sided market.',
+    evaluation.vigPct
+      ? `Market vig: ${evaluation.vigPct.toFixed(1)}% (${evaluation.vigPct <= 104 ? 'sharp/liquid market' : 'square/retail market'}).`
+      : null,
+    evaluation.sharpSpread && evaluation.sharpSpread > 0
+      ? `Sharp/square spread: +${evaluation.sharpSpread} (Pinnacle offering more value than square books — bullish signal).`
+      : evaluation.sharpSpread && evaluation.sharpSpread < 0
+        ? `Sharp/square spread: ${evaluation.sharpSpread} (square books offering more — sharp fade signal).`
+        : null,
+    evaluation.lineMovement && evaluation.lineMovement > 0
+      ? `Line movement: STEAM — line moved in our favor since open (sharp money agrees).`
+      : evaluation.lineMovement && evaluation.lineMovement < 0
+        ? `Line movement: FADE — line moved against us since open (sharp money opposing).`
+        : null,
+  ].filter(Boolean).join(' ');
+
   return [
     'Game / bet prompt:',
     prompt,
     '',
-    'Algorithm values:',
-    `- Implied Probability: ${evaluation.impliedProb}`,
-    `- Projected Probability: ${evaluation.projectedProb}`,
+    'EDGE Algorithm Values (Pinnacle-anchored sharp-line methodology):',
+    `- Implied Probability (offered price): ${percent(evaluation.impliedProb)}`,
+    `- True Market Probability (vig-removed): ${percent(evaluation.projectedProb)}`,
     `- Edge Score: ${evaluation.edgeScore}`,
     `- Verdict: ${evaluation.verdict}`,
+    `- Selected Pick: ${evaluation.evaluating || evaluation.pick}`,
+    `- Selected Team: ${evaluation.selectedTeam || 'Best available edge'}`,
+    `- Opponent: ${evaluation.opponentTeam || 'Compare both sides'}`,
+    `- Market: ${evaluation.market || 'h2h'}`,
     `- Confidence: ${evaluation.confidence}`,
     `- Risk: ${evaluation.risk}`,
     `- Edge Strength: ${evaluation.edgeStrength}`,
+    methodologyNotes ? `- Methodology: ${methodologyNotes}` : null,
     '',
     'Instruction:',
-    'Explain the reasoning for this pick based on the calculated EDGE score. Do not change the verdict. Return strict JSON only.',
+    'You are an expert sports betting analyst using the Pinnacle sharp-line methodology.',
+    'Explain the reasoning for this pick using the algorithm values above.',
+    'Reference the true probability vs implied probability gap as the core value signal.',
+    'If line movement data is available, reference whether sharp money agrees or disagrees.',
+    'Do not change the verdict. Return strict JSON only.',
+    'Do not recommend a different side than the selected pick unless verdict is PASS.',
     '',
     'Return this JSON shape only:',
-    '{"reason":"2-3 sentence explanation","topFactors":["factor 1","factor 2","factor 3"]}',
-  ].join('\n');
+    '{"reason":"2-3 sentence explanation referencing the value gap and key signals","topFactors":["factor 1","factor 2","factor 3"]}',
+  ].filter(Boolean).join('\n');
 }
 
 function parseJsonObject(text) {
@@ -338,11 +681,19 @@ function parseJsonObject(text) {
 
 function buildStructuredResult(evaluation, aiText) {
   const parsed = parseJsonObject(aiText) || {};
-  const reason = parsed.reason || parsed.reasoning || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
+  const parsedReason = parsed.reason || parsed.reasoning;
+  const reason = reasonConflictsWithSelectedSide(parsedReason, evaluation)
+    ? sideAlignedReason(evaluation)
+    : parsedReason || sideAlignedReason(evaluation) || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
 
   return {
     verdict: evaluation.verdict,
-    pick: parsed.pick || parsed.exactPlay || parsed.recommendedPlay || parsed.bet_on || parsed.betOn || parsed.team || parsed.play || parsed.side || evaluation.pick,
+    pick: evaluation.pick,
+    evaluating: evaluation.evaluating || evaluation.pick,
+    selectedSide: evaluation.selectedSide,
+    selectedTeam: evaluation.selectedTeam,
+    opponentTeam: evaluation.opponentTeam,
+    market: evaluation.market,
     confidence: evaluation.confidence,
     risk: evaluation.risk,
     edgeStrength: evaluation.edgeStrength,
@@ -439,7 +790,16 @@ function analysisErrorMessage(err) {
 
 router.post('/', async (req, res) => {
   const startedAt = Date.now();
-  const { prompt, useSearch = false, secondLayer = false } = req.body || {};
+  const {
+    prompt,
+    useSearch = false,
+    secondLayer = false,
+    selectedSide = 'best',
+    selectedTeam = '',
+    opponentTeam = '',
+    market = 'h2h',
+    odds,
+  } = req.body || {};
   const mode = useSearch ? 'deep' : 'quick';
 
   const session = verifySession(req.cookies && req.cookies.edge_session);
@@ -522,7 +882,36 @@ router.post('/', async (req, res) => {
     let result;
     let fallbackUsed = false;
     let reviewed = false;
-    const evaluation = buildEdgeEvaluation(prompt);
+
+    // Fetch line movement signal from Redis (CLV approximation — Walters methodology)
+    let lineMovementScore = 0;
+    if (selectedTeam) {
+      try {
+        const { getLineMovementSignal } = require('../lib/line-tracker');
+        // Game ID: derive from team names + date (stable across requests for same game)
+        const gameId = [selectedTeam, opponentTeam].sort().join('_').toLowerCase().replace(/\s+/g, '_')
+          + '_' + new Date().toISOString().slice(0, 10);
+        const oddsValue = odds && typeof odds === 'object'
+          ? (selectedSide === 'away' ? odds.away : odds.home)
+          : odds;
+        const lm = await withTimeout(
+          getLineMovementSignal(gameId, selectedTeam, oddsValue),
+          2000,
+          'line movement'
+        );
+        lineMovementScore = lm.score || 0;
+      } catch {
+        lineMovementScore = 0; // non-critical, never block analysis
+      }
+    }
+
+    const evaluation = buildEdgeEvaluation(prompt, {
+      selectedSide,
+      selectedTeam,
+      opponentTeam,
+      market,
+      odds,
+    }, lineMovementScore);
     const scoredPrompt = buildScoredPrompt(prompt, evaluation);
 
     if (evaluation.oddsDetected) {

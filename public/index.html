@@ -248,6 +248,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .confidence-fill.low{background:var(--red);}
 .locked-play{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:14px;}
 .locked-play .blurred{display:inline-block;min-width:160px;}
+.side-selector{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+.side-btn{min-height:48px;border:1px solid var(--border2);background:var(--surface);border-radius:14px;color:var(--text);font-family:var(--mono);font-size:9px;font-weight:900;letter-spacing:1px;cursor:pointer;box-shadow:0 8px 18px rgba(16,32,48,0.05);}
+.side-btn.active{border-color:var(--accent);background:rgba(0,122,255,0.08);color:var(--accent);}
+.ed-evaluating{font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1px;color:var(--muted);margin-bottom:12px;}
+.ed-evaluating strong{color:var(--text);}
 .result-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
 .result-action{min-height:48px;border-radius:14px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;cursor:pointer;box-shadow:0 8px 18px rgba(16,32,48,0.06);transition:transform 0.2s,box-shadow 0.2s,border-color 0.2s;}
 .result-action:hover{transform:translateY(-1px);border-color:var(--accent);box-shadow:0 12px 24px rgba(0,122,255,0.16);}
@@ -412,6 +417,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   .ed-grid{grid-template-columns:1fr;}
   .ed-verdict{font-size:30px;}
   .ed-pick{font-size:21px;}
+  .side-selector{grid-template-columns:1fr;}
   .result-actions{grid-template-columns:1fr;}
   .manual-help,.pick-teaser{width:100%;max-width:420px;}
   header{padding:10px 16px;}
@@ -902,9 +908,6 @@ button,
   <button class="nav-tab" onclick="showTab('account')" id="tab-account">ACCOUNT</button>
 </div>
 
-<!-- hidden odds key — updated via Account tab -->
-<input type="hidden" id="oddsKey" value="e37bbddd4d0947ae8c39052cf8d75b61">
-
 <!-- HOME TAB -->
 <div id="view-home" style="height:calc(100vh - 102px);overflow-y:auto;">
   <div class="welcome home-page">
@@ -1217,6 +1220,7 @@ let currentGame = null;
 let currentGameIndex = null;
 let currentSport = "americanfootball_nfl";
 let currentMarket = "h2h";
+let selectedAnalysisSide = "best";
 let selectedPlan = "sub";
 let bets = JSON.parse(localStorage.getItem('edge_bets') || '[]');
 let lastTrackerGameValue = '';
@@ -1417,13 +1421,22 @@ function updateCreditUI() {
   if (acctT) acctT.textContent = 'FREE CREDITS REMAINING';
 }
 
-function useCredit() {
+async function useCredit() {
   if (hasPremiumAccess()) return true;
   if (credits <= 0) { showPaywall(); return false; }
-  credits--;
-  saveCredits();
-  updateCreditUI();
-  return true;
+  try {
+    const res = await fetch('/api/use-credit', { method: 'POST' });
+    if (res.status === 402) { showPaywall(); return false; }
+    if (!res.ok) { showToast('Could not verify credits', 'error'); return false; }
+    const data = await res.json();
+    credits = data.credits ?? Math.max(0, credits - 1);
+    saveCredits();
+    updateCreditUI();
+    return true;
+  } catch {
+    showToast('Network error checking credits', 'error');
+    return false;
+  }
 }
 
 function showPaywall() {
@@ -1447,74 +1460,7 @@ function updatePickTeaserLock() {
 function revealTodayPick() {
   return revealTodaysPick();
 }
-function revealTodaysPickLegacy() {
-  const isOwner =
-    typeof currentEmail !== 'undefined' &&
-    currentEmail &&
-    currentEmail.toLowerCase() === 'damianciero@gmail.com';
-
-  if (!isSubscriber && !isOwner) {
-    showPaywall();
-    return;
-  }
-
-  const existing = document.getElementById('todaysPickResult');
-  if (existing) {
-    existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-
-  const pickHtml = `
-    <div id="todaysPickResult" class="sec ai-result" style="margin-top:18px;">
-      <div class="sec-hdr"> PICK OF THE DAY</div>
-      <div class="sec-body">
-        <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px;">
-          Premium Pick Unlocked
-        </div>
-
-        <div style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:12px;">
-          EDGE has unlocked your premium pick area. Use this section to display your daily EDGE-reviewed pick once your live odds feed is connected.
-        </div>
-
-        <div class="verdict lean">
-          <div class="v-icon">⚡</div>
-          <div>
-            <div class="v-sub">EDGE VERDICT</div>
-            <div class="v-txt">READY FOR DAILY PICK</div>
-          </div>
-        </div>
-
-        <div class="ev-row">
-          <div class="ev-card">
-            <div class="ev-label">CONFIDENCE</div>
-            <div class="ev-val neu">HIGH</div>
-          </div>
-          <div class="ev-card">
-            <div class="ev-label">RISK</div>
-            <div class="ev-val wrn">MEDIUM</div>
-          </div>
-          <div class="ev-card">
-            <div class="ev-label">EDGE</div>
-            <div class="ev-val pos">STRONG</div>
-          </div>
-          <div class="ev-card">
-            <div class="ev-label">ACCESS</div>
-            <div class="ev-val pos">UNLOCKED</div>
-          </div>
-        </div>
-
-        <button class="analyze-btn" onclick="showTab('odds')">
-          Browse Live Games
-        </button>
-      </div>
-    </div>
-  `;
-
-  const welcome = document.querySelector('.welcome') || document.getElementById('oddsMain') || document.body;
-  welcome.insertAdjacentHTML('beforeend', pickHtml);
-
-  showToast('Pick of the Day unlocked.', 'success');
-}
+// revealTodaysPickLegacy removed — use revealTodaysPick() which calls /api/pick-of-the-day
 
 function renderTodaysPick(pick) {
   const existing = document.getElementById('todaysPickResult');
@@ -1648,7 +1594,6 @@ function showToast(msg, type = 'info', duration = 3500) {
 }
 
 // ─── ODDS API ─────────────────────────────────────────────────────────────────
-function getKey() { return document.getElementById('oddsKey').value.trim() || ODDS_KEY_DEFAULT; }
 
 function formatGameTime(iso) {
   const d = new Date(iso);
@@ -1677,9 +1622,8 @@ async function fetchGames() {
   list.innerHTML = '<div class="sb-empty">FETCHING ODDS...</div>';
   countEl.textContent = '—';
   try {
-    const url = `https://api.the-odds-api.com/v4/sports/${currentSport}/odds/?apiKey=${getKey()}&regions=us&markets=h2h,spreads,totals&oddsFormat=american&dateFormat=iso`;
-    const res = await fetch(url);
-    if (!res.ok) { const e = await res.json(); list.innerHTML = `<div class="sb-empty">ERROR<br>${e.message||res.status}</div>`; return; }
+    const res = await fetch(`/api/odds?sport=${encodeURIComponent(currentSport)}`);
+    if (!res.ok) { const e = await res.json(); list.innerHTML = `<div class="sb-empty">ERROR<br>${e.message||e.error||res.status}</div>`; return; }
     allGames = await res.json();
     if (!allGames.length) {
       currentGame = null;
@@ -1776,6 +1720,7 @@ function selectGame(i, el) {
   el.classList.add('active');
   currentGameIndex = i;
   currentGame = allGames[i];
+  selectedAnalysisSide = 'best';
   renderOddsDetail(currentGame);
   prefillTrackerFromCurrentGame();
   syncSelectedGameToMarkets();
@@ -1839,6 +1784,12 @@ function renderOddsDetail(game) {
         <div class="odds-card oc-h"><div class="oc-label">HOME — ${game.home_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.home_team}</div><div class="oc-val">${fmt(hBest)}</div><div class="oc-sub">${hImp?hImp+'% IMPLIED':''}</div></div>
         <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${bookmakers.length} BOOKS COMPARED</div></div>
       </div>
+      <div class="section-lbl">CHOOSE SIDE TO EVALUATE</div>
+      <div class="side-selector">
+        <button class="side-btn ${selectedAnalysisSide==='away'?'active':''}" type="button" data-side="away" onclick="selectAnalysisSide('away')">Analyze Away Team</button>
+        <button class="side-btn ${selectedAnalysisSide==='home'?'active':''}" type="button" data-side="home" onclick="selectAnalysisSide('home')">Analyze Home Team</button>
+        <button class="side-btn ${selectedAnalysisSide==='best'?'active':''}" type="button" data-side="best" onclick="selectAnalysisSide('best')">Analyze Best Available Edge</button>
+      </div>
       ${oneBookMessage}
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
@@ -1849,6 +1800,13 @@ function renderOddsDetail(game) {
 }
 
 // ─── MARKETS DETAIL ───────────────────────────────────────────────────────────
+function selectAnalysisSide(side) {
+  selectedAnalysisSide = ['away', 'home', 'best'].includes(side) ? side : 'best';
+  document.querySelectorAll('.side-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.side === selectedAnalysisSide);
+  });
+}
+
 function selectGameMarkets(i, el) {
   document.querySelectorAll('#marketsGamesList .game-item').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
@@ -1908,6 +1866,38 @@ function renderMarketTable(game, mkt) {
 }
 
 // ─── EDGE EVALUATION ─────────────────────────────────────────────────────────
+function getAnalysisSelection(game, hBest, aBest) {
+  const side = selectedAnalysisSide || 'best';
+  if (side === 'away') {
+    return {
+      selectedSide: 'away',
+      selectedTeam: game.away_team,
+      opponentTeam: game.home_team,
+      market: 'h2h',
+      odds: aBest,
+      label: `${game.away_team} ML ${fmt(aBest)}`,
+    };
+  }
+  if (side === 'home') {
+    return {
+      selectedSide: 'home',
+      selectedTeam: game.home_team,
+      opponentTeam: game.away_team,
+      market: 'h2h',
+      odds: hBest,
+      label: `${game.home_team} ML ${fmt(hBest)}`,
+    };
+  }
+  return {
+    selectedSide: 'best',
+    selectedTeam: '',
+    opponentTeam: '',
+    market: 'h2h',
+    odds: { away: aBest, home: hBest },
+    label: 'Best Available Edge',
+  };
+}
+
 async function runAnalysis(useSearch) {
   if (!currentGame) return;
   if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
@@ -1944,12 +1934,18 @@ async function runAnalysis(useSearch) {
 
   const hBest = getBest(game, game.home_team);
   const aBest = getBest(game, game.away_team);
+  const selection = getAnalysisSelection(game, hBest, aBest);
 
   const prompt = `You are an expert sports betting analyst. Analyze this upcoming game for expected value.
 
 GAME: ${game.away_team} @ ${game.home_team}
 DATE: ${new Date(game.commence_time).toDateString()}
 SPORT: ${game.sport_title}
+SELECTED PICK: ${selection.label}
+SELECTED SIDE: ${selection.selectedSide}
+SELECTED TEAM: ${selection.selectedTeam || 'Best available edge'}
+OPPONENT: ${selection.opponentTeam || 'Compare both sides'}
+MARKET: Moneyline
 
 LIVE ODDS (American):
 ${oddsCtx}
@@ -1963,6 +1959,7 @@ INSTRUCTIONS:
 2. Estimate the TRUE win probability for each team based on your research.
 3. Calculate EV: EV = (true_prob × decimal_odds) - 1
 4. Give a clear BET/PASS/LEAN recommendation.
+5. Do not recommend a different side than the selected pick unless verdict is PASS and you explain that the opposite side may be stronger.
 
 Respond ONLY in this exact JSON format (no markdown, no backticks):
 {
@@ -1990,7 +1987,16 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, userId: getUserId(), useSearch }),
+      body: JSON.stringify({
+        prompt,
+        userId: getUserId(),
+        useSearch,
+        selectedSide: selection.selectedSide,
+        selectedTeam: selection.selectedTeam,
+        opponentTeam: selection.opponentTeam,
+        market: selection.market,
+        odds: selection.odds,
+      }),
       signal: controller.signal,
     });
     clearTimeout(clientTimeout);
@@ -2299,6 +2305,7 @@ function renderAIResult(r, rawText = '') {
   const exactPlay = resolveRecommendedPlay(r, verdict, false);
   const recommendedPlay = resolveRecommendedPlay(r, verdict, true);
   const verdictPick = verdict === 'PASS' ? 'No clear edge' : exactPlay;
+  const evaluatingPlay = r.evaluating || r.evaluatingPick || r.selectedPick || r.pick || recommendedPlay;
   const factorRows = [
     ['Market / line movement', sourceFactors[0] || 'Compare the available line against the projected edge before placing a bet.'],
     ['Team form / matchup', sourceFactors[1] || 'Current form and matchup profile are part of the score.'],
@@ -2312,7 +2319,8 @@ function renderAIResult(r, rawText = '') {
 
   const decisionHtml = `<div class="edge-decision-card">
     <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
-    <div class="ed-eyebrow">EDGE VERDICT</div>
+    <div class="ed-evaluating">Evaluating: <strong>${escapeHtml(evaluatingPlay)}</strong></div>
+    <div class="ed-eyebrow">EDGE VERDICT:</div>
     <div class="ed-verdict ${vc}">${escapeHtml(verdict)}:</div>
     <div class="ed-pick ${vc}">${escapeHtml(verdictPick.toUpperCase())}</div>
     <div class="ed-grid">
@@ -2465,16 +2473,13 @@ if ('serviceWorker' in navigator) {
 }
 
 // ─── KEYS ─────────────────────────────────────────────────────────────────────
-function saveKeys() {
-  const oddsKey = document.getElementById('acct-odds-key').value.trim();
-  if (oddsKey) { document.getElementById('oddsKey').value = oddsKey; fetchGames(); }
-  showToast('API keys saved', 'success');
-}
+// Odds API key is managed server-side only. No client key storage.
 
 window.showTab = showTab;
 window.selectSport = selectSport;
 window.fetchGames = fetchGames;
 window.runAnalysis = runAnalysis;
+window.selectAnalysisSide = selectAnalysisSide;
 window.showPaywall = showPaywall;
 window.closePaywall = closePaywall;
 window.goToStripe = goToStripe;
