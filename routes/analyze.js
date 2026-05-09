@@ -297,7 +297,7 @@ function computeEdgeScore({
 // LEAN instead of defaulting to PASS every time.
 function getVerdict(score) {
   if (score > 5) return 'BET';
-  if (score > 1) return 'LEAN';
+  if (score > 0) return 'LEAN';
   return 'PASS';
 }
 
@@ -308,7 +308,7 @@ function getVerdict(score) {
 function getConfidence(score) {
   if (score > 7) return 'HIGH';
   if (score > 3) return 'MEDIUM';
-  if (score > 1) return 'LOW';
+  if (score > 0) return 'LOW';
   return 'VERY LOW';
 }
 
