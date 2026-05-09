@@ -15,6 +15,118 @@ const { OWNER_EMAILS } = require('../lib/owners');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// ─── LIVE ODDS AUTO-FETCH ─────────────────────────────────────────────────────
+// Fetches real odds from The Odds API for both teams in a game.
+// Matches the game to the prompt using fuzzy team name matching.
+// Returns { homeTeam, awayTeam, homeOdds, awayOdds, bookmakers } or null.
+
+const NBA_SPORT_KEY = 'basketball_nba';
+const NFL_SPORT_KEY = 'americanfootball_nfl';
+const MLB_SPORT_KEY = 'baseball_mlb';
+const NHL_SPORT_KEY = 'icehockey_nhl';
+
+function detectSportKey(prompt) {
+  const src = String(prompt || '').toLowerCase();
+  if (/\bnba\b|lakers|celtics|warriors|nuggets|bucks|heat|76ers|knicks|nets|bulls|cavs|cavaliers|pistons|thunder|timberwolves|spurs/.test(src)) return NBA_SPORT_KEY;
+  if (/\bnfl\b|patriots|cowboys|eagles|chiefs|packers|bears|lions|ravens|browns|steelers/.test(src)) return NFL_SPORT_KEY;
+  if (/\bmlb\b|yankees|dodgers|red sox|cubs|mets|braves|astros|giants|cardinals/.test(src)) return MLB_SPORT_KEY;
+  if (/\bnhl\b|rangers|bruins|maple leafs|canadiens|penguins|lightning|avalanche|oilers/.test(src)) return NHL_SPORT_KEY;
+  return NBA_SPORT_KEY; // default
+}
+
+function teamNameMatch(promptText, teamName) {
+  const src = String(promptText || '').toLowerCase();
+  const name = String(teamName || '').toLowerCase();
+  // Match full name or last word (city vs nickname)
+  const parts = name.split(' ');
+  return src.includes(name) || parts.some(p => p.length > 3 && src.includes(p));
+}
+
+async function fetchLiveGameOdds(prompt) {
+  try {
+    const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
+    if (!apiKey) return null;
+
+    const sportKey = detectSportKey(prompt);
+    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h&oddsFormat=american`;
+    const res = await withTimeout(fetch(url), 8000, 'odds api fetch');
+    if (!res.ok) return null;
+
+    const games = await res.json();
+    if (!Array.isArray(games)) return null;
+
+    // Find the game that matches the prompt
+    const matchedGame = games.find(game =>
+      teamNameMatch(prompt, game.home_team) || teamNameMatch(prompt, game.away_team)
+    );
+    if (!matchedGame) return null;
+
+    // Aggregate odds across all bookmakers — use best available price for each team
+    const homeTeam = matchedGame.home_team;
+    const awayTeam = matchedGame.away_team;
+
+    let bestHomeOdds = null;
+    let bestAwayOdds = null;
+    let lowvigHomeOdds = null;
+    let lowvigAwayOdds = null;
+
+    const bookmakerLines = [];
+
+    for (const bk of (matchedGame.bookmakers || [])) {
+      const market = (bk.markets || []).find(m => m.key === 'h2h');
+      if (!market) continue;
+
+      const homeOutcome = market.outcomes.find(o => o.name === homeTeam);
+      const awayOutcome = market.outcomes.find(o => o.name === awayTeam);
+
+      if (!homeOutcome || !awayOutcome) continue;
+
+      bookmakerLines.push({
+        book: bk.title,
+        homeOdds: homeOutcome.price,
+        awayOdds: awayOutcome.price,
+      });
+
+      // LowVig = sharpest available (closest to Pinnacle)
+      if (bk.key === 'lowvig' || bk.key === 'pinnacle') {
+        lowvigHomeOdds = homeOutcome.price;
+        lowvigAwayOdds = awayOutcome.price;
+      }
+
+      // Track best (highest) odds for each side across all books
+      if (bestHomeOdds === null || homeOutcome.price > bestHomeOdds) bestHomeOdds = homeOutcome.price;
+      if (bestAwayOdds === null || awayOutcome.price > bestAwayOdds) bestAwayOdds = awayOutcome.price;
+    }
+
+    if (bestHomeOdds === null || bestAwayOdds === null) return null;
+
+    // Use LowVig as sharp baseline if available, else best available
+    const sharpHomeOdds = lowvigHomeOdds || bestHomeOdds;
+    const sharpAwayOdds = lowvigAwayOdds || bestAwayOdds;
+
+    // Build odds text block for the prompt
+    const oddsBlock = [
+      `GAME: ${awayTeam} @ ${homeTeam}`,
+      `Sharp baseline (LowVig/best): ${homeTeam} ${sharpHomeOdds > 0 ? '+' : ''}${sharpHomeOdds} | ${awayTeam} ${sharpAwayOdds > 0 ? '+' : ''}${sharpAwayOdds}`,
+      ...bookmakerLines.map(b => `${b.book}: ${homeTeam} ${b.homeOdds > 0 ? '+' : ''}${b.homeOdds} | ${awayTeam} ${b.awayOdds > 0 ? '+' : ''}${b.awayOdds}`),
+    ].join('\n');
+
+    return {
+      homeTeam,
+      awayTeam,
+      homeOdds: sharpHomeOdds,
+      awayOdds: sharpAwayOdds,
+      bestHomeOdds,
+      bestAwayOdds,
+      oddsBlock,
+      bookmakerLines,
+    };
+  } catch (err) {
+    console.warn('fetchLiveGameOdds failed:', err.message);
+    return null;
+  }
+}
+
 const MODELS = {
   quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5-20251001',
   deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-6',
@@ -866,17 +978,49 @@ router.post('/', async (req, res) => {
     let fallbackUsed = false;
     let reviewed = false;
 
+    // ─── AUTO-FETCH LIVE ODDS ─────────────────────────────────────────────────
+    // Always fetch live odds from The Odds API so we have both sides for
+    // proper vig removal and best-side auto-selection, regardless of what
+    // the frontend sends.
+    let liveOdds = null;
+    try {
+      liveOdds = await withTimeout(fetchLiveGameOdds(prompt), 9000, 'live odds');
+    } catch {
+      liveOdds = null;
+    }
+
+    // If live odds found, override frontend values with real data
+    let resolvedPrompt = prompt;
+    let resolvedSelectedSide = 'best';
+    let resolvedSelectedTeam = '';
+    let resolvedOpponentTeam = '';
+    let resolvedOdds = odds;
+    let resolvedMarket = market || 'h2h';
+
+    if (liveOdds) {
+      // Inject the full odds block into the prompt so the scoring logic
+      // can parse Pinnacle/LowVig lines and opponent odds
+      resolvedPrompt = `${prompt}\n\nLIVE ODDS DATA:\n${liveOdds.oddsBlock}`;
+      resolvedSelectedSide = 'best';
+      resolvedSelectedTeam = '';
+      resolvedOpponentTeam = '';
+      resolvedOdds = { home: liveOdds.homeOdds, away: liveOdds.awayOdds };
+      resolvedMarket = 'h2h';
+    }
+
     let lineMovementScore = 0;
-    if (selectedTeam) {
+    const lineTeam = resolvedSelectedTeam || (liveOdds && liveOdds.homeTeam) || selectedTeam;
+    const lineOpponent = resolvedOpponentTeam || (liveOdds && liveOdds.awayTeam) || opponentTeam;
+    if (lineTeam) {
       try {
         const { getLineMovementSignal } = require('../lib/line-tracker');
-        const gameId = [selectedTeam, opponentTeam].sort().join('_').toLowerCase().replace(/\s+/g, '_')
+        const gameId = [lineTeam, lineOpponent].sort().join('_').toLowerCase().replace(/\s+/g, '_')
           + '_' + new Date().toISOString().slice(0, 10);
-        const oddsValue = odds && typeof odds === 'object'
-          ? (selectedSide === 'away' ? odds.away : odds.home)
-          : odds;
+        const oddsValue = resolvedOdds && typeof resolvedOdds === 'object'
+          ? resolvedOdds.home
+          : resolvedOdds;
         const lm = await withTimeout(
-          getLineMovementSignal(gameId, selectedTeam, oddsValue),
+          getLineMovementSignal(gameId, lineTeam, oddsValue),
           2000,
           'line movement'
         );
@@ -886,14 +1030,14 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const evaluation = buildEdgeEvaluation(prompt, {
-      selectedSide,
-      selectedTeam,
-      opponentTeam,
-      market,
-      odds,
+    const evaluation = buildEdgeEvaluation(resolvedPrompt, {
+      selectedSide: resolvedSelectedSide,
+      selectedTeam: resolvedSelectedTeam,
+      opponentTeam: resolvedOpponentTeam,
+      market: resolvedMarket,
+      odds: resolvedOdds,
     }, lineMovementScore);
-    const scoredPrompt = buildScoredPrompt(prompt, evaluation);
+    const scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
 
     if (evaluation.oddsDetected) {
       try {
