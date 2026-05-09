@@ -1037,6 +1037,22 @@ router.post('/', async (req, res) => {
       market: resolvedMarket,
       odds: resolvedOdds,
     }, lineMovementScore);
+    // ─── DEBUG LOG ────────────────────────────────────────────────────────────
+    console.log('EDGE EVAL:', JSON.stringify({
+      liveOddsFound: !!liveOdds,
+      homeTeam: liveOdds && liveOdds.homeTeam,
+      awayTeam: liveOdds && liveOdds.awayTeam,
+      homeOdds: resolvedOdds && resolvedOdds.home,
+      awayOdds: resolvedOdds && resolvedOdds.away,
+      oddsDetected: evaluation.oddsDetected,
+      implied: evaluation.impliedProb,
+      projected: evaluation.projectedProb,
+      score: evaluation.edgeScore,
+      verdict: evaluation.verdict,
+      confidence: evaluation.confidence,
+      pick: evaluation.pick,
+    }));
+
     const scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
 
     if (evaluation.oddsDetected) {
