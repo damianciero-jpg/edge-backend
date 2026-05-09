@@ -667,15 +667,48 @@ function normalizeTopFactors(value, evaluation) {
 function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   const selectedSide = String(context.selectedSide || '').toLowerCase();
   const teams = extractGameTeams(prompt);
-
   const contextOdds = context.odds;
   const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
 
+  // Always evaluate both sides when selectedSide is 'best', then return the higher-scoring pick.
+  // This check must come before the selectedTeam check — when live odds are fetched the route
+  // sets selectedTeam=homeTeam but still wants a dual comparison.
+  if (selectedSide === 'best') {
+    const homeTeam = String(context.selectedTeam || (teams && teams.home) || '').trim();
+    const awayTeam = String(context.opponentTeam || (teams && teams.away) || '').trim();
+
+    const candidates = [
+      {
+        side: 'home',
+        team: homeTeam,
+        opponent: awayTeam,
+        market: context.market || 'h2h',
+        odds: oddsObj ? oddsObj.home : null,
+        opponentOdds: oddsObj ? oddsObj.away : null,
+      },
+      {
+        side: 'away',
+        team: awayTeam,
+        opponent: homeTeam,
+        market: context.market || 'h2h',
+        odds: oddsObj ? oddsObj.away : null,
+        opponentOdds: oddsObj ? oddsObj.home : null,
+      },
+    ]
+      .filter(c => c.team && c.odds != null)
+      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
+
+    if (candidates.length) {
+      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+    }
+  }
+
+  // Specific side explicitly requested
   if (context.selectedTeam) {
     const side = selectedSide === 'away' || selectedSide === 'home' ? selectedSide : 'selected';
     return buildCandidateEvaluation(prompt, {
       side,
-      team: String(context.selectedTeam || '').trim(),
+      team: String(context.selectedTeam).trim(),
       opponent: String(context.opponentTeam || '').trim(),
       market: context.market || 'h2h',
       odds: oddsObj ? oddsObj[selectedSide] || contextOdds : contextOdds,
@@ -685,36 +718,10 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
     }, lineMovementScore);
   }
 
-  if (selectedSide === 'best' || (context.selectedTeam && context.opponentTeam)) {
-    const away = {
-      side: 'away',
-      team: String(context.opponentTeam || teams && teams.away || '').trim(),
-      opponent: String(context.selectedTeam || teams && teams.home || '').trim(),
-      market: context.market || 'h2h',
-      odds: oddsObj ? oddsObj.away : null,
-      opponentOdds: oddsObj ? oddsObj.home : null,
-    };
-    const home = {
-      side: 'home',
-      team: String(context.selectedTeam || teams && teams.home || '').trim(),
-      opponent: String(context.opponentTeam || teams && teams.away || '').trim(),
-      market: context.market || 'h2h',
-      odds: oddsObj ? oddsObj.home : null,
-      opponentOdds: oddsObj ? oddsObj.away : null,
-    };
-
-    const candidates = [away, home]
-      .filter(c => c && c.team && c.odds != null)
-      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
-
-    if (candidates.length) {
-      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
-    }
-  }
-
+  // Fallback: extract odds from prompt text
   const odds = extractAmericanOdds(prompt);
   const fallback = buildCandidateEvaluation(prompt, {
-    side: selectedSide || 'best',
+    side: 'best',
     team: '',
     opponent: '',
     market: context.market || 'h2h',
