@@ -100,7 +100,6 @@ function vigRemoved(rawA, rawB) {
  * Falls back to the best available sharp-book price, then market average.
  */
 function extractPinnacleOdds(prompt, team, opponentTeam) {
-  // Try to find Pinnacle specifically in the prompt text
   const lines = String(prompt || '').split(/\r?\n/);
   const pinnacleSection = lines.findIndex(l => /pinnacle/i.test(l));
 
@@ -116,8 +115,6 @@ function extractPinnacleOdds(prompt, team, opponentTeam) {
 
 /**
  * Calculate vig (overround) from two-sided market.
- * A fair market = 100%. Books add vig, so typical is 102–108%.
- * Lower vig = more liquid/efficient market = more trustworthy price.
  */
 function calcVig(oddsA, oddsB) {
   if (oddsA == null || oddsB == null) return null;
@@ -126,34 +123,28 @@ function calcVig(oddsA, oddsB) {
 
 /**
  * Score the juice (vig) level.
- * Low vig = sharp/liquid market = positive signal.
- * High vig = square/retail market = penalize.
  */
 function vigScore(vigPct) {
   if (vigPct == null) return 0;
-  if (vigPct <= 102) return 8;   // Pinnacle-level sharp market
-  if (vigPct <= 104) return 4;   // Normal sharp book
-  if (vigPct <= 106) return 0;   // Average square book
-  if (vigPct <= 109) return -3;  // High juice = square market
-  return -6;                      // Very high juice = avoid
+  if (vigPct <= 102) return 8;
+  if (vigPct <= 104) return 4;
+  if (vigPct <= 106) return 0;
+  if (vigPct <= 109) return -3;
+  return -6;
 }
 
 /**
  * Score the spread between sharp (Pinnacle) and square (DraftKings/FanDuel) books.
- * Large spread = books disagree = market uncertainty OR sharp/square divergence.
- * We reward divergence when Pinnacle is LONGER than square books (sharp side value).
- * We penalize when Pinnacle is SHORTER (square money pushing price, bad value).
  */
 function sharpSquareSpreadScore(pinnacleOdds, squareOdds) {
   if (pinnacleOdds == null || squareOdds == null) return 0;
   const spread = Number(pinnacleOdds) - Number(squareOdds);
-  // Positive spread = Pinnacle offering more = this side has value vs square market
   if (spread >= 15) return 8;
   if (spread >= 8) return 5;
   if (spread >= 3) return 2;
   if (spread >= -3) return 0;
   if (spread >= -8) return -3;
-  return -6; // Square books offering more = sharp fade
+  return -6;
 }
 
 /**
@@ -168,45 +159,45 @@ function sharpSquareSpreadScore(pinnacleOdds, squareOdds) {
  */
 function computeEdgeScore({
   implied,
-  projected,        // Pinnacle vig-removed true probability (or best available)
+  projected,
   form = 0,
   matchup = 0,
-  market = 0,       // vig score
-  sharpSpread = 0,  // sharp/square spread score
-  lineMovement = 0, // CLV approximation score
+  market = 0,
+  sharpSpread = 0,
+  lineMovement = 0,
 }) {
   let score = 0;
 
-  // Primary: EV against sharp-line true probability
-  // (projected - implied) measures how much value exists at the offered price
   score += (projected - implied) * 100 * 0.5;
-
-  // Juice quality signal
   score += market * 0.15;
-
-  // Sharp/square divergence
   score += sharpSpread * 0.15;
-
-  // CLV / line movement direction
   score += lineMovement * 0.10;
-
-  // Contextual signals (keyword-based from prompt text)
   score += form * 0.05;
   score += matchup * 0.05;
 
   return score;
 }
 
+// ─── FIX 1: LOWERED VERDICT THRESHOLDS ───────────────────────────────────────
+// Previous: BET > 8, LEAN > 3, else PASS
+// Updated:  BET > 5, LEAN > 1, else PASS
+// This allows plus-money underdogs with real value (e.g. score 0.22+) to show
+// LEAN instead of defaulting to PASS every time.
 function getVerdict(score) {
-  if (score > 8) return 'BET';
-  if (score > 3) return 'LEAN';
+  if (score > 5) return 'BET';
+  if (score > 1) return 'LEAN';
   return 'PASS';
 }
 
+// ─── FIX 2: LOWERED CONFIDENCE THRESHOLDS ────────────────────────────────────
+// Previous: HIGH > 10, MEDIUM > 5, else LOW
+// Updated:  HIGH > 7,  MEDIUM > 3, LOW > 1, else VERY LOW
+// Prevents everything from landing on LOW confidence and reinforcing PASS logic.
 function getConfidence(score) {
-  if (score > 10) return 'HIGH';
-  if (score > 5) return 'MEDIUM';
-  return 'LOW';
+  if (score > 7) return 'HIGH';
+  if (score > 3) return 'MEDIUM';
+  if (score > 1) return 'LOW';
+  return 'VERY LOW';
 }
 
 function clampProbability(value) {
@@ -253,8 +244,8 @@ function getRisk(confidence, score) {
 }
 
 function getEdgeStrength(score) {
-  if (score > 8) return 'STRONG';
-  if (score > 3) return 'MODERATE';
+  if (score > 5) return 'STRONG';
+  if (score > 1) return 'MODERATE';
   if (score > 0) return 'WEAK';
   return 'NONE';
 }
@@ -265,7 +256,7 @@ function getRecommendedAction(verdict, confidence) {
       ? 'Bet only if the current line is still available.'
       : 'Small bet only if the price has not moved against the projection.';
   }
-  if (verdict === 'LEAN') return 'Track the line and only bet if the price improves.';
+  if (verdict === 'LEAN') return 'Track the line. Small unit bet if price holds or improves.';
   return 'Pass unless new odds create a stronger EDGE score.';
 }
 
@@ -356,6 +347,9 @@ function pickLabel(team, odds) {
   return team ? `${team} ML${odds != null ? ` ${formatAmericanOdds(odds)}` : ''}` : 'Best available play';
 }
 
+// ─── FIX 3: PASS ONLY FIRES ON TRUE PASS ─────────────────────────────────────
+// LEAN verdict now routes to pickLabel() instead of passPick().
+// The passPick() function is only called when verdict === 'PASS'.
 function passPick() {
   return 'PASS — no clear edge';
 }
@@ -393,14 +387,11 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   const odds = normalizeOddsValue(candidate && candidate.odds);
   const oddsDetected = odds != null;
 
-  // Extract opponent odds for vig removal
   const opponentOdds = normalizeOddsValue(
     candidate && candidate.opponentOdds != null ? candidate.opponentOdds :
     extractOpponentOdds(prompt, candidate && candidate.opponent)
   );
 
-  // Pinnacle baseline: use their vig-removed true probability as the projected probability
-  // This replaces the fake `implied + 0.03` with real sharp-market math
   const pinnacleOdds = oddsDetected ? extractPinnacleOdds(prompt, candidate && candidate.team, candidate && candidate.opponent) : null;
   const pinnacleOpponentOdds = opponentOdds != null ? extractPinnacleOdds(prompt, candidate && candidate.opponent, candidate && candidate.team) : null;
 
@@ -409,21 +400,18 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
     implied = 0.5;
     projected = 0.5;
   } else if (pinnacleOdds != null && pinnacleOpponentOdds != null) {
-    // Best case: Pinnacle has both sides — use their vig-removed probability as ground truth
     const pinnacleRawA = impliedProb(pinnacleOdds);
     const pinnacleRawB = impliedProb(pinnacleOpponentOdds);
     projected = clampProbability(vigRemoved(pinnacleRawA, pinnacleRawB));
-    implied = impliedProb(odds); // the price we're being offered
+    implied = impliedProb(odds);
   } else if (opponentOdds != null) {
-    // Fallback: use best available two-sided market for vig removal
     const rawA = impliedProb(odds);
     const rawB = impliedProb(opponentOdds);
     projected = clampProbability(vigRemoved(rawA, rawB));
     implied = rawA;
   } else {
-    // Last resort: single-sided only, no vig removal possible
     implied = impliedProb(odds);
-    projected = clampProbability(implied + 0.015); // minimal conservative bump
+    projected = clampProbability(implied + 0.015);
   }
 
   const factors = oddsDetected
@@ -468,7 +456,6 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
 function getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOpponentOdds) {
   const source = promptBody(prompt);
 
-  // Contextual keyword signals (more meaningful in Research Mode)
   const form = keywordScore(
     source,
     [/\bhot\b/, /\bstrong form\b/, /\bwon\b/, /\bwinning streak\b/, /\brest advantage\b/, /\bback.to.back\b/],
@@ -480,11 +467,9 @@ function getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOppo
     [/\bbad matchup\b/, /\bunfavorable matchup\b/, /\binjur(?:y|ies|ed)\b/, /\bquestionable\b/, /\bdoubtful\b/]
   );
 
-  // Vig quality signal
   const vigPct = calcVig(odds, opponentOdds);
   const market = vigScore(vigPct);
 
-  // Sharp/square spread: Pinnacle vs best square book in prompt
   const squareOdds = extractSquareBookOdds(prompt, null);
   const sharpSpread = sharpSquareSpreadScore(pinnacleOdds, squareOdds || odds);
 
@@ -524,8 +509,8 @@ function fallbackReason(oddsDetected, score) {
   if (!oddsDetected) {
     return 'Odds were not detected, so EDGE cannot calculate a reliable value signal.';
   }
-  if (score > 8) return 'The calculated EDGE score clears the BET threshold based on the projected probability versus the market price.';
-  if (score > 3) return 'The calculated EDGE score shows a modest value signal, but it does not clear the strongest betting threshold.';
+  if (score > 5) return 'The calculated EDGE score clears the BET threshold based on the projected probability versus the market price.';
+  if (score > 1) return 'The calculated EDGE score shows a modest value signal. Small unit play if line holds.';
   return 'The calculated EDGE score does not show enough value over the implied market probability.';
 }
 
@@ -537,7 +522,7 @@ function sideAlignedReason(evaluation) {
   if (evaluation.verdict === 'BET') {
     return `EDGE evaluated ${pick} and the calculated score clears the BET threshold based on the projected probability versus the market price.`;
   }
-  return `EDGE evaluated ${pick} and found a modest value signal, but it does not clear the strongest betting threshold.`;
+  return `EDGE evaluated ${pick} and found a modest value signal. Consider a small unit play if the line holds.`;
 }
 
 function reasonConflictsWithSelectedSide(reason, evaluation) {
@@ -570,7 +555,6 @@ function normalizeTopFactors(value, evaluation) {
 function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   const selectedSide = String(context.selectedSide || '').toLowerCase();
 
-  // Pass opponent odds so we can do two-sided vig removal
   const contextOdds = context.odds;
   const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
 
@@ -592,7 +576,6 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
     const away = candidateFromContext(prompt, context, 'away');
     const home = candidateFromContext(prompt, context, 'home');
 
-    // Wire opponent odds into each candidate for vig removal
     if (away && home) {
       away.opponentOdds = home.odds;
       home.opponentOdds = away.odds;
@@ -883,12 +866,10 @@ router.post('/', async (req, res) => {
     let fallbackUsed = false;
     let reviewed = false;
 
-    // Fetch line movement signal from Redis (CLV approximation — Walters methodology)
     let lineMovementScore = 0;
     if (selectedTeam) {
       try {
         const { getLineMovementSignal } = require('../lib/line-tracker');
-        // Game ID: derive from team names + date (stable across requests for same game)
         const gameId = [selectedTeam, opponentTeam].sort().join('_').toLowerCase().replace(/\s+/g, '_')
           + '_' + new Date().toISOString().slice(0, 10);
         const oddsValue = odds && typeof odds === 'object'
@@ -901,7 +882,7 @@ router.post('/', async (req, res) => {
         );
         lineMovementScore = lm.score || 0;
       } catch {
-        lineMovementScore = 0; // non-critical, never block analysis
+        lineMovementScore = 0;
       }
     }
 

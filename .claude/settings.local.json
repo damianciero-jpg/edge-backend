@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\dciel\\\\OneDrive\\\\Documents\\\\GitHub\\\\edge-backend\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object FullName, LastWriteTime, Length | Format-Table -AutoSize 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\dciel\\\\edge-backend\" -Recurse | Where-Object { !$_.PSIsContainer -and $_.FullName -notmatch 'node_modules' -and $_.FullName -notmatch '\\\\.log$' -and $_.Name -notin @\\('users.json','daily.json','config.json','watcher.log','server.err.log','server.out.log','server.live.log'\\) } | Select-Object @{N='RelPath';E={$_.FullName.Replace\\('C:\\\\Users\\\\dciel\\\\edge-backend\\\\',''\\)}} | Sort-Object RelPath | Format-Table -AutoSize)",
+      "PowerShell(Compare-Object *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(vercel --prod)"
     ]
   }
 }
