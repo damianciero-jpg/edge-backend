@@ -666,6 +666,7 @@ function normalizeTopFactors(value, evaluation) {
 
 function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   const selectedSide = String(context.selectedSide || '').toLowerCase();
+  const teams = extractGameTeams(prompt);
 
   const contextOdds = context.odds;
   const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
@@ -684,18 +685,27 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
     }, lineMovementScore);
   }
 
-  if (selectedSide === 'best') {
-    const away = candidateFromContext(prompt, context, 'away');
-    const home = candidateFromContext(prompt, context, 'home');
-
-    if (away && home) {
-      away.opponentOdds = home.odds;
-      home.opponentOdds = away.odds;
-    }
+  if (selectedSide === 'best' || (context.selectedTeam && context.opponentTeam)) {
+    const away = {
+      side: 'away',
+      team: String(context.opponentTeam || teams && teams.away || '').trim(),
+      opponent: String(context.selectedTeam || teams && teams.home || '').trim(),
+      market: context.market || 'h2h',
+      odds: oddsObj ? oddsObj.away : null,
+      opponentOdds: oddsObj ? oddsObj.home : null,
+    };
+    const home = {
+      side: 'home',
+      team: String(context.selectedTeam || teams && teams.home || '').trim(),
+      opponent: String(context.opponentTeam || teams && teams.away || '').trim(),
+      market: context.market || 'h2h',
+      odds: oddsObj ? oddsObj.home : null,
+      opponentOdds: oddsObj ? oddsObj.away : null,
+    };
 
     const candidates = [away, home]
-      .filter(candidate => candidate && candidate.team)
-      .map(candidate => buildCandidateEvaluation(prompt, candidate, lineMovementScore));
+      .filter(c => c && c.team && c.odds != null)
+      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
 
     if (candidates.length) {
       return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
@@ -998,12 +1008,10 @@ router.post('/', async (req, res) => {
     let resolvedMarket = market || 'h2h';
 
     if (liveOdds) {
-      // Inject the full odds block into the prompt so the scoring logic
-      // can parse Pinnacle/LowVig lines and opponent odds
       resolvedPrompt = `${prompt}\n\nLIVE ODDS DATA:\n${liveOdds.oddsBlock}`;
       resolvedSelectedSide = 'best';
-      resolvedSelectedTeam = '';
-      resolvedOpponentTeam = '';
+      resolvedSelectedTeam = liveOdds.homeTeam;
+      resolvedOpponentTeam = liveOdds.awayTeam;
       resolvedOdds = { home: liveOdds.homeOdds, away: liveOdds.awayOdds };
       resolvedMarket = 'h2h';
     }
