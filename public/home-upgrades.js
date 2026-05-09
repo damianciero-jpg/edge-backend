@@ -1,5 +1,61 @@
 console.log("EDGE HOME SCRIPT LOADED");
 
+// ─── FIX 1: INTERCEPT ALL /api/analyze CALLS ─────────────────────────────────
+// Forces selectedSide: 'best' on every analyze request so the backend always
+// auto-evaluates both sides and returns the best pick. Removes any manual
+// team selection the minified frontend may be sending.
+(function forceBestSide() {
+  const origFetch = window.fetch;
+  window.fetch = function (url, options) {
+    if (typeof url === 'string' && url.includes('/api/analyze') && options && options.body) {
+      try {
+        const body = JSON.parse(options.body);
+        body.selectedSide = 'best';
+        body.selectedTeam = '';
+        body.opponentTeam = '';
+        options = { ...options, body: JSON.stringify(body) };
+      } catch (e) {}
+    }
+    return origFetch.call(this, url, options);
+  };
+})();
+
+// ─── FIX 2: HIDE TEAM SELECTOR UI ────────────────────────────────────────────
+// Removes any team/side selection dropdowns or buttons from the UI since
+// the app now auto-picks the best side for the user.
+(function removeTeamSelector() {
+  const SELECTORS = [
+    '[data-side]',
+    '.team-selector',
+    '.side-selector',
+    '#teamSelect',
+    '#sideSelect',
+    'select[name="side"]',
+    'select[name="team"]',
+  ];
+
+  function hideSelectors() {
+    SELECTORS.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => {
+        el.style.display = 'none';
+      });
+    });
+  }
+
+  // Run on load and watch for dynamically added elements
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', hideSelectors);
+  } else {
+    hideSelectors();
+  }
+
+  // MutationObserver catches any dynamically rendered team selectors
+  const observer = new MutationObserver(hideSelectors);
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+
+// ─── EXISTING HOME WIDGET CODE ────────────────────────────────────────────────
+
 function waitForElement(selector, timeout = 5000) {
   return new Promise((resolve) => {
     const interval = 100;
@@ -73,7 +129,14 @@ waitForElement('.welcome').then(container => {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, useSearch, secondLayer: useSearch })
+        body: JSON.stringify({
+          prompt,
+          useSearch,
+          secondLayer: useSearch,
+          selectedSide: 'best',
+          selectedTeam: '',
+          opponentTeam: '',
+        })
       });
 
       const data = await res.json().catch(() => ({}));
@@ -109,7 +172,7 @@ waitForElement('.welcome').then(container => {
   const html = `
     <div id="edgeUpgradePanel" style="box-sizing:border-box;width:min(920px,96%);margin:22px auto 0;">
       <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
-        <input id="manualInput" placeholder="Paste bet" style="min-width:220px;padding:8px;background:#080c10;border:1px solid #243447;color:#e8f4f8;" />
+        <input id="manualInput" placeholder="Paste bet or enter game" style="min-width:220px;padding:8px;background:#080c10;border:1px solid #243447;color:#e8f4f8;" />
         <button id="quickBtn" style="padding:8px 12px;background:#00e5ff;border:0;color:#080c10;font-weight:700;">Quick AI</button>
         <button id="deepBtn" style="padding:8px 12px;background:#7b61ff;border:0;color:white;font-weight:700;">Deep AI</button>
       </div>
