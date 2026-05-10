@@ -1632,8 +1632,9 @@ async function fetchGames() {
       list.innerHTML = currentSport === 'mma_mixed_martial_arts'
         ? '<div class="sb-empty">NO UPCOMING UFC ODDS AVAILABLE.<br>TRY AGAIN CLOSER TO FIGHT NIGHT.</div>'
         : currentSport === 'golf_pga_tour'
-        ? '<div class="sb-empty">GOLF MATCHUP ANALYSIS<br>TYPE A GOLFER OR MATCHUP<br>IN THE PROMPT BELOW</div>'
+        ? '<div class="sb-empty">⛳ PGA<br>USE PANEL →</div>'
         : '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
+      if (currentSport === 'golf_pga_tour') showGolfWidget();
       countEl.textContent = '0 GAMES';
       syncMarketsGames();
       return;
@@ -1652,6 +1653,66 @@ async function fetchGames() {
       welcome.style.justifyContent = 'center';
     }
   } catch(e) { list.innerHTML = `<div class="sb-empty">NETWORK ERROR<br>${e.message}</div>`; }
+}
+
+function showGolfWidget() {
+  const welcome = document.getElementById('welcomeState');
+  if (!welcome) return;
+  welcome.className = '';
+  welcome.style.cssText = 'height:calc(100vh - 102px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+  welcome.innerHTML = `
+    <div style="font-size:40px;margin-bottom:10px">⛳</div>
+    <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--accent,#00e5ff);margin-bottom:6px;">PGA GOLF ANALYSIS</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:20px;text-align:center;line-height:1.9;">Enter a golfer name or matchup to run AI analysis.<br>e.g. "Scottie Scheffler vs Rory McIlroy"</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;max-width:540px;">
+      <input id="golfInput" placeholder="Scottie Scheffler vs Rory McIlroy" style="flex:1;min-width:220px;padding:9px 11px;background:#080c10;border:1px solid #243447;color:#e8f4f8;font-family:var(--mono);font-size:11px;outline:none;box-sizing:border-box;" />
+      <button id="golfQuickBtn" onclick="runGolfAnalysis(false)" style="padding:9px 13px;background:var(--accent,#00e5ff);border:0;color:#080c10;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap;">⚡ QUICK AI</button>
+      <button id="golfDeepBtn" onclick="runGolfAnalysis(true)" style="padding:9px 13px;background:linear-gradient(135deg,#7b61ff,#5a3ff5);border:0;color:white;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap;">🔍 DEEP AI</button>
+    </div>
+    <div id="golfResult" style="display:none;margin-top:18px;width:100%;max-width:620px;max-height:320px;overflow:auto;white-space:pre-wrap;text-align:left;background:#0d1219;border:1px solid #1e2d3d;color:#b0ccd8;padding:14px;font-size:11px;line-height:1.7;font-family:var(--mono);box-sizing:border-box;"></div>
+  `;
+  const inp = document.getElementById('golfInput');
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') runGolfAnalysis(false); });
+}
+
+async function runGolfAnalysis(useSearch) {
+  const input = document.getElementById('golfInput');
+  const result = document.getElementById('golfResult');
+  const quickBtn = document.getElementById('golfQuickBtn');
+  const deepBtn = document.getElementById('golfDeepBtn');
+  if (!input || !result) return;
+  const prompt = input.value.trim();
+  if (!prompt) { result.style.display = 'block'; result.textContent = 'Enter a golfer name or matchup first.'; return; }
+  if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
+
+  quickBtn.disabled = true;
+  deepBtn.disabled = true;
+  result.style.display = 'block';
+  result.textContent = useSearch ? '🔍 Research AI is analyzing...' : '⚡ Quick AI is analyzing...';
+
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, useSearch, secondLayer: useSearch, selectedSide: 'best', selectedTeam: '', opponentTeam: '' })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.authRequired || res.status === 401) {
+      const overlay = document.getElementById('auth-overlay');
+      if (overlay) overlay.style.display = 'flex';
+      result.textContent = 'Please sign in to run analysis.';
+      return;
+    }
+    if (data.paywall || res.status === 402) { showPaywall(); result.textContent = data.error || 'No credits remaining.'; return; }
+    if (!res.ok || data.ok === false) { result.textContent = data.error || 'Analysis failed.'; return; }
+    result.textContent = data.text || 'Analysis complete.';
+    if (typeof syncUserStatus === 'function') syncUserStatus();
+  } catch (err) {
+    result.textContent = `Analysis failed: ${err.message}`;
+  } finally {
+    quickBtn.disabled = false;
+    deepBtn.disabled = false;
+  }
 }
 
 const SPORT_LABELS = {
