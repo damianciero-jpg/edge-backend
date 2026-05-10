@@ -42,84 +42,132 @@ function teamNameMatch(promptText, teamName) {
   return src.includes(name) || parts.some(p => p.length > 3 && src.includes(p));
 }
 
+function fmt(odds) { return odds > 0 ? `+${odds}` : String(odds); }
+
 async function fetchLiveGameOdds(prompt) {
   try {
     const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
     if (!apiKey) return null;
 
     const sportKey = detectSportKey(prompt);
-    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h&oddsFormat=american`;
+    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
     const res = await withTimeout(fetch(url), 8000, 'odds api fetch');
     if (!res.ok) return null;
 
     const games = await res.json();
     if (!Array.isArray(games)) return null;
 
-    // Find the game that matches the prompt
     const matchedGame = games.find(game =>
       teamNameMatch(prompt, game.home_team) || teamNameMatch(prompt, game.away_team)
     );
     if (!matchedGame) return null;
 
-    // Aggregate odds across all bookmakers — use best available price for each team
     const homeTeam = matchedGame.home_team;
     const awayTeam = matchedGame.away_team;
 
-    let bestHomeOdds = null;
-    let bestAwayOdds = null;
-    let lowvigHomeOdds = null;
-    let lowvigAwayOdds = null;
-
-    const bookmakerLines = [];
+    // Accumulators for each market — track sharp (LowVig) and best available
+    const sharp = { h2h: {}, spreads: {}, totals: {} };
+    const best = { h2h: {}, spreads: {}, totals: {} };
+    const lines = { h2h: [], spreads: [], totals: [] };
 
     for (const bk of (matchedGame.bookmakers || [])) {
-      const market = (bk.markets || []).find(m => m.key === 'h2h');
-      if (!market) continue;
+      const isSharp = bk.key === 'lowvig' || bk.key === 'pinnacle';
 
-      const homeOutcome = market.outcomes.find(o => o.name === homeTeam);
-      const awayOutcome = market.outcomes.find(o => o.name === awayTeam);
+      for (const market of (bk.markets || [])) {
+        const mk = market.key;
+        if (!['h2h', 'spreads', 'totals'].includes(mk)) continue;
 
-      if (!homeOutcome || !awayOutcome) continue;
+        if (mk === 'h2h') {
+          const home = market.outcomes.find(o => o.name === homeTeam);
+          const away = market.outcomes.find(o => o.name === awayTeam);
+          if (!home || !away) continue;
 
-      bookmakerLines.push({
-        book: bk.title,
-        homeOdds: homeOutcome.price,
-        awayOdds: awayOutcome.price,
-      });
+          lines.h2h.push(`${bk.title}: ${homeTeam} ${fmt(home.price)} | ${awayTeam} ${fmt(away.price)}`);
+          if (isSharp) { sharp.h2h.home = home.price; sharp.h2h.away = away.price; }
+          if (!best.h2h.home || home.price > best.h2h.home) best.h2h.home = home.price;
+          if (!best.h2h.away || away.price > best.h2h.away) best.h2h.away = away.price;
+        }
 
-      // LowVig = sharpest available (closest to Pinnacle)
-      if (bk.key === 'lowvig' || bk.key === 'pinnacle') {
-        lowvigHomeOdds = homeOutcome.price;
-        lowvigAwayOdds = awayOutcome.price;
+        if (mk === 'spreads') {
+          const home = market.outcomes.find(o => o.name === homeTeam);
+          const away = market.outcomes.find(o => o.name === awayTeam);
+          if (!home || !away) continue;
+
+          lines.spreads.push(`${bk.title}: ${homeTeam} ${fmt(home.price)} ${home.point} | ${awayTeam} ${fmt(away.price)} ${away.point}`);
+          if (isSharp) { sharp.spreads.home = home.price; sharp.spreads.away = away.price; sharp.spreads.point = home.point; }
+          if (!best.spreads.home || home.price > best.spreads.home) { best.spreads.home = home.price; best.spreads.point = home.point; }
+          if (!best.spreads.away || away.price > best.spreads.away) best.spreads.away = away.price;
+        }
+
+        if (mk === 'totals') {
+          const over = market.outcomes.find(o => o.name === 'Over');
+          const under = market.outcomes.find(o => o.name === 'Under');
+          if (!over || !under) continue;
+
+          lines.totals.push(`${bk.title}: Over ${fmt(over.price)} ${over.point} | Under ${fmt(under.price)} ${under.point}`);
+          if (isSharp) { sharp.totals.over = over.price; sharp.totals.under = under.price; sharp.totals.point = over.point; }
+          if (!best.totals.over || over.price > best.totals.over) { best.totals.over = over.price; best.totals.point = over.point; }
+          if (!best.totals.under || under.price > best.totals.under) best.totals.under = under.price;
+        }
       }
-
-      // Track best (highest) odds for each side across all books
-      if (bestHomeOdds === null || homeOutcome.price > bestHomeOdds) bestHomeOdds = homeOutcome.price;
-      if (bestAwayOdds === null || awayOutcome.price > bestAwayOdds) bestAwayOdds = awayOutcome.price;
     }
 
-    if (bestHomeOdds === null || bestAwayOdds === null) return null;
+    // Use sharp (LowVig) if available, else best
+    const h2hHome = sharp.h2h.home || best.h2h.home;
+    const h2hAway = sharp.h2h.away || best.h2h.away;
+    const spreadHome = sharp.spreads.home || best.spreads.home;
+    const spreadAway = sharp.spreads.away || best.spreads.away;
+    const spreadPoint = sharp.spreads.point || best.spreads.point || 0;
+    const totalOver = sharp.totals.over || best.totals.over;
+    const totalUnder = sharp.totals.under || best.totals.under;
+    const totalPoint = sharp.totals.point || best.totals.point || 0;
 
-    // Use LowVig as sharp baseline if available, else best available
-    const sharpHomeOdds = lowvigHomeOdds || bestHomeOdds;
-    const sharpAwayOdds = lowvigAwayOdds || bestAwayOdds;
+    if (!h2hHome || !h2hAway) return null;
 
-    // Build odds text block for the prompt
+    // Build full odds block for the AI prompt
     const oddsBlock = [
       `GAME: ${awayTeam} @ ${homeTeam}`,
-      `Sharp baseline (LowVig/best): ${homeTeam} ${sharpHomeOdds > 0 ? '+' : ''}${sharpHomeOdds} | ${awayTeam} ${sharpAwayOdds > 0 ? '+' : ''}${sharpAwayOdds}`,
-      ...bookmakerLines.map(b => `${b.book}: ${homeTeam} ${b.homeOdds > 0 ? '+' : ''}${b.homeOdds} | ${awayTeam} ${b.awayOdds > 0 ? '+' : ''}${b.awayOdds}`),
+      '',
+      '--- MONEYLINE (h2h) ---',
+      `Sharp: ${homeTeam} ${fmt(h2hHome)} | ${awayTeam} ${fmt(h2hAway)}`,
+      ...lines.h2h,
+      '',
+      '--- SPREAD ---',
+      spreadHome ? `Sharp: ${homeTeam} ${fmt(spreadHome)} ${spreadPoint} | ${awayTeam} ${fmt(spreadAway)} ${-spreadPoint}` : 'No spread data',
+      ...lines.spreads,
+      '',
+      '--- TOTALS ---',
+      totalOver ? `Sharp: Over ${fmt(totalOver)} ${totalPoint} | Under ${fmt(totalUnder)} ${totalPoint}` : 'No totals data',
+      ...lines.totals,
     ].join('\n');
+
+    // Build all 6 candidates for evaluation
+    const candidates = [
+      { market: 'h2h', team: homeTeam, opponent: awayTeam, side: 'home', odds: h2hHome, opponentOdds: h2hAway, label: `${homeTeam} ML ${fmt(h2hHome)}` },
+      { market: 'h2h', team: awayTeam, opponent: homeTeam, side: 'away', odds: h2hAway, opponentOdds: h2hHome, label: `${awayTeam} ML ${fmt(h2hAway)}` },
+    ];
+
+    if (spreadHome && spreadAway) {
+      candidates.push(
+        { market: 'spreads', team: homeTeam, opponent: awayTeam, side: 'home', odds: spreadHome, opponentOdds: spreadAway, point: spreadPoint, label: `${homeTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint} ${fmt(spreadHome)}` },
+        { market: 'spreads', team: awayTeam, opponent: homeTeam, side: 'away', odds: spreadAway, opponentOdds: spreadHome, point: -spreadPoint, label: `${awayTeam} ${-spreadPoint > 0 ? '+' : ''}${-spreadPoint} ${fmt(spreadAway)}` }
+      );
+    }
+
+    if (totalOver && totalUnder) {
+      candidates.push(
+        { market: 'totals', team: 'Over', opponent: 'Under', side: 'over', odds: totalOver, opponentOdds: totalUnder, point: totalPoint, label: `Over ${totalPoint} ${fmt(totalOver)}` },
+        { market: 'totals', team: 'Under', opponent: 'Over', side: 'under', odds: totalUnder, opponentOdds: totalOver, point: totalPoint, label: `Under ${totalPoint} ${fmt(totalUnder)}` }
+      );
+    }
 
     return {
       homeTeam,
       awayTeam,
-      homeOdds: sharpHomeOdds,
-      awayOdds: sharpAwayOdds,
-      bestHomeOdds,
-      bestAwayOdds,
+      homeOdds: h2hHome,
+      awayOdds: h2hAway,
       oddsBlock,
-      bookmakerLines,
+      candidates,
     };
   } catch (err) {
     console.warn('fetchLiveGameOdds failed:', err.message);
@@ -667,48 +715,15 @@ function normalizeTopFactors(value, evaluation) {
 function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   const selectedSide = String(context.selectedSide || '').toLowerCase();
   const teams = extractGameTeams(prompt);
+
   const contextOdds = context.odds;
   const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
 
-  // Always evaluate both sides when selectedSide is 'best', then return the higher-scoring pick.
-  // This check must come before the selectedTeam check — when live odds are fetched the route
-  // sets selectedTeam=homeTeam but still wants a dual comparison.
-  if (selectedSide === 'best') {
-    const homeTeam = String(context.selectedTeam || (teams && teams.home) || '').trim();
-    const awayTeam = String(context.opponentTeam || (teams && teams.away) || '').trim();
-
-    const candidates = [
-      {
-        side: 'home',
-        team: homeTeam,
-        opponent: awayTeam,
-        market: context.market || 'h2h',
-        odds: oddsObj ? oddsObj.home : null,
-        opponentOdds: oddsObj ? oddsObj.away : null,
-      },
-      {
-        side: 'away',
-        team: awayTeam,
-        opponent: homeTeam,
-        market: context.market || 'h2h',
-        odds: oddsObj ? oddsObj.away : null,
-        opponentOdds: oddsObj ? oddsObj.home : null,
-      },
-    ]
-      .filter(c => c.team && c.odds != null)
-      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
-
-    if (candidates.length) {
-      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
-    }
-  }
-
-  // Specific side explicitly requested
   if (context.selectedTeam) {
     const side = selectedSide === 'away' || selectedSide === 'home' ? selectedSide : 'selected';
     return buildCandidateEvaluation(prompt, {
       side,
-      team: String(context.selectedTeam).trim(),
+      team: String(context.selectedTeam || '').trim(),
       opponent: String(context.opponentTeam || '').trim(),
       market: context.market || 'h2h',
       odds: oddsObj ? oddsObj[selectedSide] || contextOdds : contextOdds,
@@ -718,10 +733,36 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
     }, lineMovementScore);
   }
 
-  // Fallback: extract odds from prompt text
+  if (selectedSide === 'best' || (context.selectedTeam && context.opponentTeam)) {
+    const away = {
+      side: 'away',
+      team: String(context.opponentTeam || teams && teams.away || '').trim(),
+      opponent: String(context.selectedTeam || teams && teams.home || '').trim(),
+      market: context.market || 'h2h',
+      odds: oddsObj ? oddsObj.away : null,
+      opponentOdds: oddsObj ? oddsObj.home : null,
+    };
+    const home = {
+      side: 'home',
+      team: String(context.selectedTeam || teams && teams.home || '').trim(),
+      opponent: String(context.opponentTeam || teams && teams.away || '').trim(),
+      market: context.market || 'h2h',
+      odds: oddsObj ? oddsObj.home : null,
+      opponentOdds: oddsObj ? oddsObj.away : null,
+    };
+
+    const candidates = [away, home]
+      .filter(c => c && c.team && c.odds != null)
+      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
+
+    if (candidates.length) {
+      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+    }
+  }
+
   const odds = extractAmericanOdds(prompt);
   const fallback = buildCandidateEvaluation(prompt, {
-    side: 'best',
+    side: selectedSide || 'best',
     team: '',
     opponent: '',
     market: context.market || 'h2h',
@@ -1024,48 +1065,63 @@ router.post('/', async (req, res) => {
     }
 
     let lineMovementScore = 0;
-    const lineTeam = resolvedSelectedTeam || (liveOdds && liveOdds.homeTeam) || selectedTeam;
-    const lineOpponent = resolvedOpponentTeam || (liveOdds && liveOdds.awayTeam) || opponentTeam;
+    const lineTeam = (liveOdds && liveOdds.homeTeam) || selectedTeam;
+    const lineOpponent = (liveOdds && liveOdds.awayTeam) || opponentTeam;
     if (lineTeam) {
       try {
         const { getLineMovementSignal } = require('../lib/line-tracker');
         const gameId = [lineTeam, lineOpponent].sort().join('_').toLowerCase().replace(/\s+/g, '_')
           + '_' + new Date().toISOString().slice(0, 10);
-        const oddsValue = resolvedOdds && typeof resolvedOdds === 'object'
-          ? resolvedOdds.home
-          : resolvedOdds;
-        const lm = await withTimeout(
-          getLineMovementSignal(gameId, lineTeam, oddsValue),
-          2000,
-          'line movement'
-        );
+        const oddsValue = resolvedOdds && typeof resolvedOdds === 'object' ? resolvedOdds.home : resolvedOdds;
+        const lm = await withTimeout(getLineMovementSignal(gameId, lineTeam, oddsValue), 2000, 'line movement');
         lineMovementScore = lm.score || 0;
       } catch {
         lineMovementScore = 0;
       }
     }
 
-    const evaluation = buildEdgeEvaluation(resolvedPrompt, {
-      selectedSide: resolvedSelectedSide,
-      selectedTeam: resolvedSelectedTeam,
-      opponentTeam: resolvedOpponentTeam,
-      market: resolvedMarket,
-      odds: resolvedOdds,
-    }, lineMovementScore);
+    // Evaluate all candidates (up to 6: home ML, away ML, home spread, away spread, over, under)
+    let evaluation;
+    if (liveOdds && liveOdds.candidates && liveOdds.candidates.length) {
+      const allEvals = liveOdds.candidates.map(c =>
+        buildCandidateEvaluation(resolvedPrompt, {
+          side: c.side,
+          team: c.team,
+          opponent: c.opponent,
+          market: c.market,
+          odds: c.odds,
+          opponentOdds: c.opponentOdds,
+        }, lineMovementScore)
+      );
+
+      evaluation = allEvals.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+
+      const bestIdx = allEvals.indexOf(evaluation);
+      const bestCandidate = liveOdds.candidates[bestIdx];
+      if (bestCandidate && evaluation.verdict !== 'PASS') {
+        evaluation.pick = bestCandidate.label;
+        evaluation.evaluating = bestCandidate.label;
+      }
+    } else {
+      evaluation = buildEdgeEvaluation(resolvedPrompt, {
+        selectedSide: resolvedSelectedSide,
+        selectedTeam: resolvedSelectedTeam,
+        opponentTeam: resolvedOpponentTeam,
+        market: resolvedMarket,
+        odds: resolvedOdds,
+      }, lineMovementScore);
+    }
+
     // ─── DEBUG LOG ────────────────────────────────────────────────────────────
     console.log('EDGE EVAL:', JSON.stringify({
       liveOddsFound: !!liveOdds,
-      homeTeam: liveOdds && liveOdds.homeTeam,
-      awayTeam: liveOdds && liveOdds.awayTeam,
-      homeOdds: resolvedOdds && resolvedOdds.home,
-      awayOdds: resolvedOdds && resolvedOdds.away,
-      oddsDetected: evaluation.oddsDetected,
-      implied: evaluation.impliedProb,
-      projected: evaluation.projectedProb,
+      candidates: liveOdds && liveOdds.candidates && liveOdds.candidates.length,
+      pick: evaluation.pick,
+      market: evaluation.market,
       score: evaluation.edgeScore,
       verdict: evaluation.verdict,
-      confidence: evaluation.confidence,
-      pick: evaluation.pick,
+      implied: evaluation.impliedProb,
+      projected: evaluation.projectedProb,
     }));
 
     const scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
