@@ -22,6 +22,11 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or missing sport parameter.' });
   }
 
+  // Golf uses event-specific endpoints not available in the standard odds API
+  if (sport === 'golf_pga_tour') {
+    return res.json([]);
+  }
+
   try {
     const apiKey = await getCfg('oddsApiKey', 'ODDS_API_KEY', DEFAULT_ODDS_API_KEY);
     if (!apiKey) {

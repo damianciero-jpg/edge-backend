@@ -1631,6 +1631,8 @@ async function fetchGames() {
       currentGameIndex = null;
       list.innerHTML = currentSport === 'mma_mixed_martial_arts'
         ? '<div class="sb-empty">NO UPCOMING UFC ODDS AVAILABLE.<br>TRY AGAIN CLOSER TO FIGHT NIGHT.</div>'
+        : currentSport === 'golf_pga_tour'
+        ? '<div class="sb-empty">GOLF MATCHUP ANALYSIS<br>TYPE A GOLFER OR MATCHUP<br>IN THE PROMPT BELOW</div>'
         : '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
       countEl.textContent = '0 GAMES';
       syncMarketsGames();
