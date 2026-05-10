@@ -43,6 +43,7 @@ function teamNameMatch(promptText, teamName) {
 }
 
 function fmt(odds) { return odds > 0 ? `+${odds}` : String(odds); }
+function fmtPoint(point) { return point > 0 ? `+${point}` : String(point); }
 
 async function fetchLiveGameOdds(prompt) {
   try {
@@ -149,8 +150,8 @@ async function fetchLiveGameOdds(prompt) {
 
     if (spreadHome && spreadAway) {
       candidates.push(
-        { market: 'spreads', team: homeTeam, opponent: awayTeam, side: 'home', odds: spreadHome, opponentOdds: spreadAway, point: spreadPoint, label: `${homeTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint} ${fmt(spreadHome)}` },
-        { market: 'spreads', team: awayTeam, opponent: homeTeam, side: 'away', odds: spreadAway, opponentOdds: spreadHome, point: -spreadPoint, label: `${awayTeam} ${-spreadPoint > 0 ? '+' : ''}${-spreadPoint} ${fmt(spreadAway)}` }
+        { market: 'spreads', team: homeTeam, opponent: awayTeam, side: 'home', odds: spreadHome, opponentOdds: spreadAway, point: spreadPoint, label: `${homeTeam} ${fmtPoint(spreadPoint)} ${fmt(spreadHome)}` },
+        { market: 'spreads', team: awayTeam, opponent: homeTeam, side: 'away', odds: spreadAway, opponentOdds: spreadHome, point: -spreadPoint, label: `${awayTeam} ${fmtPoint(-spreadPoint)} ${fmt(spreadAway)}` }
       );
     }
 
@@ -587,7 +588,10 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   const risk = getRisk(confidence, edgeScore);
   const edgeStrength = getEdgeStrength(edgeScore);
   const recommendedAction = getRecommendedAction(verdict, confidence);
-  const pick = verdict === 'PASS' ? passPick() : pickLabel(candidate && candidate.team, odds);
+  // Use the pre-built label (preserves spread/total formatting). Only fall back
+  // to pickLabel for h2h candidates or manual entries that have no label.
+  const candidateLabel = (candidate && candidate.label) || pickLabel(candidate && candidate.team, odds);
+  const pick = verdict === 'PASS' ? passPick() : candidateLabel;
 
   return {
     odds,
@@ -596,7 +600,7 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
     selectedTeam: candidate && candidate.team,
     opponentTeam: candidate && candidate.opponent,
     market: (candidate && candidate.market) || 'h2h',
-    evaluating: pickLabel(candidate && candidate.team, odds),
+    evaluating: candidateLabel,
     pick,
     impliedProb: roundNumber(implied),
     projectedProb: roundNumber(projected),
