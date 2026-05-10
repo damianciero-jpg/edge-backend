@@ -4,6 +4,7 @@ const { getUser } = require('../lib/users');
 const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 const { OWNER_EMAILS } = require('../lib/owners');
+const { getUserDailyCount, getLimitConfig } = require('../lib/limits');
 
 router.get('/', async (req, res) => {
   const session = verifySession(req.cookies?.edge_session);
@@ -20,9 +21,20 @@ router.get('/', async (req, res) => {
     };
   }
 
+  const [dailyUsed, limitConfig] = await Promise.all([
+    getUserDailyCount(userId),
+    getLimitConfig(),
+  ]);
+
   return ok(res, {
     text: 'User status fetched',
-    data: { userId, isSubscriber: user.isSubscriber, credits: user.credits },
+    data: {
+      userId,
+      isSubscriber: user.isSubscriber,
+      credits: user.credits,
+      dailyUsed: Number(dailyUsed) || 0,
+      dailyLimit: limitConfig.userLimit,
+    },
   });
 });
 

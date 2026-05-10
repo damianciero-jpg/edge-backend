@@ -386,6 +386,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   #view-home{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-tracker{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-account{height:calc(100vh - 56px - 56px) !important;height:calc(100dvh - 56px - 56px) !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+  #view-settings{height:calc(100vh - 56px - 56px) !important;height:calc(100dvh - 56px - 56px) !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
   .odds-row{grid-template-columns:1fr;}
   .ev-row{grid-template-columns:repeat(2,1fr);}
   .bk-grid{grid-template-columns:1fr;}
@@ -906,6 +907,7 @@ button,
   <button class="nav-tab" onclick="showTab('markets')" id="tab-markets">MARKETS</button>
   <button class="nav-tab" onclick="showTab('tracker')" id="tab-tracker">TRACKER</button>
   <button class="nav-tab" onclick="showTab('account')" id="tab-account">ACCOUNT</button>
+  <button class="nav-tab" onclick="showTab('settings')" id="tab-settings">SETTINGS</button>
 </div>
 
 <!-- HOME TAB -->
@@ -1193,6 +1195,63 @@ button,
   </div>
 </div>
 
+<!-- SETTINGS TAB -->
+<div id="view-settings" style="display:none;height:calc(100vh - 102px);overflow-y:auto;">
+  <div class="scrollable">
+    <div class="section-lbl" style="margin-bottom:20px;font-size:10px;">SETTINGS</div>
+
+    <!-- ACCOUNT -->
+    <div class="section-lbl">ACCOUNT</div>
+    <div class="acct-card" style="margin-bottom:20px;padding:18px 20px;">
+      <div id="settings-pro-row" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0 14px;" onclick="checkout('sub')">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px;line-height:1;">👑</span>
+          <span style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--text);">Upgrade to Pro</span>
+        </div>
+        <span style="background:#c9a227;color:#000;font-family:var(--mono);font-size:8px;font-weight:700;padding:4px 10px;letter-spacing:1px;white-space:nowrap;">PRO $20/mo</span>
+      </div>
+      <div id="settings-pro-active" style="display:none;align-items:center;gap:10px;padding:6px 0 14px;">
+        <span style="color:var(--green);font-size:20px;line-height:1;">✓</span>
+        <span style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--green);">EDGE Pro Active</span>
+      </div>
+      <div id="settings-usage" style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;border-top:1px solid var(--border);padding-top:12px;">
+        USAGE TODAY: — / —
+      </div>
+    </div>
+
+    <!-- DATA -->
+    <div class="section-lbl">DATA</div>
+    <div class="acct-card" style="margin-bottom:20px;padding:0;">
+      <div onclick="exportBetsCSV()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:16px 20px;border-bottom:1px solid var(--border);">
+        <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--text);">Export all bets as CSV</span>
+        <span style="font-size:15px;color:var(--accent);">⬇</span>
+      </div>
+      <div onclick="confirmClearBets()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:16px 20px;">
+        <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:#ff4444;">Clear all bets</span>
+        <span style="font-size:15px;color:#ff4444;">🗑</span>
+      </div>
+    </div>
+
+    <!-- INSTALL -->
+    <div class="section-lbl">INSTALL</div>
+    <div class="acct-card" style="padding:18px 20px;">
+      <div style="margin-bottom:18px;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;margin-bottom:10px;">📱 IPHONE</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text);line-height:2.2;">
+          Tap <strong style="color:var(--accent);">Share</strong> &nbsp;→&nbsp; <strong style="color:var(--accent);">Add to Home Screen</strong> &nbsp;→&nbsp; <strong style="color:var(--accent);">Add</strong>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:18px;">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;margin-bottom:10px;">🤖 ANDROID</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text);line-height:2.2;">
+          Tap <strong style="color:var(--accent);">Install App</strong> or <strong style="color:var(--accent);">Add to Home Screen</strong>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <nav class="bottom-nav">
@@ -1201,6 +1260,7 @@ button,
   <button class="bn-tab" id="bn-markets" onclick="showTab('markets')"><span class="bn-icon">📊</span>MARKETS</button>
   <button class="bn-tab" id="bn-tracker" onclick="showTab('tracker')"><span class="bn-icon">📋</span>TRACKER</button>
   <button class="bn-tab" id="bn-account" onclick="showTab('account')"><span class="bn-icon">💳</span>ACCOUNT</button>
+  <button class="bn-tab" id="bn-settings" onclick="showTab('settings')"><span class="bn-icon">⚙️</span>SETTINGS</button>
 </nav>
 
 <script>
@@ -1248,7 +1308,7 @@ handleStripeReturn();
 function isMobile() { return window.innerWidth <= 768; }
 
 function showTab(tab) {
-  ['home','odds','markets','tracker','account'].forEach(t => {
+  ['home','odds','markets','tracker','account','settings'].forEach(t => {
     document.getElementById('view-'+t).style.display = 'none';
     const tabEl = document.getElementById('tab-'+t);
     const bnEl = document.getElementById('bn-'+t);
@@ -1265,6 +1325,7 @@ function showTab(tab) {
     syncSelectedGameToMarkets();
   }
   if (tab === 'tracker') prefillTrackerFromCurrentGame();
+  if (tab === 'settings') renderSettings();
 }
 
 function closeDetail() {
@@ -2545,6 +2606,66 @@ function renderBets() {
     </tr>`).join('');
 }
 
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
+async function renderSettings() {
+  try {
+    const res = await fetch('/api/user-status');
+    if (!res.ok) return;
+    const data = await res.json();
+    const payload = data.data || data;
+    isSubscriber = !!payload.isSubscriber;
+    credits = payload.credits != null ? payload.credits : credits;
+    updateCreditUI();
+
+    const isPro = hasPremiumAccess();
+    const proRow = document.getElementById('settings-pro-row');
+    const proActive = document.getElementById('settings-pro-active');
+    const usageEl = document.getElementById('settings-usage');
+
+    if (proRow) proRow.style.display = isPro ? 'none' : 'flex';
+    if (proActive) proActive.style.display = isPro ? 'flex' : 'none';
+    if (usageEl) {
+      if (isPro) {
+        const used = payload.dailyUsed != null ? payload.dailyUsed : '—';
+        const limit = payload.dailyLimit != null ? payload.dailyLimit : 20;
+        usageEl.textContent = `USAGE TODAY: ${used} / ${limit} ANALYSES`;
+      } else {
+        usageEl.textContent = `CREDITS REMAINING: ${credits}`;
+      }
+    }
+  } catch(e) { console.log('Could not load settings:', e.message); }
+}
+
+function exportBetsCSV() {
+  if (!bets.length) { showToast('No bets to export', 'error'); return; }
+  const headers = ['Date','Game','Pick','Market','Odds','Stake','To Win','Book','Status'];
+  const rows = bets.map(b => [
+    b.date||'', b.game||'', b.pick||'', b.market||'',
+    b.odds||'', b.stake||'', b.toWin||'', b.book||'', b.status||''
+  ]);
+  const csv = [headers, ...rows]
+    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'edge-bets.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${bets.length} bet${bets.length !== 1 ? 's' : ''}`, 'success');
+}
+
+function confirmClearBets() {
+  if (!bets.length) { showToast('No bets to clear', 'error'); return; }
+  if (!confirm(`Delete all ${bets.length} bet${bets.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+  bets = [];
+  localStorage.removeItem('edge_bets');
+  renderBets();
+  updateTrackerStats();
+  showToast('All bets cleared', 'success');
+}
+
 // ─── PWA ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
@@ -2554,6 +2675,9 @@ if ('serviceWorker' in navigator) {
 // Odds API key is managed server-side only. No client key storage.
 
 window.showTab = showTab;
+window.renderSettings = renderSettings;
+window.exportBetsCSV = exportBetsCSV;
+window.confirmClearBets = confirmClearBets;
 window.selectSport = selectSport;
 window.fetchGames = fetchGames;
 window.runAnalysis = runAnalysis;
