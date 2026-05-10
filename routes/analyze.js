@@ -24,9 +24,12 @@ const NBA_SPORT_KEY = 'basketball_nba';
 const NFL_SPORT_KEY = 'americanfootball_nfl';
 const MLB_SPORT_KEY = 'baseball_mlb';
 const NHL_SPORT_KEY = 'icehockey_nhl';
+const MMA_SPORT_KEY = 'mma_mixed_martial_arts';
 
 function detectSportKey(prompt) {
   const src = String(prompt || '').toLowerCase();
+  // MMA checked first — keywords are sport-specific enough to avoid false positives
+  if (/\bufc\b|\bmma\b|makhachev|adesanya|volkanovski|poirier|holloway|oliveira|gaethje|strickland|pereira/.test(src)) return MMA_SPORT_KEY;
   if (/\bnba\b|lakers|celtics|warriors|nuggets|bucks|heat|76ers|knicks|nets|bulls|cavs|cavaliers|pistons|thunder|timberwolves|spurs/.test(src)) return NBA_SPORT_KEY;
   if (/\bnfl\b|patriots|cowboys|eagles|chiefs|packers|bears|lions|ravens|browns|steelers/.test(src)) return NFL_SPORT_KEY;
   if (/\bmlb\b|yankees|dodgers|red sox|cubs|mets|braves|astros|giants|cardinals/.test(src)) return MLB_SPORT_KEY;
@@ -37,9 +40,13 @@ function detectSportKey(prompt) {
 function teamNameMatch(promptText, teamName) {
   const src = String(promptText || '').toLowerCase();
   const name = String(teamName || '').toLowerCase();
-  // Match full name or last word (city vs nickname)
   const parts = name.split(' ');
-  return src.includes(name) || parts.some(p => p.length > 3 && src.includes(p));
+  // Also check last word with >= 3 chars so fighter last names like "Lee" or "Kim"
+  // aren't skipped by the > 3 guard (which exists to avoid city-name false positives).
+  const lastName = parts[parts.length - 1];
+  return src.includes(name) ||
+    parts.some(p => p.length > 3 && src.includes(p)) ||
+    (lastName.length >= 3 && src.includes(lastName));
 }
 
 function fmt(odds) { return odds > 0 ? `+${odds}` : String(odds); }
@@ -51,7 +58,9 @@ async function fetchLiveGameOdds(prompt) {
     if (!apiKey) return null;
 
     const sportKey = detectSportKey(prompt);
-    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+    // MMA has no spreads or totals — requesting them returns an error or empty data
+    const markets = sportKey === MMA_SPORT_KEY ? 'h2h' : 'h2h,spreads,totals';
+    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=${markets}&oddsFormat=american`;
     const res = await withTimeout(fetch(url), 8000, 'odds api fetch');
     if (!res.ok) return null;
 
