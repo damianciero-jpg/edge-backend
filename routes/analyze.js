@@ -1109,6 +1109,13 @@ router.post('/', async (req, res) => {
         }, lineMovementScore),
       }));
 
+      console.log('CANDIDATES LOG:', JSON.stringify(pairs.map(p => ({
+        team: p.candidate.team,
+        market: p.candidate.market,
+        odds: p.candidate.odds,
+        edgeScore: p.eval.edgeScore,
+      }))));
+
       pairs.sort((a, b) => b.eval.edgeScore - a.eval.edgeScore);
       evaluation = pairs[0].eval;
 
