@@ -261,7 +261,7 @@ function vigRemoved(rawA, rawB) {
  */
 function extractPinnacleOdds(prompt, team, opponentTeam) {
   const lines = String(prompt || '').split(/\r?\n/);
-  const pinnacleSection = lines.findIndex(l => /pinnacle/i.test(l));
+  const pinnacleSection = lines.findIndex(l => /pinnacle|lowvig|sharp:/i.test(l));
 
   if (pinnacleSection !== -1 && team) {
     const nearby = lines.slice(pinnacleSection, pinnacleSection + 5).join(' ');
@@ -715,15 +715,48 @@ function normalizeTopFactors(value, evaluation) {
 function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   const selectedSide = String(context.selectedSide || '').toLowerCase();
   const teams = extractGameTeams(prompt);
-
   const contextOdds = context.odds;
   const oddsObj = contextOdds && typeof contextOdds === 'object' ? contextOdds : null;
 
+  // Always evaluate both sides when selectedSide is 'best', then return the higher-scoring pick.
+  // Must come before the selectedTeam check — live odds set selectedTeam=homeTeam but still
+  // want a dual comparison.
+  if (selectedSide === 'best') {
+    const homeTeam = String(context.selectedTeam || (teams && teams.home) || '').trim();
+    const awayTeam = String(context.opponentTeam || (teams && teams.away) || '').trim();
+
+    const candidates = [
+      {
+        side: 'home',
+        team: homeTeam,
+        opponent: awayTeam,
+        market: context.market || 'h2h',
+        odds: oddsObj ? oddsObj.home : null,
+        opponentOdds: oddsObj ? oddsObj.away : null,
+      },
+      {
+        side: 'away',
+        team: awayTeam,
+        opponent: homeTeam,
+        market: context.market || 'h2h',
+        odds: oddsObj ? oddsObj.away : null,
+        opponentOdds: oddsObj ? oddsObj.home : null,
+      },
+    ]
+      .filter(c => c.team && c.odds != null)
+      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
+
+    if (candidates.length) {
+      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+    }
+  }
+
+  // Specific side explicitly requested
   if (context.selectedTeam) {
     const side = selectedSide === 'away' || selectedSide === 'home' ? selectedSide : 'selected';
     return buildCandidateEvaluation(prompt, {
       side,
-      team: String(context.selectedTeam || '').trim(),
+      team: String(context.selectedTeam).trim(),
       opponent: String(context.opponentTeam || '').trim(),
       market: context.market || 'h2h',
       odds: oddsObj ? oddsObj[selectedSide] || contextOdds : contextOdds,
@@ -733,36 +766,10 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
     }, lineMovementScore);
   }
 
-  if (selectedSide === 'best' || (context.selectedTeam && context.opponentTeam)) {
-    const away = {
-      side: 'away',
-      team: String(context.opponentTeam || teams && teams.away || '').trim(),
-      opponent: String(context.selectedTeam || teams && teams.home || '').trim(),
-      market: context.market || 'h2h',
-      odds: oddsObj ? oddsObj.away : null,
-      opponentOdds: oddsObj ? oddsObj.home : null,
-    };
-    const home = {
-      side: 'home',
-      team: String(context.selectedTeam || teams && teams.home || '').trim(),
-      opponent: String(context.opponentTeam || teams && teams.away || '').trim(),
-      market: context.market || 'h2h',
-      odds: oddsObj ? oddsObj.home : null,
-      opponentOdds: oddsObj ? oddsObj.away : null,
-    };
-
-    const candidates = [away, home]
-      .filter(c => c && c.team && c.odds != null)
-      .map(c => buildCandidateEvaluation(prompt, c, lineMovementScore));
-
-    if (candidates.length) {
-      return candidates.sort((a, b) => b.edgeScore - a.edgeScore)[0];
-    }
-  }
-
+  // Fallback: extract odds from prompt text
   const odds = extractAmericanOdds(prompt);
   const fallback = buildCandidateEvaluation(prompt, {
-    side: selectedSide || 'best',
+    side: 'best',
     team: '',
     opponent: '',
     market: context.market || 'h2h',
@@ -1083,21 +1090,25 @@ router.post('/', async (req, res) => {
     // Evaluate all candidates (up to 6: home ML, away ML, home spread, away spread, over, under)
     let evaluation;
     if (liveOdds && liveOdds.candidates && liveOdds.candidates.length) {
-      const allEvals = liveOdds.candidates.map(c =>
-        buildCandidateEvaluation(resolvedPrompt, {
+      // Zip candidates with their evaluations so index stays stable after sort.
+      // allEvals.sort() mutates in place — re-finding the index after sort always
+      // returns 0 and maps to candidates[0] (home ML), ignoring the real winner.
+      const pairs = liveOdds.candidates.map(c => ({
+        candidate: c,
+        eval: buildCandidateEvaluation(resolvedPrompt, {
           side: c.side,
           team: c.team,
           opponent: c.opponent,
           market: c.market,
           odds: c.odds,
           opponentOdds: c.opponentOdds,
-        }, lineMovementScore)
-      );
+        }, lineMovementScore),
+      }));
 
-      evaluation = allEvals.sort((a, b) => b.edgeScore - a.edgeScore)[0];
+      pairs.sort((a, b) => b.eval.edgeScore - a.eval.edgeScore);
+      evaluation = pairs[0].eval;
 
-      const bestIdx = allEvals.indexOf(evaluation);
-      const bestCandidate = liveOdds.candidates[bestIdx];
+      const bestCandidate = pairs[0].candidate;
       if (bestCandidate && evaluation.verdict !== 'PASS') {
         evaluation.pick = bestCandidate.label;
         evaluation.evaluating = bestCandidate.label;
