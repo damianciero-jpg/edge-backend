@@ -12,6 +12,7 @@ const ALLOWED_SPORTS = new Set([
   'soccer_epl',
   'soccer_usa_mls',
   'mma_mixed_martial_arts',
+  'golf_pga_tour',
 ]);
 
 router.get('/', async (req, res) => {
