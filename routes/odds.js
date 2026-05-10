@@ -22,21 +22,18 @@ router.get('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or missing sport parameter.' });
   }
 
-  // Golf uses event-specific endpoints not available in the standard odds API
-  if (sport === 'golf_pga_tour') {
-    return res.json([]);
-  }
-
   try {
     const apiKey = await getCfg('oddsApiKey', 'ODDS_API_KEY', DEFAULT_ODDS_API_KEY);
     if (!apiKey) {
       return res.status(503).json({ error: 'Odds API key is not configured.' });
     }
 
+    const markets = sport === 'golf_pga_tour' ? 'h2h' : 'h2h,spreads,totals';
+
     const url = new URL(`https://api.the-odds-api.com/v4/sports/${sport}/odds/`);
     url.searchParams.set('apiKey', apiKey);
     url.searchParams.set('regions', 'us');
-    url.searchParams.set('markets', 'h2h,spreads,totals');
+    url.searchParams.set('markets', markets);
     url.searchParams.set('oddsFormat', 'american');
     url.searchParams.set('dateFormat', 'iso');
 
@@ -44,6 +41,8 @@ router.get('/', async (req, res) => {
     if (!upstream.ok) {
       const body = await upstream.json().catch(() => ({}));
       console.warn(`Odds API error for ${sport}: ${upstream.status}`, body);
+      // Golf sport key may not be active between tournaments — return empty gracefully
+      if (sport === 'golf_pga_tour') return res.json([]);
       return res.status(upstream.status).json({ error: body.message || 'Odds API request failed.' });
     }
 
