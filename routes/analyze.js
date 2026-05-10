@@ -25,11 +25,17 @@ const NFL_SPORT_KEY = 'americanfootball_nfl';
 const MLB_SPORT_KEY = 'baseball_mlb';
 const NHL_SPORT_KEY = 'icehockey_nhl';
 const MMA_SPORT_KEY = 'mma_mixed_martial_arts';
+const GOLF_SPORT_KEY = 'golf_pga_tour';
+
+// Sports with no spreads or totals — h2h only
+const H2H_ONLY_SPORTS = new Set([MMA_SPORT_KEY, GOLF_SPORT_KEY]);
 
 function detectSportKey(prompt) {
   const src = String(prompt || '').toLowerCase();
-  // MMA checked first — keywords are sport-specific enough to avoid false positives
+  // MMA — checked early, keywords are sport-specific enough to avoid false positives
   if (/\bufc\b|\bmma\b|makhachev|adesanya|volkanovski|poirier|holloway|oliveira|gaethje|strickland|pereira/.test(src)) return MMA_SPORT_KEY;
+  // Golf — pga/golf keywords plus distinctive golfer last names
+  if (/\bgolf\b|\bpga\b|\blpga\b|\bmasters\b|\bthe open\b|scheffler|mcilroy|\brahm\b|spieth|morikawa|hovland|scottie schauffele/.test(src)) return GOLF_SPORT_KEY;
   if (/\bnba\b|lakers|celtics|warriors|nuggets|bucks|heat|76ers|knicks|nets|bulls|cavs|cavaliers|pistons|thunder|timberwolves|spurs/.test(src)) return NBA_SPORT_KEY;
   if (/\bnfl\b|patriots|cowboys|eagles|chiefs|packers|bears|lions|ravens|browns|steelers/.test(src)) return NFL_SPORT_KEY;
   if (/\bmlb\b|yankees|dodgers|red sox|cubs|mets|braves|astros|giants|cardinals/.test(src)) return MLB_SPORT_KEY;
@@ -58,8 +64,8 @@ async function fetchLiveGameOdds(prompt) {
     if (!apiKey) return null;
 
     const sportKey = detectSportKey(prompt);
-    // MMA has no spreads or totals — requesting them returns an error or empty data
-    const markets = sportKey === MMA_SPORT_KEY ? 'h2h' : 'h2h,spreads,totals';
+    // Golf and MMA have no spreads or totals
+    const markets = H2H_ONLY_SPORTS.has(sportKey) ? 'h2h' : 'h2h,spreads,totals';
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=${markets}&oddsFormat=american`;
     const res = await withTimeout(fetch(url), 8000, 'odds api fetch');
     if (!res.ok) return null;
@@ -135,20 +141,26 @@ async function fetchLiveGameOdds(prompt) {
     if (!h2hHome || !h2hAway) return null;
 
     // Build full odds block for the AI prompt
+    const isH2hOnly = H2H_ONLY_SPORTS.has(sportKey);
+    const gameHeader = isH2hOnly
+      ? `MATCHUP: ${homeTeam} vs ${awayTeam}`
+      : `GAME: ${awayTeam} @ ${homeTeam}`;
     const oddsBlock = [
-      `GAME: ${awayTeam} @ ${homeTeam}`,
+      gameHeader,
       '',
       '--- MONEYLINE (h2h) ---',
       `Sharp: ${homeTeam} ${fmt(h2hHome)} | ${awayTeam} ${fmt(h2hAway)}`,
       ...lines.h2h,
-      '',
-      '--- SPREAD ---',
-      spreadHome ? `Sharp: ${homeTeam} ${fmt(spreadHome)} ${spreadPoint} | ${awayTeam} ${fmt(spreadAway)} ${-spreadPoint}` : 'No spread data',
-      ...lines.spreads,
-      '',
-      '--- TOTALS ---',
-      totalOver ? `Sharp: Over ${fmt(totalOver)} ${totalPoint} | Under ${fmt(totalUnder)} ${totalPoint}` : 'No totals data',
-      ...lines.totals,
+      ...(!isH2hOnly ? [
+        '',
+        '--- SPREAD ---',
+        spreadHome ? `Sharp: ${homeTeam} ${fmt(spreadHome)} ${spreadPoint} | ${awayTeam} ${fmt(spreadAway)} ${-spreadPoint}` : 'No spread data',
+        ...lines.spreads,
+        '',
+        '--- TOTALS ---',
+        totalOver ? `Sharp: Over ${fmt(totalOver)} ${totalPoint} | Under ${fmt(totalUnder)} ${totalPoint}` : 'No totals data',
+        ...lines.totals,
+      ] : []),
     ].join('\n');
 
     // Build all 6 candidates for evaluation
