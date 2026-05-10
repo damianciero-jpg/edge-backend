@@ -1012,6 +1012,7 @@ button,
       <button class="sp" data-sport="soccer_epl" onclick="selectSport(this)">⚽ EPL</button>
       <button class="sp" data-sport="soccer_usa_mls" onclick="selectSport(this)">⚽ MLS</button>
       <button class="sp" data-sport="mma_mixed_martial_arts" onclick="selectSport(this)">🥊 UFC</button>
+      <button class="sp" data-sport="golf_pga_tour" onclick="selectSport(this)">⛳ PGA</button>
     </div>
     <div class="games-scroll" id="gamesList"><div class="sb-empty">LOADING GAMES...</div></div>
     <button class="sb-refresh" onclick="fetchGames()">↻ REFRESH ODDS</button>
@@ -1654,7 +1655,7 @@ async function fetchGames() {
 const SPORT_LABELS = {
   americanfootball_nfl:'🏈 NFL', basketball_nba:'🏀 NBA', baseball_mlb:'⚾ MLB',
   icehockey_nhl:'🏒 NHL', soccer_epl:'⚽ EPL', soccer_usa_mls:'⚽ MLS',
-  mma_mixed_martial_arts:'🥊 UFC'
+  mma_mixed_martial_arts:'🥊 UFC', golf_pga_tour:'⛳ PGA'
 };
 
 function renderGamesList() {
