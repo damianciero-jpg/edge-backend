@@ -67,7 +67,7 @@ async function fetchLiveGameOdds(prompt) {
     // Golf and MMA have no spreads or totals
     const markets = H2H_ONLY_SPORTS.has(sportKey) ? 'h2h' : 'h2h,spreads,totals';
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=${markets}&oddsFormat=american`;
-    const res = await withTimeout(fetch(url), 8000, 'odds api fetch');
+    const res = await withTimeout(fetch(url), 5000, 'odds api fetch');
     if (!res.ok) return null;
 
     const games = await res.json();
@@ -303,61 +303,66 @@ function calcVig(oddsA, oddsB) {
   return (impliedProb(oddsA) + impliedProb(oddsB)) * 100;
 }
 
-/**
- * Score the juice (vig) level.
- */
-function vigScore(vigPct) {
+// ─── SIGNAL EXTRACTORS ───────────────────────────────────────────────────────
+
+const BOOK_NAMES = ['pinnacle', 'lowvig', 'draftkings', 'fanduel', 'betmgm', 'caesars', 'pointsbet', 'williamhill', 'betrivers', 'barstool', 'unibet', 'bet365', 'bovada', 'mybookie'];
+
+function extractInjurySignal(text) {
+  const src = String(text || '').toLowerCase();
+  const neg = [/\binjur(?:y|ies|ed)\b/, /\bout\b(?!.*\bof\s+bounds)/, /\bdnp\b/, /\bquestionable\b/, /\bdoubtful\b/, /\bmissing\b/, /\blimited\b/, /\bday-?to-?day\b/, /\bscratched\b/];
+  const pos = [/\bhealthy\b/, /\bfull.?strength\b/, /\bback.from.injur/, /\bcleared\b/, /\bno.?injur/, /\bfully.?fit\b/];
+  const n = neg.filter(p => p.test(src)).length;
+  const p = pos.filter(p => p.test(src)).length;
+  return Math.max(-10, Math.min(10, (p - n) * 3));
+}
+
+function extractSituationalSignal(text) {
+  const src = String(text || '').toLowerCase();
+  const pos = [/\bhome.?(?:game|crowd|field|ice|court|advantage)\b/, /\brest.advantage\b/, /\bwinning.streak\b/, /\bback.to.back.*(?:opponent|away)\b/, /\bmomentum\b/, /\bmust.win\b/, /\bprime.time\b/];
+  const neg = [/\bback.to.back\b(?!.*(?:opponent|away))/, /\bfatigue\b/, /\blosing.streak\b/, /\blong.road.trip\b/, /\bshort.rest\b/, /\baway.game\b/];
+  const p = pos.filter(p => p.test(src)).length;
+  const n = neg.filter(p => p.test(src)).length;
+  return Math.max(-10, Math.min(10, (p - n) * 2));
+}
+
+function computeMarketBreadth(prompt) {
+  const src = String(prompt || '').toLowerCase();
+  const count = BOOK_NAMES.filter(b => src.includes(b)).length;
+  if (count >= 6) return 8;
+  if (count >= 4) return 5;
+  if (count >= 2) return 2;
+  if (count >= 1) return 0;
+  return -3;
+}
+
+function computeConfidencePenalty(vigPct) {
   if (vigPct == null) return 0;
-  if (vigPct <= 102) return 8;
-  if (vigPct <= 104) return 4;
-  if (vigPct <= 106) return 0;
-  if (vigPct <= 109) return -3;
-  return -6;
+  if (vigPct <= 102) return 3;
+  if (vigPct <= 104) return 0;
+  if (vigPct <= 106) return -3;
+  if (vigPct <= 110) return -6;
+  return -9;
 }
 
-/**
- * Score the spread between sharp (Pinnacle) and square (DraftKings/FanDuel) books.
- */
-function sharpSquareSpreadScore(pinnacleOdds, squareOdds) {
-  if (pinnacleOdds == null || squareOdds == null) return 0;
-  const spread = Number(pinnacleOdds) - Number(squareOdds);
-  if (spread >= 15) return 8;
-  if (spread >= 8) return 5;
-  if (spread >= 3) return 2;
-  if (spread >= -3) return 0;
-  if (spread >= -8) return -3;
-  return -6;
-}
-
-/**
- * Main edge scoring — Pinnacle-anchored methodology.
- *
- * Score components:
- * 1. EV against Pinnacle's vig-removed true probability (primary, 50% weight)
- * 2. Juice/vig level of the market (15% weight)
- * 3. Sharp vs square book spread (15% weight)
- * 4. Line movement / CLV signal (10% weight)
- * 5. Contextual keyword signals — form, matchup, injury (10% weight)
- */
+// ─── MAIN EDGE SCORING ────────────────────────────────────────────────────────
+// Weights: priceEdge 60%, marketBreadth 10%, confidencePenalty 10%,
+//          injurySignal 10%, situationalSignal 10% — total = 100%
 function computeEdgeScore({
-  implied,
-  projected,
-  form = 0,
-  matchup = 0,
-  market = 0,
-  sharpSpread = 0,
-  lineMovement = 0,
+  noVigProb,
+  impliedProb: rawImplied,
+  marketBreadth = 0,
+  confidencePenalty = 0,
+  injurySignal = 0,
+  situationalSignal = 0,
 }) {
-  let score = 0;
-
-  score += (projected - implied) * 100 * 0.5;
-  score += market * 0.15;
-  score += sharpSpread * 0.15;
-  score += lineMovement * 0.10;
-  score += form * 0.05;
-  score += matchup * 0.05;
-
-  return score;
+  const priceEdge = (noVigProb - rawImplied) * 100;
+  return (
+    priceEdge * 0.60 +
+    marketBreadth * 0.10 +
+    confidencePenalty * 0.10 +
+    injurySignal * 0.10 +
+    situationalSignal * 0.10
+  );
 }
 
 // ─── FIX 1: LOWERED VERDICT THRESHOLDS ───────────────────────────────────────
@@ -597,11 +602,11 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   }
 
   const factors = oddsDetected
-    ? getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOpponentOdds)
-    : { form: 0, matchup: 0, market: 0, sharpSpread: 0 };
+    ? getSignalFactors(prompt, odds, opponentOdds)
+    : { marketBreadth: 0, confidencePenalty: 0, injurySignal: 0, situationalSignal: 0, vigPct: null };
 
   const edgeScore = oddsDetected
-    ? computeEdgeScore({ implied, projected, ...factors, lineMovement: lineMovementScore })
+    ? computeEdgeScore({ noVigProb: projected, impliedProb: implied, ...factors })
     : 0;
 
   const verdict = getVerdict(edgeScore);
@@ -614,6 +619,8 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   const candidateLabel = (candidate && candidate.label) || pickLabel(candidate && candidate.team, odds);
   const pick = verdict === 'PASS' ? passPick() : candidateLabel;
 
+  const priceEdgeRaw = roundNumber((projected - implied) * 100, 2);
+
   return {
     odds,
     oddsDetected,
@@ -623,11 +630,21 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
     market: (candidate && candidate.market) || 'h2h',
     evaluating: candidateLabel,
     pick,
+    // Phase 1: new probability fields
+    consensusProb: roundNumber(implied),
+    noVigProb: roundNumber(projected),
+    priceEdge: priceEdgeRaw,
     impliedProb: roundNumber(implied),
     projectedProb: roundNumber(projected),
+    // Phase 1: new signal fields
+    marketBreadth: factors.marketBreadth || 0,
+    confidencePenalty: factors.confidencePenalty || 0,
+    injurySignal: factors.injurySignal || 0,
+    situationalSignal: factors.situationalSignal || 0,
+    // Phase 2: line movement (populated upstream, default null here)
+    lineMovementSignal: null,
     pinnacleUsed: pinnacleOdds != null,
     vigPct: factors.vigPct ? roundNumber(factors.vigPct, 1) : null,
-    sharpSpread: factors.sharpSpread || 0,
     lineMovement: lineMovementScore,
     edgeScore: roundNumber(edgeScore, 2),
     verdict,
@@ -638,27 +655,15 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   };
 }
 
-function getSignalFactors(prompt, odds, opponentOdds, pinnacleOdds, pinnacleOpponentOdds) {
-  const source = promptBody(prompt);
-
-  const form = keywordScore(
-    source,
-    [/\bhot\b/, /\bstrong form\b/, /\bwon\b/, /\bwinning streak\b/, /\brest advantage\b/, /\bback.to.back\b/],
-    [/\bcold\b/, /\bslump\b/, /\blost\b/, /\blosing streak\b/, /\bfatigue\b/]
-  );
-  const matchup = keywordScore(
-    source,
-    [/\bmatchup advantage\b/, /\bfavorable matchup\b/, /\bhome advantage\b/, /\bhealthy\b/, /\bpace mismatch\b/],
-    [/\bbad matchup\b/, /\bunfavorable matchup\b/, /\binjur(?:y|ies|ed)\b/, /\bquestionable\b/, /\bdoubtful\b/]
-  );
-
+function getSignalFactors(prompt, odds, opponentOdds) {
   const vigPct = calcVig(odds, opponentOdds);
-  const market = vigScore(vigPct);
-
-  const squareOdds = extractSquareBookOdds(prompt, null);
-  const sharpSpread = sharpSquareSpreadScore(pinnacleOdds, squareOdds || odds);
-
-  return { form, matchup, market: roundNumber(market, 2), sharpSpread: roundNumber(sharpSpread, 2), vigPct };
+  return {
+    marketBreadth: computeMarketBreadth(prompt),
+    confidencePenalty: computeConfidencePenalty(vigPct),
+    injurySignal: extractInjurySignal(promptBody(prompt)),
+    situationalSignal: extractSituationalSignal(promptBody(prompt)),
+    vigPct,
+  };
 }
 
 function extractOpponentOdds(prompt, opponentTeam) {
@@ -883,8 +888,18 @@ function buildStructuredResult(evaluation, aiText) {
     risk: evaluation.risk,
     edgeStrength: evaluation.edgeStrength,
     edgeScore: evaluation.edgeScore,
+    // Phase 1 fields
+    consensusProb: evaluation.consensusProb,
+    noVigProb: evaluation.noVigProb,
+    priceEdge: evaluation.priceEdge,
     impliedProb: evaluation.impliedProb,
     projectedProb: evaluation.projectedProb,
+    marketBreadth: evaluation.marketBreadth,
+    confidencePenalty: evaluation.confidencePenalty,
+    injurySignal: evaluation.injurySignal,
+    situationalSignal: evaluation.situationalSignal,
+    // Phase 2 field (populated by caller)
+    lineMovementSignal: evaluation.lineMovementSignal,
     reason,
     topFactors: normalizeTopFactors(parsed.topFactors || parsed.key_factors || parsed.keyFactors, evaluation),
     recommendedAction: evaluation.recommendedAction,
@@ -1074,7 +1089,7 @@ router.post('/', async (req, res) => {
     // the frontend sends.
     let liveOdds = null;
     try {
-      liveOdds = await withTimeout(fetchLiveGameOdds(prompt), 9000, 'live odds');
+      liveOdds = await withTimeout(fetchLiveGameOdds(prompt), 5000, 'live odds');
     } catch {
       liveOdds = null;
     }
