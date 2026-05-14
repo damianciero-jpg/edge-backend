@@ -1112,6 +1112,7 @@ router.post('/', async (req, res) => {
     }
 
     let lineMovementScore = 0;
+    let lineMovementSignal = null;
     const lineTeam = (liveOdds && liveOdds.homeTeam) || selectedTeam;
     const lineOpponent = (liveOdds && liveOdds.awayTeam) || opponentTeam;
     if (lineTeam) {
@@ -1120,10 +1121,20 @@ router.post('/', async (req, res) => {
         const gameId = [lineTeam, lineOpponent].sort().join('_').toLowerCase().replace(/\s+/g, '_')
           + '_' + new Date().toISOString().slice(0, 10);
         const oddsValue = resolvedOdds && typeof resolvedOdds === 'object' ? resolvedOdds.home : resolvedOdds;
-        const lm = await withTimeout(getLineMovementSignal(gameId, lineTeam, oddsValue), 2000, 'line movement');
+        // Phase 2: 5-second timeout; expose full signal object (direction + basisPoints + score)
+        const lm = await withTimeout(getLineMovementSignal(gameId, lineTeam, oddsValue), 5000, 'line movement');
         lineMovementScore = lm.score || 0;
+        lineMovementSignal = {
+          score: lm.score || 0,
+          direction: lm.direction || 'UNKNOWN',
+          basisPoints: lm.basisPoints || 0,
+          openingOdds: lm.openingOdds || null,
+          currentOdds: lm.currentOdds || null,
+          team: lineTeam,
+        };
       } catch {
         lineMovementScore = 0;
+        lineMovementSignal = null;
       }
     }
 
@@ -1169,6 +1180,9 @@ router.post('/', async (req, res) => {
         odds: resolvedOdds,
       }, lineMovementScore);
     }
+
+    // Phase 2: attach lineMovementSignal to the evaluation object
+    evaluation.lineMovementSignal = lineMovementSignal;
 
     // ─── DEBUG LOG ────────────────────────────────────────────────────────────
     console.log('EDGE EVAL:', JSON.stringify({
