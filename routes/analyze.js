@@ -531,8 +531,23 @@ function normalizeOddsValue(value) {
   return odds;
 }
 
-function pickLabel(team, odds) {
-  return team ? `${team} ML${odds != null ? ` ${formatAmericanOdds(odds)}` : ''}` : 'Best available play';
+function pickLabel(team, odds, market, point) {
+  if (!team) return 'Best available play';
+  if (market === 'spreads') {
+    const pointStr = point != null ? ` ${point}` : '';
+    return `${team}${pointStr}${odds != null ? ` ${formatAmericanOdds(odds)}` : ''}`;
+  }
+  return `${team} ML${odds != null ? ` ${formatAmericanOdds(odds)}` : ''}`;
+}
+
+function extractSpreadPoint(prompt, team) {
+  if (!team) return null;
+  const pattern = new RegExp(`${escapeRegExp(team)}\\s+([+-]?\\d{1,3}(?:\\.5)?)\\s+[+-]\\d{2,4}`, 'i');
+  const match = String(prompt || '').match(pattern);
+  if (!match) return null;
+  const val = parseFloat(match[1]);
+  if (!Number.isFinite(val) || Math.abs(val) > 50) return null;
+  return val >= 0 ? `+${val}` : String(val);
 }
 
 // ─── FIX 3: PASS ONLY FIRES ON TRUE PASS ─────────────────────────────────────
@@ -617,7 +632,9 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   const recommendedAction = getRecommendedAction(verdict, confidence);
   // Use the pre-built label (preserves spread/total formatting). Only fall back
   // to pickLabel for h2h candidates or manual entries that have no label.
-  const candidateLabel = (candidate && candidate.label) || pickLabel(candidate && candidate.team, odds);
+  const candidateMarket = (candidate && candidate.market) || 'h2h';
+  const candidatePoint = candidateMarket === 'spreads' ? extractSpreadPoint(prompt, candidate && candidate.team) : null;
+  const candidateLabel = (candidate && candidate.label) || pickLabel(candidate && candidate.team, odds, candidateMarket, candidatePoint);
   const pick = verdict === 'PASS' ? passPick() : candidateLabel;
 
   const priceEdgeRaw = roundNumber((projected - implied) * 100, 2);
@@ -628,7 +645,7 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
     selectedSide: candidate && candidate.side,
     selectedTeam: candidate && candidate.team,
     opponentTeam: candidate && candidate.opponent,
-    market: (candidate && candidate.market) || 'h2h',
+    market: candidateMarket,
     evaluating: candidateLabel,
     pick,
     // Phase 1: new probability fields
@@ -718,9 +735,32 @@ function sideAlignedReason(evaluation) {
 
 function reasonConflictsWithSelectedSide(reason, evaluation) {
   if (!reason || evaluation.verdict === 'PASS') return false;
+  const reasonLower = String(reason).toLowerCase();
   const opponent = String(evaluation.opponentTeam || '').toLowerCase();
-  if (!opponent || !String(reason).toLowerCase().includes(opponent)) return false;
-  return /\b(bet|lean|recommend|pick|play|edge)\b/i.test(reason);
+  const selected = String(evaluation.selectedTeam || '').toLowerCase();
+
+  // Check 1: opponent name appears alongside explicit betting action words
+  if (opponent && reasonLower.includes(opponent) && /\b(bet|lean|recommend|pick|play|edge)\b/i.test(reasonLower)) {
+    return true;
+  }
+
+  // Check 2: positive language about opponent AND negative language about selected team
+  if (opponent && selected) {
+    const POSITIVE = [/\bstronger\b/, /\badvantage\b/, /\bbetter\b/, /\bfavored\b/, /\bhot\b/, /\bvalue\b/, /\bsuperior\b/];
+    const NEGATIVE = [/\bweaker\b/, /\bstruggling\b/, /\bpoor\b/, /\boverpriced\b/, /\bcold\b/, /\bslump\b/, /\bdisadvantage\b/];
+
+    let opponentPositive = false;
+    let selectedNegative = false;
+
+    for (const sentence of reasonLower.split(/[.!?,;]+/).filter(Boolean)) {
+      if (sentence.includes(opponent) && POSITIVE.some(p => p.test(sentence))) opponentPositive = true;
+      if (sentence.includes(selected) && NEGATIVE.some(p => p.test(sentence))) selectedNegative = true;
+    }
+
+    if (opponentPositive && selectedNegative) return true;
+  }
+
+  return false;
 }
 
 function fallbackTopFactors(evaluation) {
