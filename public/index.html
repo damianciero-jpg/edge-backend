@@ -386,7 +386,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
   #view-home{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-tracker{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);}
   #view-account{height:calc(100vh - 56px - 56px) !important;height:calc(100dvh - 56px - 56px) !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
-  #view-settings{height:calc(100vh - 56px - 56px) !important;height:calc(100dvh - 56px - 56px) !important;overflow-y:auto !important;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
   .odds-row{grid-template-columns:1fr;}
   .ev-row{grid-template-columns:repeat(2,1fr);}
   .bk-grid{grid-template-columns:1fr;}
@@ -907,7 +906,6 @@ button,
   <button class="nav-tab" onclick="showTab('markets')" id="tab-markets">MARKETS</button>
   <button class="nav-tab" onclick="showTab('tracker')" id="tab-tracker">TRACKER</button>
   <button class="nav-tab" onclick="showTab('account')" id="tab-account">ACCOUNT</button>
-  <button class="nav-tab" onclick="showTab('settings')" id="tab-settings">SETTINGS</button>
 </div>
 
 <!-- HOME TAB -->
@@ -1014,7 +1012,6 @@ button,
       <button class="sp" data-sport="soccer_epl" onclick="selectSport(this)">⚽ EPL</button>
       <button class="sp" data-sport="soccer_usa_mls" onclick="selectSport(this)">⚽ MLS</button>
       <button class="sp" data-sport="mma_mixed_martial_arts" onclick="selectSport(this)">🥊 UFC</button>
-      <button class="sp" data-sport="golf_pga_tour" onclick="selectSport(this)">⛳ PGA</button>
     </div>
     <div class="games-scroll" id="gamesList"><div class="sb-empty">LOADING GAMES...</div></div>
     <button class="sb-refresh" onclick="fetchGames()">↻ REFRESH ODDS</button>
@@ -1195,63 +1192,6 @@ button,
   </div>
 </div>
 
-<!-- SETTINGS TAB -->
-<div id="view-settings" style="display:none;height:calc(100vh - 102px);overflow-y:auto;">
-  <div class="scrollable">
-    <div class="section-lbl" style="margin-bottom:20px;font-size:10px;">SETTINGS</div>
-
-    <!-- ACCOUNT -->
-    <div class="section-lbl">ACCOUNT</div>
-    <div class="acct-card" style="margin-bottom:20px;padding:18px 20px;">
-      <div id="settings-pro-row" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:6px 0 14px;" onclick="checkout('sub')">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:20px;line-height:1;">👑</span>
-          <span style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--text);">Upgrade to Pro</span>
-        </div>
-        <span style="background:#c9a227;color:#000;font-family:var(--mono);font-size:8px;font-weight:700;padding:4px 10px;letter-spacing:1px;white-space:nowrap;">PRO $20/mo</span>
-      </div>
-      <div id="settings-pro-active" style="display:none;align-items:center;gap:10px;padding:6px 0 14px;">
-        <span style="color:var(--green);font-size:20px;line-height:1;">✓</span>
-        <span style="font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--green);">EDGE Pro Active</span>
-      </div>
-      <div id="settings-usage" style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;border-top:1px solid var(--border);padding-top:12px;">
-        USAGE TODAY: — / —
-      </div>
-    </div>
-
-    <!-- DATA -->
-    <div class="section-lbl">DATA</div>
-    <div class="acct-card" style="margin-bottom:20px;padding:0;">
-      <div onclick="exportBetsCSV()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:16px 20px;border-bottom:1px solid var(--border);">
-        <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--text);">Export all bets as CSV</span>
-        <span style="font-size:15px;color:var(--accent);">⬇</span>
-      </div>
-      <div onclick="confirmClearBets()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:16px 20px;">
-        <span style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:#ff4444;">Clear all bets</span>
-        <span style="font-size:15px;color:#ff4444;">🗑</span>
-      </div>
-    </div>
-
-    <!-- INSTALL -->
-    <div class="section-lbl">INSTALL</div>
-    <div class="acct-card" style="padding:18px 20px;">
-      <div style="margin-bottom:18px;">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;margin-bottom:10px;">📱 IPHONE</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text);line-height:2.2;">
-          Tap <strong style="color:var(--accent);">Share</strong> &nbsp;→&nbsp; <strong style="color:var(--accent);">Add to Home Screen</strong> &nbsp;→&nbsp; <strong style="color:var(--accent);">Add</strong>
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:18px;">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;margin-bottom:10px;">🤖 ANDROID</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text);line-height:2.2;">
-          Tap <strong style="color:var(--accent);">Install App</strong> or <strong style="color:var(--accent);">Add to Home Screen</strong>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
 <div class="toast-container" id="toastContainer"></div>
 
 <nav class="bottom-nav">
@@ -1260,7 +1200,6 @@ button,
   <button class="bn-tab" id="bn-markets" onclick="showTab('markets')"><span class="bn-icon">📊</span>MARKETS</button>
   <button class="bn-tab" id="bn-tracker" onclick="showTab('tracker')"><span class="bn-icon">📋</span>TRACKER</button>
   <button class="bn-tab" id="bn-account" onclick="showTab('account')"><span class="bn-icon">💳</span>ACCOUNT</button>
-  <button class="bn-tab" id="bn-settings" onclick="showTab('settings')"><span class="bn-icon">⚙️</span>SETTINGS</button>
 </nav>
 
 <script>
@@ -1308,7 +1247,7 @@ handleStripeReturn();
 function isMobile() { return window.innerWidth <= 768; }
 
 function showTab(tab) {
-  ['home','odds','markets','tracker','account','settings'].forEach(t => {
+  ['home','odds','markets','tracker','account'].forEach(t => {
     document.getElementById('view-'+t).style.display = 'none';
     const tabEl = document.getElementById('tab-'+t);
     const bnEl = document.getElementById('bn-'+t);
@@ -1325,7 +1264,6 @@ function showTab(tab) {
     syncSelectedGameToMarkets();
   }
   if (tab === 'tracker') prefillTrackerFromCurrentGame();
-  if (tab === 'settings') renderSettings();
 }
 
 function closeDetail() {
@@ -1692,10 +1630,7 @@ async function fetchGames() {
       currentGameIndex = null;
       list.innerHTML = currentSport === 'mma_mixed_martial_arts'
         ? '<div class="sb-empty">NO UPCOMING UFC ODDS AVAILABLE.<br>TRY AGAIN CLOSER TO FIGHT NIGHT.</div>'
-        : currentSport === 'golf_pga_tour'
-        ? '<div class="sb-empty">⛳ NO MATCHUPS<br>SCHEDULED NOW<br>USE PANEL →</div>'
         : '<div class="sb-empty">NO UPCOMING GAMES<br>TRY ANOTHER SPORT</div>';
-      if (currentSport === 'golf_pga_tour') showGolfWidget();
       countEl.textContent = '0 GAMES';
       syncMarketsGames();
       return;
@@ -1716,70 +1651,10 @@ async function fetchGames() {
   } catch(e) { list.innerHTML = `<div class="sb-empty">NETWORK ERROR<br>${e.message}</div>`; }
 }
 
-function showGolfWidget() {
-  const welcome = document.getElementById('welcomeState');
-  if (!welcome) return;
-  welcome.className = '';
-  welcome.style.cssText = 'height:calc(100vh - 102px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
-  welcome.innerHTML = `
-    <div style="font-size:40px;margin-bottom:10px">⛳</div>
-    <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--accent,#00e5ff);margin-bottom:6px;">PGA GOLF ANALYSIS</div>
-    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:20px;text-align:center;line-height:1.9;">No matchups scheduled right now. Enter a golfer name<br>or matchup manually to run AI analysis.<br>e.g. "Scottie Scheffler vs Rory McIlroy"</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%;max-width:540px;">
-      <input id="golfInput" placeholder="Scottie Scheffler vs Rory McIlroy" style="flex:1;min-width:220px;padding:9px 11px;background:#080c10;border:1px solid #243447;color:#e8f4f8;font-family:var(--mono);font-size:11px;outline:none;box-sizing:border-box;" />
-      <button id="golfQuickBtn" onclick="runGolfAnalysis(false)" style="padding:9px 13px;background:var(--accent,#00e5ff);border:0;color:#080c10;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap;">⚡ QUICK AI</button>
-      <button id="golfDeepBtn" onclick="runGolfAnalysis(true)" style="padding:9px 13px;background:linear-gradient(135deg,#7b61ff,#5a3ff5);border:0;color:white;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;white-space:nowrap;">🔍 DEEP AI</button>
-    </div>
-    <div id="golfResult" style="display:none;margin-top:18px;width:100%;max-width:620px;max-height:320px;overflow:auto;white-space:pre-wrap;text-align:left;background:#0d1219;border:1px solid #1e2d3d;color:#b0ccd8;padding:14px;font-size:11px;line-height:1.7;font-family:var(--mono);box-sizing:border-box;"></div>
-  `;
-  const inp = document.getElementById('golfInput');
-  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') runGolfAnalysis(false); });
-}
-
-async function runGolfAnalysis(useSearch) {
-  const input = document.getElementById('golfInput');
-  const result = document.getElementById('golfResult');
-  const quickBtn = document.getElementById('golfQuickBtn');
-  const deepBtn = document.getElementById('golfDeepBtn');
-  if (!input || !result) return;
-  const prompt = input.value.trim();
-  if (!prompt) { result.style.display = 'block'; result.textContent = 'Enter a golfer name or matchup first.'; return; }
-  if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
-
-  quickBtn.disabled = true;
-  deepBtn.disabled = true;
-  result.style.display = 'block';
-  result.textContent = useSearch ? '🔍 Research AI is analyzing...' : '⚡ Quick AI is analyzing...';
-
-  try {
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, useSearch, secondLayer: useSearch, selectedSide: 'best', selectedTeam: '', opponentTeam: '' })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (data.authRequired || res.status === 401) {
-      const overlay = document.getElementById('auth-overlay');
-      if (overlay) overlay.style.display = 'flex';
-      result.textContent = 'Please sign in to run analysis.';
-      return;
-    }
-    if (data.paywall || res.status === 402) { showPaywall(); result.textContent = data.error || 'No credits remaining.'; return; }
-    if (!res.ok || data.ok === false) { result.textContent = data.error || 'Analysis failed.'; return; }
-    result.textContent = data.text || 'Analysis complete.';
-    if (typeof syncUserStatus === 'function') syncUserStatus();
-  } catch (err) {
-    result.textContent = `Analysis failed: ${err.message}`;
-  } finally {
-    quickBtn.disabled = false;
-    deepBtn.disabled = false;
-  }
-}
-
 const SPORT_LABELS = {
   americanfootball_nfl:'🏈 NFL', basketball_nba:'🏀 NBA', baseball_mlb:'⚾ MLB',
   icehockey_nhl:'🏒 NHL', soccer_epl:'⚽ EPL', soccer_usa_mls:'⚽ MLS',
-  mma_mixed_martial_arts:'🥊 UFC', golf_pga_tour:'⛳ PGA'
+  mma_mixed_martial_arts:'🥊 UFC'
 };
 
 function renderGamesList() {
@@ -1792,8 +1667,7 @@ function renderGamesList() {
     const el = document.createElement('div');
     el.className = 'game-item';
     el.dataset.index = i;
-    const sep = currentSport === 'golf_pga_tour' ? 'vs' : '@';
-    el.innerHTML = `<div class="gi-sport">${SPORT_LABELS[currentSport]||currentSport.split('_').pop().toUpperCase()}</div><div class="gi-teams">${g.away_team}<br><span style="color:var(--muted);font-weight:400">${sep}</span> ${g.home_team}</div><div class="gi-meta"><div class="gi-time ${cls}">${t}</div><div class="gi-odds">${fmt(aOdds)}/${fmt(hOdds)}</div></div>`;
+    el.innerHTML = `<div class="gi-sport">${SPORT_LABELS[currentSport]||currentSport.split('_').pop().toUpperCase()}</div><div class="gi-teams">${g.away_team}<br><span style="color:var(--muted);font-weight:400">@</span> ${g.home_team}</div><div class="gi-meta"><div class="gi-time ${cls}">${t}</div><div class="gi-odds">${fmt(aOdds)}/${fmt(hOdds)}</div></div>`;
     el.onclick = () => selectGame(i, el);
     list.appendChild(el);
   });
@@ -1871,7 +1745,6 @@ function getBest(game, team) {
 
 function renderOddsDetail(game) {
   const main = document.getElementById('oddsMain');
-  const isGolf = currentSport === 'golf_pga_tour';
   const bookmakers = game.bookmakers || [];
   const hBest = getBest(game, game.home_team);
   const aBest = getBest(game, game.away_team);
@@ -1880,10 +1753,6 @@ function renderOddsDetail(game) {
   const oneBookMessage = bookmakers.length === 1
     ? '<div class="sec"><div class="sec-body">Only one sportsbook returned by the odds provider for this market.</div></div>'
     : '';
-
-  const aLabel = isGolf ? 'PLAYER 1' : 'AWAY';
-  const hLabel = isGolf ? 'PLAYER 2' : 'HOME';
-  const titleSep = isGolf ? ' vs ' : ' @ ';
 
   let bkRows = '';
   bookmakers.forEach(bk => {
@@ -1898,22 +1767,10 @@ function renderOddsDetail(game) {
   const dt = new Date(game.commence_time);
   const dtStr = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 
-  const sideSelector = isGolf ? `
-      <div class="side-selector">
-        <button class="side-btn ${selectedAnalysisSide==='away'?'active':''}" type="button" data-side="away" onclick="selectAnalysisSide('away')">Analyze ${game.away_team}</button>
-        <button class="side-btn ${selectedAnalysisSide==='home'?'active':''}" type="button" data-side="home" onclick="selectAnalysisSide('home')">Analyze ${game.home_team}</button>
-        <button class="side-btn ${selectedAnalysisSide==='best'?'active':''}" type="button" data-side="best" onclick="selectAnalysisSide('best')">Analyze Best Available Edge</button>
-      </div>` : `
-      <div class="side-selector">
-        <button class="side-btn ${selectedAnalysisSide==='away'?'active':''}" type="button" data-side="away" onclick="selectAnalysisSide('away')">Analyze Away Team</button>
-        <button class="side-btn ${selectedAnalysisSide==='home'?'active':''}" type="button" data-side="home" onclick="selectAnalysisSide('home')">Analyze Home Team</button>
-        <button class="side-btn ${selectedAnalysisSide==='best'?'active':''}" type="button" data-side="best" onclick="selectAnalysisSide('best')">Analyze Best Available Edge</button>
-      </div>`;
-
   main.innerHTML = `
     <div class="detail-hdr" style="flex-wrap:nowrap;">
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
-      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team}${titleSep}${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${bookmakers.length} BOOKS</div></div>
+      <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${bookmakers.length} BOOKS</div></div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
         <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
         <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
@@ -1921,16 +1778,20 @@ function renderOddsDetail(game) {
     </div>
     <div class="scrollable">
       <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);padding:4px 0 12px;letter-spacing:1px;">⚡ QUICK EVALUATION = instant &nbsp;|&nbsp; 🔍 RESEARCH MODE = live market research, 60–120s</div>
-      <div class="section-lbl">BEST AVAILABLE ODDS (${aLabel} / ${hLabel})</div>
+      <div class="section-lbl">BEST AVAILABLE ODDS (AWAY / HOME)</div>
       <div class="odds-row">
-        <div class="odds-card oc-a"><div class="oc-label">${aLabel} — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
-        <div class="odds-card oc-h"><div class="oc-label">${hLabel} — ${game.home_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.home_team}</div><div class="oc-val">${fmt(hBest)}</div><div class="oc-sub">${hImp?hImp+'% IMPLIED':''}</div></div>
+        <div class="odds-card oc-a"><div class="oc-label">AWAY — ${game.away_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.away_team}</div><div class="oc-val">${fmt(aBest)}</div><div class="oc-sub">${aImp?aImp+'% IMPLIED':''}</div></div>
+        <div class="odds-card oc-h"><div class="oc-label">HOME — ${game.home_team.split(' ').pop().toUpperCase()}</div><div class="oc-team">${game.home_team}</div><div class="oc-val">${fmt(hBest)}</div><div class="oc-sub">${hImp?hImp+'% IMPLIED':''}</div></div>
         <div class="odds-card oc-v"><div class="oc-label">BOOK JUICE</div><div class="oc-team">Vig / Hold</div><div class="oc-val" style="color:var(--yellow)">${vig?vig+'%':'N/A'}</div><div class="oc-sub">${bookmakers.length} BOOKS COMPARED</div></div>
       </div>
       <div class="section-lbl">CHOOSE SIDE TO EVALUATE</div>
-      ${sideSelector}
+      <div class="side-selector">
+        <button class="side-btn ${selectedAnalysisSide==='away'?'active':''}" type="button" data-side="away" onclick="selectAnalysisSide('away')">Analyze Away Team</button>
+        <button class="side-btn ${selectedAnalysisSide==='home'?'active':''}" type="button" data-side="home" onclick="selectAnalysisSide('home')">Analyze Home Team</button>
+        <button class="side-btn ${selectedAnalysisSide==='best'?'active':''}" type="button" data-side="best" onclick="selectAnalysisSide('best')">Analyze Best Available Edge</button>
+      </div>
       ${oneBookMessage}
-      <div class="section-lbl">ALL BOOKS — ${aLabel} / ${hLabel} <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
+      <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
       <div id="aiResultArea">
         <div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run the EDGE scoring engine with live stats and real-time injury data.</div></div>
@@ -2606,66 +2467,6 @@ function renderBets() {
     </tr>`).join('');
 }
 
-// ─── SETTINGS ─────────────────────────────────────────────────────────────────
-async function renderSettings() {
-  try {
-    const res = await fetch('/api/user-status');
-    if (!res.ok) return;
-    const data = await res.json();
-    const payload = data.data || data;
-    isSubscriber = !!payload.isSubscriber;
-    credits = payload.credits != null ? payload.credits : credits;
-    updateCreditUI();
-
-    const isPro = hasPremiumAccess();
-    const proRow = document.getElementById('settings-pro-row');
-    const proActive = document.getElementById('settings-pro-active');
-    const usageEl = document.getElementById('settings-usage');
-
-    if (proRow) proRow.style.display = isPro ? 'none' : 'flex';
-    if (proActive) proActive.style.display = isPro ? 'flex' : 'none';
-    if (usageEl) {
-      if (isPro) {
-        const used = payload.dailyUsed != null ? payload.dailyUsed : '—';
-        const limit = payload.dailyLimit != null ? payload.dailyLimit : 20;
-        usageEl.textContent = `USAGE TODAY: ${used} / ${limit} ANALYSES`;
-      } else {
-        usageEl.textContent = `CREDITS REMAINING: ${credits}`;
-      }
-    }
-  } catch(e) { console.log('Could not load settings:', e.message); }
-}
-
-function exportBetsCSV() {
-  if (!bets.length) { showToast('No bets to export', 'error'); return; }
-  const headers = ['Date','Game','Pick','Market','Odds','Stake','To Win','Book','Status'];
-  const rows = bets.map(b => [
-    b.date||'', b.game||'', b.pick||'', b.market||'',
-    b.odds||'', b.stake||'', b.toWin||'', b.book||'', b.status||''
-  ]);
-  const csv = [headers, ...rows]
-    .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'edge-bets.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast(`Exported ${bets.length} bet${bets.length !== 1 ? 's' : ''}`, 'success');
-}
-
-function confirmClearBets() {
-  if (!bets.length) { showToast('No bets to clear', 'error'); return; }
-  if (!confirm(`Delete all ${bets.length} bet${bets.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
-  bets = [];
-  localStorage.removeItem('edge_bets');
-  renderBets();
-  updateTrackerStats();
-  showToast('All bets cleared', 'success');
-}
-
 // ─── PWA ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
@@ -2675,9 +2476,6 @@ if ('serviceWorker' in navigator) {
 // Odds API key is managed server-side only. No client key storage.
 
 window.showTab = showTab;
-window.renderSettings = renderSettings;
-window.exportBetsCSV = exportBetsCSV;
-window.confirmClearBets = confirmClearBets;
 window.selectSport = selectSport;
 window.fetchGames = fetchGames;
 window.runAnalysis = runAnalysis;
