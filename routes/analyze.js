@@ -14,7 +14,6 @@ const { ok, fail } = require('../lib/http');
 const { OWNER_EMAILS } = require('../lib/owners');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const { getContextSignals } = require('../lib/context-signals');
 
 // ─── LIVE ODDS AUTO-FETCH ─────────────────────────────────────────────────────
 // Fetches real odds from The Odds API for both teams in a game.
@@ -1225,19 +1224,6 @@ router.post('/', async (req, res) => {
     // Phase 2: attach lineMovementSignal to the evaluation object
     evaluation.lineMovementSignal = lineMovementSignal;
 
-    // Phase 3: upgrade injurySignal / situationalSignal from Redis-cached context
-    // Uses edge:context: prefix; non-fatal if Redis unavailable or times out
-    try {
-      const contextGameId = lineTeam
-        ? [lineTeam, lineOpponent].sort().join('_').toLowerCase().replace(/\s+/g, '_')
-          + '_' + new Date().toISOString().slice(0, 10)
-        : null;
-      const ctx = await getContextSignals(contextGameId, resolvedPrompt, 5000);
-      evaluation.injurySignal = ctx.injurySignal;
-      evaluation.situationalSignal = ctx.situationalSignal;
-    } catch {
-      // keep Phase 1 synchronous values already in evaluation
-    }
 
     // ─── DEBUG LOG ────────────────────────────────────────────────────────────
     console.log('EDGE EVAL:', JSON.stringify({
