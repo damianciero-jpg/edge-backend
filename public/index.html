@@ -820,6 +820,45 @@ button,
     font-size: 22px;
   }
 }
+
+/* ── DFS OPTIMIZER ─────────────────────────────────────────────────────────── */
+.dfs-selectors{display:flex;flex-direction:column;gap:14px;margin-bottom:18px;}
+.dfs-selector-group{display:flex;flex-direction:column;gap:6px;}
+.dfs-btn-group{display:flex;gap:6px;flex-wrap:wrap;}
+.dfs-sel-btn{font-family:var(--mono);font-size:9px;padding:7px 14px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;letter-spacing:1px;border-radius:8px;}
+.dfs-sel-btn:hover,.dfs-sel-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,122,255,0.06);}
+.dfs-cap-info{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:18px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;}
+.dfs-summary-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(16,32,48,0.06);margin-bottom:14px;}
+.dfs-totals-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.dfs-total-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.dfs-total-label{font-family:var(--mono);font-size:7px;color:var(--muted);letter-spacing:2px;margin-bottom:5px;}
+.dfs-total-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text);}
+.dfs-total-val.accent{color:var(--accent);}
+.dfs-total-val.good{color:var(--green);}
+.dfs-player-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 6px 14px rgba(16,32,48,0.05);display:flex;align-items:flex-start;gap:12px;}
+.dfs-player-card.captain{border-color:var(--accent2);background:rgba(91,92,226,0.04);}
+.dfs-player-card.injury-warn{border-color:var(--yellow);}
+.dfs-slot-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:1px;padding:4px 8px;border-radius:6px;background:rgba(0,122,255,0.08);color:var(--accent);border:1px solid rgba(0,122,255,0.2);min-width:44px;text-align:center;margin-top:1px;}
+.dfs-slot-badge.cpt{background:rgba(91,92,226,0.10);color:var(--accent2);border-color:rgba(91,92,226,0.25);}
+.dfs-player-info{flex:1;min-width:0;}
+.dfs-player-name{font-size:14px;font-weight:800;margin-bottom:3px;line-height:1.3;}
+.dfs-player-meta{font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:8px;letter-spacing:0.5px;}
+.dfs-player-stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+.dfs-stat{display:flex;flex-direction:column;gap:1px;}
+.dfs-stat-lbl{font-family:var(--mono);font-size:7px;color:var(--muted2);letter-spacing:1px;}
+.dfs-stat-val{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);}
+.dfs-stat-val.accent{color:var(--accent);}
+.dfs-stat-val.good{color:var(--green);}
+.dfs-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:5px;margin-top:4px;}
+.dfs-badge.injury{background:rgba(255,214,0,0.12);border:1px solid var(--yellow);color:var(--yellow);}
+.dfs-badge.chalk{background:rgba(255,59,92,0.08);border:1px solid var(--red);color:var(--red);}
+.dfs-player-notes{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:5px;line-height:1.6;}
+.dfs-alert{background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.3);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;color:var(--yellow);margin-bottom:6px;line-height:1.6;}
+.dfs-alert.info{background:rgba(0,122,255,0.06);border-color:rgba(0,122,255,0.25);color:var(--accent);}
+@media (max-width:768px){
+  #view-dfs{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);overflow-y:auto;}
+  .dfs-totals-row{grid-template-columns:repeat(2,1fr);}
+}
 </style>
 <!-- Google Analytics -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ETJGWSTCM4"></script>
@@ -906,6 +945,7 @@ button,
   <button class="nav-tab" onclick="showTab('markets')" id="tab-markets">MARKETS</button>
   <button class="nav-tab" onclick="showTab('tracker')" id="tab-tracker">TRACKER</button>
   <button class="nav-tab" onclick="showTab('account')" id="tab-account">ACCOUNT</button>
+  <button class="nav-tab" onclick="showTab('dfs')" id="tab-dfs">🏆 DFS</button>
 </div>
 
 <!-- HOME TAB -->
@@ -1192,6 +1232,89 @@ button,
   </div>
 </div>
 
+<!-- DFS OPTIMIZER TAB -->
+<div id="view-dfs" style="display:none;height:calc(100vh - 102px);overflow-y:auto;">
+  <div class="scrollable">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+      <div class="section-lbl" style="margin-bottom:0;">DFS LINEUP OPTIMIZER</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">Powered by Claude AI + Web Search</div>
+    </div>
+
+    <!-- Selectors -->
+    <div class="dfs-selectors">
+      <div class="dfs-selector-group">
+        <div class="form-label">SPORT</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn active" onclick="dfsSetSport('nba')" id="dfs-sport-nba">🏀 NBA</button>
+          <button class="dfs-sel-btn" onclick="dfsSetSport('mlb')" id="dfs-sport-mlb">⚾ MLB</button>
+        </div>
+      </div>
+      <div class="dfs-selector-group">
+        <div class="form-label">PLATFORM</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn active" onclick="dfsSetPlatform('draftkings')" id="dfs-plat-draftkings">DraftKings</button>
+          <button class="dfs-sel-btn" onclick="dfsSetPlatform('fanduel')" id="dfs-plat-fanduel">FanDuel</button>
+        </div>
+      </div>
+      <div class="dfs-selector-group">
+        <div class="form-label">CONTEST TYPE</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn active" onclick="dfsSetContest('gpp')" id="dfs-contest-gpp">🏆 GPP Tournament</button>
+          <button class="dfs-sel-btn" onclick="dfsSetContest('cash')" id="dfs-contest-cash">💵 Cash Game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cap & slot info -->
+    <div class="dfs-cap-info">
+      SALARY CAP: <span id="dfs-cap-display" style="color:var(--accent);font-weight:700;">$50,000</span>
+      &nbsp;·&nbsp;
+      LINEUP: <span id="dfs-slots-display" style="color:var(--accent);">CPT + 5 FLEX (6 players)</span>
+    </div>
+
+    <!-- Optimize button -->
+    <button class="analyze-btn" id="dfs-optimize-btn" onclick="dfsOptimize()" style="margin-bottom:22px;width:100%;max-width:360px;display:block;">
+      ⚡ OPTIMIZE LINEUP
+    </button>
+
+    <!-- Loading -->
+    <div id="dfs-loading" style="display:none;" class="loading-state">
+      <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+      <div class="loading-txt">BUILDING LINEUP...</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:8px;text-align:center;">Checking injuries · salaries · projections · matchups</div>
+    </div>
+
+    <!-- Error -->
+    <div id="dfs-error" style="display:none;" class="err-msg"></div>
+
+    <!-- Results -->
+    <div id="dfs-results" style="display:none;">
+      <!-- Summary header card -->
+      <div class="dfs-summary-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:3px;">OPTIMIZED LINEUP</div>
+            <div id="dfs-result-meta" style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;"></div>
+          </div>
+          <button class="btn ghost" style="font-size:8px;padding:6px 12px;" onclick="dfsOptimize()">↻ REGENERATE</button>
+        </div>
+        <div class="dfs-totals-row" id="dfs-totals-row"></div>
+        <div id="dfs-alerts" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Player cards -->
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:10px;">LINEUP PLAYERS</div>
+      <div id="dfs-lineup-cards"></div>
+
+      <!-- Summary text -->
+      <div class="sec" id="dfs-summary-sec">
+        <div class="sec-hdr">LINEUP RATIONALE</div>
+        <div class="sec-body" id="dfs-summary-text"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <nav class="bottom-nav">
@@ -1200,6 +1323,7 @@ button,
   <button class="bn-tab" id="bn-markets" onclick="showTab('markets')"><span class="bn-icon">📊</span>MARKETS</button>
   <button class="bn-tab" id="bn-tracker" onclick="showTab('tracker')"><span class="bn-icon">📋</span>TRACKER</button>
   <button class="bn-tab" id="bn-account" onclick="showTab('account')"><span class="bn-icon">💳</span>ACCOUNT</button>
+  <button class="bn-tab" id="bn-dfs" onclick="showTab('dfs')"><span class="bn-icon">🏆</span>DFS</button>
 </nav>
 
 <script>
@@ -1247,7 +1371,7 @@ handleStripeReturn();
 function isMobile() { return window.innerWidth <= 768; }
 
 function showTab(tab) {
-  ['home','odds','markets','tracker','account'].forEach(t => {
+  ['home','odds','markets','tracker','account','dfs'].forEach(t => {
     document.getElementById('view-'+t).style.display = 'none';
     const tabEl = document.getElementById('tab-'+t);
     const bnEl = document.getElementById('bn-'+t);
@@ -1269,6 +1393,149 @@ function showTab(tab) {
 function closeDetail() {
   document.getElementById('view-odds').classList.remove('detail-open');
   document.getElementById('view-markets').classList.remove('detail-open');
+}
+
+// ─── DFS OPTIMIZER ────────────────────────────────────────────────────────────
+const DFS_CAPS = {
+  draftkings: { nba: 50000, mlb: 50000 },
+  fanduel:    { nba: 60000, mlb: 35000 },
+};
+const DFS_SLOT_LABELS = {
+  nba: { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
+  mlb: { draftkings: 'P + P + C + 1B + 2B + 3B + SS + OF×3 (10 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
+};
+let dfsState = { sport: 'nba', platform: 'draftkings', contestType: 'gpp' };
+
+function dfsSetSport(sport) {
+  dfsState.sport = sport;
+  document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
+  document.getElementById('dfs-sport-' + sport).classList.add('active');
+  dfsUpdateCapDisplay();
+}
+function dfsSetPlatform(platform) {
+  dfsState.platform = platform;
+  document.querySelectorAll('[id^="dfs-plat-"]').forEach(el => el.classList.remove('active'));
+  document.getElementById('dfs-plat-' + platform).classList.add('active');
+  dfsUpdateCapDisplay();
+}
+function dfsSetContest(contest) {
+  dfsState.contestType = contest;
+  document.querySelectorAll('[id^="dfs-contest-"]').forEach(el => el.classList.remove('active'));
+  document.getElementById('dfs-contest-' + contest).classList.add('active');
+}
+function dfsUpdateCapDisplay() {
+  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const slots = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+  document.getElementById('dfs-cap-display').textContent = '$' + cap.toLocaleString();
+  document.getElementById('dfs-slots-display').textContent = slots;
+}
+
+async function dfsOptimize() {
+  document.getElementById('dfs-results').style.display = 'none';
+  document.getElementById('dfs-error').style.display = 'none';
+  document.getElementById('dfs-loading').style.display = 'flex';
+  document.getElementById('dfs-optimize-btn').disabled = true;
+
+  try {
+    const res = await fetch('/api/dfs/optimize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sport: dfsState.sport,
+        platform: dfsState.platform,
+        contestType: dfsState.contestType,
+      }),
+    });
+
+    const body = await res.json();
+
+    if (!res.ok) {
+      if (body.paywall) { showPaywall(); return; }
+      if (body.authRequired) { document.getElementById('auth-overlay').style.display = 'flex'; return; }
+      throw new Error(body.error || 'Optimization failed');
+    }
+
+    dfsRenderResults(body);
+  } catch (err) {
+    const errEl = document.getElementById('dfs-error');
+    errEl.textContent = err.message || 'Optimization failed. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('dfs-loading').style.display = 'none';
+    document.getElementById('dfs-optimize-btn').disabled = false;
+  }
+}
+
+function dfsRenderResults(data) {
+  const platformName = dfsState.platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
+  const sportName = dfsState.sport.toUpperCase();
+  const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
+
+  document.getElementById('dfs-result-meta').textContent =
+    `${platformName} · ${sportName} · ${contestName} · CAP $${(data.salaryCap || DFS_CAPS[dfsState.platform][dfsState.sport]).toLocaleString()}`;
+
+  const totalSal = data.totalSalary || 0;
+  const remaining = data.remainingSalary != null ? data.remainingSalary : (data.salaryCap - totalSal);
+  document.getElementById('dfs-totals-row').innerHTML = `
+    <div class="dfs-total-card">
+      <div class="dfs-total-label">PROJ PTS</div>
+      <div class="dfs-total-val accent">${(data.totalProjectedPoints || 0).toFixed(1)}</div>
+    </div>
+    <div class="dfs-total-card">
+      <div class="dfs-total-label">CEILING</div>
+      <div class="dfs-total-val good">${(data.totalCeilingPoints || 0).toFixed(1)}</div>
+    </div>
+    <div class="dfs-total-card">
+      <div class="dfs-total-label">SALARY USED</div>
+      <div class="dfs-total-val">$${totalSal.toLocaleString()}</div>
+    </div>
+    <div class="dfs-total-card">
+      <div class="dfs-total-label">REMAINING</div>
+      <div class="dfs-total-val">$${remaining.toLocaleString()}</div>
+    </div>
+  `;
+
+  const alerts = [];
+  if (data.weatherAlert && data.weatherAlert !== 'null') alerts.push({ type: 'warn', msg: '🌤 ' + data.weatherAlert });
+  if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ type: 'warn', msg: '📊 ' + data.ownershipWarning });
+  if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ type: 'info', msg: '🔗 Stack: ' + data.stackInfo });
+  document.getElementById('dfs-alerts').innerHTML = alerts
+    .map(a => `<div class="dfs-alert ${a.type === 'info' ? 'info' : ''}">${a.msg}</div>`).join('');
+
+  const lineup = Array.isArray(data.lineup) ? data.lineup : [];
+  document.getElementById('dfs-lineup-cards').innerHTML = lineup.map((player, i) => {
+    const isCpt = i === 0;
+    const hasInjury = player.injuryStatus && player.injuryStatus !== 'null';
+    const highOwn = dfsState.contestType === 'gpp' && (player.ownershipPct || 0) > 35;
+    let cardCls = 'dfs-player-card';
+    if (isCpt) cardCls += ' captain';
+    if (hasInjury) cardCls += ' injury-warn';
+    const slotCls = isCpt ? 'dfs-slot-badge cpt' : 'dfs-slot-badge';
+    const injuryText = hasInjury
+      ? `<span class="dfs-badge injury">⚠ ${player.injuryStatus}${player.injuryNote && player.injuryNote !== 'null' ? ': ' + player.injuryNote : ''}</span>`
+      : '';
+    const chalkText = highOwn
+      ? `<span class="dfs-badge chalk">CHALK ${player.ownershipPct}% OWN</span>`
+      : '';
+    return `<div class="${cardCls}">
+  <div><span class="${slotCls}">${player.slot || ''}</span></div>
+  <div class="dfs-player-info">
+    <div class="dfs-player-name">${player.name || '—'}</div>
+    <div class="dfs-player-meta">${player.team || ''} vs ${player.opponent || ''} &nbsp;·&nbsp; ${player.position || ''} &nbsp;·&nbsp; $${(player.salary || 0).toLocaleString()}</div>
+    <div class="dfs-player-stats">
+      <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(player.projectedFppg || 0).toFixed(1)}</div></div>
+      <div class="dfs-stat"><div class="dfs-stat-lbl">CEILING</div><div class="dfs-stat-val">${(player.ceilingFppg || 0).toFixed(1)}</div></div>
+      <div class="dfs-stat"><div class="dfs-stat-lbl">VALUE</div><div class="dfs-stat-val">${(player.valueScore || 0).toFixed(2)}x</div></div>
+      <div class="dfs-stat"><div class="dfs-stat-lbl">OWN%</div><div class="dfs-stat-val">${player.ownershipPct != null ? player.ownershipPct + '%' : '—'}</div></div>
+    </div>
+    ${injuryText}${chalkText}
+    ${player.notes ? `<div class="dfs-player-notes">${player.notes}</div>` : ''}
+  </div>
+</div>`;
+  }).join('');
+
+  document.getElementById('dfs-summary-text').textContent = data.summary || '';
+  document.getElementById('dfs-results').style.display = 'block';
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────

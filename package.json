@@ -19,5 +19,8 @@
     "nodemailer": "^6.10.1",
     "resend": "^6.12.2",
     "stripe": "^14.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
   }
 }

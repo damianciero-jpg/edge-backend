@@ -51,6 +51,20 @@ router.post('/logout', (_req, res) => {
   return ok(res, { text: 'Logged out' });
 });
 
+// Test-only endpoint — disabled unless TEST_LOGIN_SECRET env var is set in Vercel
+router.post('/test-token', async (req, res) => {
+  const configured = process.env.TEST_LOGIN_SECRET;
+  if (!configured) return fail(res, 403, { error: 'Test auth not enabled' });
+  const provided = req.headers['x-test-secret'] || (req.body && req.body.testSecret) || '';
+  if (provided !== configured) return fail(res, 403, { error: 'Forbidden' });
+  const email = ((req.body && req.body.email) || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return fail(res, 400, { error: 'Valid email required' });
+  await getUser(email);
+  const token = createSession(email);
+  res.cookie('edge_session', token, COOKIE_OPTS);
+  return ok(res, { text: 'Test auth complete', data: { email, token } });
+});
+
 router.get('/me', (req, res) => {
   const token = req.cookies?.edge_session;
   const session = token ? verifySession(token) : null;

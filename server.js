@@ -20,6 +20,7 @@ const authRouter = require('./routes/auth');
 const alertsRouter = require('./routes/alerts');
 const oddsRouter = require('./routes/odds');
 const useCreditRouter = require('./routes/use-credit');
+const dfsRouter = require('./routes/dfs');
 const { generatePickOfTheDay, todayUtcKey, secondsUntilMidnightUtc } = require('./lib/pick-engine');
 
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/analyze', analyzeRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/odds', oddsRouter);
 app.use('/api/use-credit', useCreditRouter);
+app.use('/api/dfs', dfsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
