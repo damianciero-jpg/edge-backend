@@ -20,7 +20,6 @@ const SALARY_CAPS = {
   fanduel:    { nba: 60000, mlb: 35000 },
 };
 
-// Showdown (GPP) format for NBA (6 players), standard for MLB (9/10)
 const LINEUP_SLOTS = {
   nba: {
     draftkings: ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX'],
@@ -76,79 +75,144 @@ async function fetchNbaGames(apiKey) {
   } catch { return []; }
 }
 
-function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData }) {
+function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, lockedPlayers, excludedPlayers }) {
   const today = new Date().toISOString().slice(0, 10);
   const isGpp = contestType === 'gpp';
   const isNba = sport === 'nba';
   const platformName = platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
+  const mvpSlot = slots[0];
 
   const gamesCtx = liveData.length
     ? `TODAY'S ${sport.toUpperCase()} SLATE (${today}):\n` +
       liveData.map(g => `- ${g.awayTeam} @ ${g.homeTeam}${g.total ? ` | Vegas O/U: ${g.total}` : ''}`).join('\n')
-    : `No live slate data fetched. Use your best knowledge of today's ${sport.toUpperCase()} schedule (${today}).`;
+    : `No live slate data available. Use your knowledge of today's ${sport.toUpperCase()} schedule (${today}).`;
+
+  const injuryInstruction = injuryFilter === 'q_and_out'
+    ? 'EXCLUDE all players listed OUT or Questionable (Q). Do not include any injured players.'
+    : injuryFilter === 'all'
+    ? 'Include all players regardless of injury status. Flag all injuries clearly in injuryStatus.'
+    : 'EXCLUDE players listed OUT only. Include Questionable (Q) players — they may offer GPP leverage when confirmed active.';
+
+  const qHandling = injuryFilter !== 'q_and_out'
+    ? `QUESTIONABLE PLAYER HANDLING (critical):
+- Do NOT automatically exclude Q players. Check confirmation status via web search (ESPN injury report, team beat reporters).
+- If Q player is CONFIRMED ACTIVE today: set confirmedActive=true, injuryNote="[Injury] — CONFIRMED ACTIVE", add to confirmedActivePlayers array. These are HIGH VALUE GPP plays — lower ownership = contrarian edge.
+- If Q player confirmation is unknown: include if high upside; set confirmedActive=false, flag with injuryStatus="Q".
+- PRIME MVP candidate (primeMvp=true): Q player confirmed active + high blocks/steals upside + projected ownership <20%.
+- Add all confirmed Q players to confirmedActivePlayers array in the JSON response.`
+    : 'All Q and OUT players excluded per filter setting.';
+
+  const lockExclude = [
+    lockedPlayers && lockedPlayers.length ? `LOCKED (MUST include these players in lineup): ${lockedPlayers.join(', ')}` : '',
+    excludedPlayers && excludedPlayers.length ? `EXCLUDED (MUST NOT include these players): ${excludedPlayers.join(', ')}` : '',
+  ].filter(Boolean).join('\n');
 
   const nbaAlgo = `
-NBA SCORING ALGORITHM:
-- Ceiling projection = FPPG × 1.25 for guards and wings (high variance). Use realistic FPPG from recent game logs.
-- Blocks and steals weighted +40% in scoring (each worth 3 pts DK / 2 pts FD) — prioritize players who generate defensive stats.
-- Value score = ceiling FPPG / salary × 1000.
-- ${slots[0]} (captain/MVP) slot: AI should note this player earns 1.5× points, so project ceiling × 1.5 but salary is also 1.5× — still recalculate value.
-- EXCLUDE any player listed Out or Doubtful from injury reports.
-- EXCLUDE any player tagged HAMSTRING, ANKLE, or HIP unless confirmed active today.
-- Include Questionable players ONLY with a clear injury note.
-- Prioritize players facing teams ranked 25th–30th in defensive efficiency at their position (bottom-5 defense = best matchup).
-- ${isGpp ? 'GPP: maximize ceiling. Include 1-2 low-ownership plays (<20% projected own%). Avoid chalk over 40%.' : 'Cash: maximize floor/safety. Prefer high-FPPG-per-game averages. Avoid injury risk.'}
+NBA ${isGpp ? 'GPP TOURNAMENT' : 'CASH GAME'} ALGORITHM:
+
+PROJECTIONS:
+- Floor projection = FPPG × 0.7 (conservative, use for cash game selection)
+- Ceiling projection = FPPG × 1.3 for high-variance players (guards, wings); × 1.15 for bigs
+- Blocks and steals weighted +40% in player value (DK: BLK=2pts, STL=2pts — top scoring categories)
+- Prioritize players with 1.5+ combined BLK+STL per game for defensive value
+- Value score = ceilingFppg / salary × 1000
+
+${mvpSlot}/CAPTAIN SLOT LOGIC:
+- ${mvpSlot} earns 1.5× points but costs 1.5× salary (same ratio, but highest raw ceiling wins)
+- TRUE ${mvpSlot} VALUE: select player with highest raw ceiling output (ceilingFppg × 1.5 total points)
+- PRIME MVP criteria: high BLK+STL upside + confirmed active (if Q) + projected ownership <20%
+- NEVER select an OUT player as ${mvpSlot}
+- Prioritize defensive playmakers as ${mvpSlot} — 1.5× multiplier amplifies their block/steal value
+
+OWNERSHIP (estimate for GPP):
+- Players with low salary + top matchup (facing 1st-5th OPRK at position) = high chalk risk (>30% owned)
+- Q players confirmed active = low ownership (<15%) = prime GPP leverage
+- Flag any player projected >30% owned as CHALK in ownershipPct field
+- ${isGpp ? 'GPP: target 1-2 contrarian plays (<20% projected ownership). Avoid full chalk lineups.' : 'Cash: ignore ownership, prioritize floor/consistency.'}
+
+STACKING (GPP):
+${isGpp ? `- Include 2-3 players from the same team in the game with highest O/U
+- Stack PG + SF/SG from same team, or C who benefits from high-assist PG
+- Avoid stacking two centers/power forwards from same team (compete for same stats)
+- Report stack in stackInfo field` : '- No stacking required for cash games.'}
+
+MATCHUP PRIORITY:
+- Best matchup: player facing team ranked 25th-30th in defensive efficiency at their position
+- Verify opponent defensive rank via web search (NBA.com or Basketball Reference)
 `;
 
   const mlbAlgo = `
-MLB SCORING ALGORITHM:
-- Starting pitchers: score by K/9 rate (higher = better), ERA (lower = better), weak opposing lineup OPS.
-- Batting stacks: select 3-4 consecutive batters from the same team when game O/U > 8.5.
-- Ballpark modifiers:
-    * Coors Field (COL): +15% offensive boost — avoid pitching SPs there in GPP.
-    * Petco Park (SD), Oracle Park (SF), Dodger Stadium (LAD): -10% offensive — prefer SPs in these parks.
-- Platoon splits: LHB vs RHP = advantage. RHB vs LHP = advantage.
-- High O/U (>9.0): target offensive players; avoid SP from that game.
-- Low O/U (<7.5): prioritize SP in a pitcher's duel.
-- Check weather for today's games — note any wind carrying out to CF (scorer) or rain delays.
-- Value = projected FPPG / salary × 1000.
-- ${isGpp ? 'GPP: build stacks, target contrarian SP. Avoid consensus chalk (>35% ownership).' : 'Cash: safe batters (high floor), elite SPs with easy matchups. No risky stacks.'}
+MLB ${isGpp ? 'GPP TOURNAMENT' : 'CASH GAME'} ALGORITHM:
+
+STARTING PITCHERS:
+- Score by: K/9 rate (weight ×2), ERA inverse (lower is better), opposing team batting OPS
+- ONLY include pitchers with CONFIRMED starts — verify via web search (beat reporters, MLB.com)
+- ${isGpp ? 'High O/U (>8.5): avoid the SP from that game. Low O/U (<7.5): prioritize SP in pitcher\'s duel.' : 'Cash: elite SPs with easy matchups, no injury risk, confirmed start.'}
+
+BATTERS:
+- Build batting stacks: 3-4 consecutive batters from same team in games with O/U > 8.5
+- Pair SP with batters from the OPPOSING team (correlated exposure)
+- Platoon advantage: LHB vs RHP = edge; RHB vs LHP = edge
+- Floor = FPPG × 0.7, Ceiling = FPPG × 1.3
+
+BALLPARK FACTORS (apply as multiplier to ceiling):
+- Coors Field (COL home games): +15% offensive boost — avoid pitching there in GPP
+- Petco Park (SD), Oracle Park (SF), Dodger Stadium (LAD): -10% offensive — prefer SPs
+- Report park factor in notes field
+
+WEATHER (use web search):
+- Wind out to CF at 10+ mph = +8% HR boost for batters in that game
+- Rain delay risk = flag in weatherAlert
+- Dome games = no weather factor
+
+OWNERSHIP:
+- Consensus chalk batters (>30% ownership) = avoid in GPP
+- Contrarian SP in favorable home game = GPP leverage
+${isGpp ? '- Target team stacks with <25% individual player ownership' : '- Cash: elite floor players, confirmed starts only'}
 `;
 
   const algoBlock = isNba ? nbaAlgo : mlbAlgo;
 
-  const jsonTemplate = [
-    '{',
-    '  "lineup": [',
-    slots.map((slot, i) => [
-      `    {`,
-      `      "slot": "${slot}",`,
-      `      "name": "Player Full Name",`,
-      `      "team": "TEAM",`,
-      `      "opponent": "OPP",`,
-      `      "position": "${isNba ? 'PG' : (i < 2 ? 'SP' : '1B')}",`,
-      `      "salary": ${Math.floor(salaryCap / slots.length)},`,
-      `      "projectedFppg": 38.5,`,
-      `      "ceilingFppg": 48.1,`,
-      `      "valueScore": 6.25,`,
-      `      "injuryStatus": null,`,
-      `      "injuryNote": null,`,
-      `      "ownershipPct": 18,`,
-      `      "notes": "brief reason for selection"`,
-      `    }${i < slots.length - 1 ? ',' : ''}`,
-    ].join('\n')).join('\n'),
-    '  ],',
-    `  "totalProjectedPoints": 280.0,`,
-    `  "totalCeilingPoints": 350.0,`,
-    `  "totalSalary": ${salaryCap - 400},`,
-    `  "salaryCap": ${salaryCap},`,
-    `  "remainingSalary": 400,`,
-    `  "stackInfo": ${isNba ? 'null' : '"e.g. Dodgers 3-stack: Freeman, Betts, Smith"'},`,
-    `  "weatherAlert": null,`,
-    `  "ownershipWarning": null,`,
-    `  "summary": "2-3 sentence explanation of lineup construction strategy"`,
-    '}',
-  ].join('\n');
+  const playerSlotTemplate = (slot, i) => {
+    const isFirst = i === 0;
+    const pos = isNba ? (i < 2 ? 'PG' : 'SF') : (i < 2 ? 'SP' : '1B');
+    return `    {
+      "slot": "${slot}",
+      "name": "Real Player Name",
+      "team": "TEAM",
+      "opponent": "OPP",
+      "position": "${pos}",
+      "salary": ${Math.floor(salaryCap / slots.length)},
+      "projectedFppg": 38.5,
+      "ceilingFppg": ${(38.5 * 1.3).toFixed(1)},
+      "floorFppg": ${(38.5 * 0.7).toFixed(1)},
+      "valueScore": 6.25,
+      "ownershipPct": 18,
+      "injuryStatus": null,
+      "injuryNote": null,
+      "confirmedActive": false,
+      "primeMvp": ${isFirst ? 'true' : 'false'},
+      "notes": "brief reason: matchup, ceiling, value, stack"
+    }${i < slots.length - 1 ? ',' : ''}`;
+  };
+
+  const jsonTemplate = `{
+  "lineup": [
+${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
+  ],
+  "totalProjectedPoints": 280.0,
+  "totalCeilingPoints": 350.0,
+  "totalFloorPoints": 210.0,
+  "totalSalary": ${salaryCap - 400},
+  "salaryCap": ${salaryCap},
+  "remainingSalary": 400,
+  "stackInfo": ${isNba ? '"e.g. LAL 3-stack: LeBron, AD, Reaves (high O/U game)"' : '"e.g. LAD 4-stack: Freeman, Betts, Smith, Muncy"'},
+  "weatherAlert": null,
+  "ownershipWarning": null,
+  "confirmedActivePlayers": [],
+  "lateNewsItems": [],
+  "summary": "2-3 sentence strategy explanation: why these players, what edge you have, key risk"
+}`;
 
   return [
     `You are an expert DFS optimizer for ${platformName} ${sport.toUpperCase()} ${isGpp ? 'GPP tournaments' : 'cash games'}.`,
@@ -157,25 +221,32 @@ MLB SCORING ALGORITHM:
     gamesCtx,
     '',
     algoBlock,
+    'INJURY FILTER SETTING:',
+    injuryInstruction,
     '',
-    'Use web search to verify:',
-    '  1. Today\'s injury reports (ESPN, NBA.com, MLB.com)',
+    qHandling,
+    '',
+    lockExclude || '',
+    '',
+    'USE WEB SEARCH TO VERIFY (search before building lineup):',
+    `  1. Today's ${sport.toUpperCase()} injury report — ESPN, ${isNba ? 'NBA.com' : 'MLB.com'}, team reporters`,
+    `  2. Current ${platformName} ${sport.toUpperCase()} salaries and recent FPPG averages (last 5-10 games)`,
     isNba
-      ? '  2. Current DraftKings/FanDuel NBA player salaries and recent FPPG averages'
-      : '  2. Current DraftKings/FanDuel MLB player salaries and recent FPPG averages',
-    isNba
-      ? '  3. Tonight\'s defensive matchups (opponent defensive rank per position)'
-      : '  3. Starting pitchers confirmed for today\'s games and weather conditions',
+      ? '  3. Tonight\'s defensive matchups: opponent OPRK per position (Basketball Reference or ESPN)'
+      : '  3. Confirmed starting pitchers + weather/wind conditions for today\'s games',
+    '  4. Late-breaking news from past 2 hours: scratches, confirmations, minutes restrictions',
     '',
-    `LINEUP SLOTS (${slots.length} players): ${slots.join(', ')}`,
-    `CRITICAL: Total salary MUST be at or under $${salaryCap.toLocaleString()}.`,
-    'CRITICAL: Use REAL player names and REALISTIC salaries/projections for today.',
+    `LINEUP SLOTS (${slots.length} players total): ${slots.join(', ')}`,
+    `HARD CONSTRAINT: Total salary MUST NOT exceed $${salaryCap.toLocaleString()}.`,
+    'HARD CONSTRAINT: Use REAL player names. Realistic salaries and FPPG for today\'s slate.',
+    'HARD CONSTRAINT: Populate lateNewsItems with any injury updates or lineup changes found.',
+    'HARD CONSTRAINT: If no players are confirmed active from Q list, leave confirmedActivePlayers empty array.',
     '',
-    'Return ONLY raw JSON — no markdown, no code fences, no preamble. Start with { and end with }.',
+    'Return ONLY raw JSON. No markdown, no code fences, no // comments, no preamble. Start with { end with }.',
     '',
-    'JSON format:',
+    'Required JSON format:',
     jsonTemplate,
-  ].join('\n');
+  ].filter(l => l !== undefined).join('\n');
 }
 
 router.post('/optimize', async (req, res) => {
@@ -184,11 +255,19 @@ router.post('/optimize', async (req, res) => {
     return fail(res, 401, { error: 'Login required', data: { authRequired: true } });
   }
 
-  const { sport = 'nba', platform = 'draftkings', contestType = 'gpp' } = req.body || {};
+  const {
+    sport = 'nba',
+    platform = 'draftkings',
+    contestType = 'gpp',
+    injuryFilter = 'out',
+    lockedPlayers = [],
+    excludedPlayers = [],
+  } = req.body || {};
 
-  if (!['nba', 'mlb'].includes(sport))         return fail(res, 400, { error: 'Invalid sport. Use nba or mlb.' });
+  if (!['nba', 'mlb'].includes(sport))              return fail(res, 400, { error: 'Invalid sport. Use nba or mlb.' });
   if (!['draftkings', 'fanduel'].includes(platform)) return fail(res, 400, { error: 'Invalid platform.' });
-  if (!['gpp', 'cash'].includes(contestType))  return fail(res, 400, { error: 'Invalid contestType. Use gpp or cash.' });
+  if (!['gpp', 'cash'].includes(contestType))        return fail(res, 400, { error: 'Invalid contestType. Use gpp or cash.' });
+  if (!['all', 'out', 'q_and_out'].includes(injuryFilter)) return fail(res, 400, { error: 'Invalid injuryFilter.' });
 
   const userId = session.email;
   let user;
@@ -214,13 +293,18 @@ router.post('/optimize', async (req, res) => {
     liveData = sport === 'mlb' ? await fetchMlbTotals(apiKey) : await fetchNbaGames(apiKey);
   } catch { liveData = []; }
 
-  const prompt = buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData });
+  const prompt = buildPrompt({
+    sport, platform, contestType, salaryCap, slots, liveData,
+    injuryFilter,
+    lockedPlayers: Array.isArray(lockedPlayers) ? lockedPlayers : [],
+    excludedPlayers: Array.isArray(excludedPlayers) ? excludedPlayers : [],
+  });
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4000,
-      system: 'You are an expert DFS lineup optimizer. Use web search to get current data. Return ONLY raw JSON. Start with { and end with }. No markdown, no code fences.',
+      system: 'You are an expert DFS lineup optimizer. Always use web_search to get current injury reports, salaries, and player news before building a lineup. Return ONLY raw JSON. Start with { end with }. No markdown, no code fences, no comments.',
       messages: [{ role: 'user', content: prompt }],
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
     }, { timeout: 120000 });
@@ -232,7 +316,7 @@ router.post('/optimize', async (req, res) => {
       .trim();
 
     const match = rawText.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Optimizer returned no structured data. Try again.');
+    if (!match) throw new Error('Optimizer returned no structured lineup. Please try again.');
 
     const clean = match[0]
       .replace(/\/\/[^\n]*/g, '')
@@ -240,7 +324,6 @@ router.post('/optimize', async (req, res) => {
 
     const lineupData = JSON.parse(clean);
 
-    // Deduct credit after success (fire-and-forget)
     if (!user.isSubscriber && !isOwner) {
       withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch(() => {});
     }

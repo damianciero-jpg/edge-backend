@@ -827,37 +827,73 @@ button,
 .dfs-btn-group{display:flex;gap:6px;flex-wrap:wrap;}
 .dfs-sel-btn{font-family:var(--mono);font-size:9px;padding:7px 14px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;letter-spacing:1px;border-radius:8px;}
 .dfs-sel-btn:hover,.dfs-sel-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,122,255,0.06);}
+.dfs-sel-btn.active-confirmed{border-color:var(--green);color:var(--green);background:rgba(0,211,100,0.08);}
 .dfs-cap-info{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:18px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;}
 .dfs-summary-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(16,32,48,0.06);margin-bottom:14px;}
-.dfs-totals-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
-.dfs-total-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.dfs-totals-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.dfs-total-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px;}
 .dfs-total-label{font-family:var(--mono);font-size:7px;color:var(--muted);letter-spacing:2px;margin-bottom:5px;}
-.dfs-total-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text);}
+.dfs-total-val{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);}
 .dfs-total-val.accent{color:var(--accent);}
 .dfs-total-val.good{color:var(--green);}
-.dfs-player-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 6px 14px rgba(16,32,48,0.05);display:flex;align-items:flex-start;gap:12px;}
+.dfs-total-val.warm{color:var(--yellow);}
+.dfs-player-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 6px 14px rgba(16,32,48,0.05);}
 .dfs-player-card.captain{border-color:var(--accent2);background:rgba(91,92,226,0.04);}
 .dfs-player-card.injury-warn{border-color:var(--yellow);}
-.dfs-slot-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:1px;padding:4px 8px;border-radius:6px;background:rgba(0,122,255,0.08);color:var(--accent);border:1px solid rgba(0,122,255,0.2);min-width:44px;text-align:center;margin-top:1px;}
+.dfs-player-card.confirmed-active{border-color:var(--green);background:rgba(0,211,100,0.03);}
+.dfs-player-card.locked-card{border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,122,255,0.15);}
+.dfs-player-top{display:flex;align-items:flex-start;gap:12px;}
+.dfs-slot-badge{font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:1px;padding:4px 8px;border-radius:6px;background:rgba(0,122,255,0.08);color:var(--accent);border:1px solid rgba(0,122,255,0.2);min-width:44px;text-align:center;margin-top:1px;flex-shrink:0;}
 .dfs-slot-badge.cpt{background:rgba(91,92,226,0.10);color:var(--accent2);border-color:rgba(91,92,226,0.25);}
 .dfs-player-info{flex:1;min-width:0;}
 .dfs-player-name{font-size:14px;font-weight:800;margin-bottom:3px;line-height:1.3;}
 .dfs-player-meta{font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:8px;letter-spacing:0.5px;}
-.dfs-player-stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;}
+.dfs-player-stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
 .dfs-stat{display:flex;flex-direction:column;gap:1px;}
 .dfs-stat-lbl{font-family:var(--mono);font-size:7px;color:var(--muted2);letter-spacing:1px;}
 .dfs-stat-val{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);}
 .dfs-stat-val.accent{color:var(--accent);}
 .dfs-stat-val.good{color:var(--green);}
-.dfs-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:5px;margin-top:4px;}
+.dfs-stat-val.warm{color:var(--yellow);}
+.dfs-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:4px;margin-top:4px;}
 .dfs-badge.injury{background:rgba(255,214,0,0.12);border:1px solid var(--yellow);color:var(--yellow);}
 .dfs-badge.chalk{background:rgba(255,59,92,0.08);border:1px solid var(--red);color:var(--red);}
+.dfs-badge.confirmed{background:rgba(0,211,100,0.12);border:1px solid var(--green);color:var(--green);}
+.dfs-badge.prime-mvp{background:rgba(91,92,226,0.12);border:1px solid var(--accent2);color:var(--accent2);}
+.dfs-badge.late{background:rgba(0,229,255,0.10);border:1px solid var(--accent);color:var(--accent);}
+.dfs-badge.locked{background:rgba(0,122,255,0.10);border:1px solid var(--accent);color:var(--accent);}
+.dfs-player-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+.dfs-act-btn{font-family:var(--mono);font-size:8px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted);transition:all 0.15s;letter-spacing:0.5px;}
+.dfs-act-btn:hover{border-color:var(--accent);color:var(--accent);}
+.dfs-act-btn.is-locked{border-color:var(--accent);color:var(--accent);background:rgba(0,122,255,0.08);}
+.dfs-act-btn.is-excluded{border-color:var(--red);color:var(--red);background:rgba(255,59,92,0.06);}
 .dfs-player-notes{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:5px;line-height:1.6;}
 .dfs-alert{background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.3);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;color:var(--yellow);margin-bottom:6px;line-height:1.6;}
 .dfs-alert.info{background:rgba(0,122,255,0.06);border-color:rgba(0,122,255,0.25);color:var(--accent);}
+.dfs-alert.confirmed-bar{background:rgba(0,211,100,0.06);border-color:rgba(0,211,100,0.25);color:var(--green);}
+.dfs-late-banner{background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.25);border-radius:10px;padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:9px;color:var(--accent);line-height:1.7;}
+.dfs-late-banner-hdr{font-size:8px;font-weight:700;letter-spacing:2px;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.dfs-late-dot{width:7px;height:7px;background:var(--accent);border-radius:50%;animation:dfs-pulse 1.4s infinite;}
+.dfs-active-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.dfs-chip{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:12px;background:rgba(0,211,100,0.1);border:1px solid rgba(0,211,100,0.25);color:var(--green);}
+.dfs-locked-bar{background:rgba(0,122,255,0.06);border:1px solid rgba(0,122,255,0.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:9px;color:var(--accent);}
+.dfs-perf-section{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);}
+.dfs-perf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.dfs-perf-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.dfs-perf-label{font-family:var(--mono);font-size:7px;color:var(--muted);letter-spacing:2px;margin-bottom:5px;}
+.dfs-perf-val{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text);}
+.dfs-log-row{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.dfs-log-meta{font-family:var(--mono);font-size:8px;color:var(--muted);flex:1;}
+.dfs-log-proj{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text);}
+.dfs-log-actual{font-family:var(--mono);font-size:10px;font-weight:700;}
+.dfs-log-actual.over{color:var(--green);}
+.dfs-log-actual.under{color:var(--red);}
+.dfs-score-inp{font-family:var(--mono);font-size:11px;width:70px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:6px;}
+@keyframes dfs-pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
 @media (max-width:768px){
   #view-dfs{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);overflow-y:auto;}
-  .dfs-totals-row{grid-template-columns:repeat(2,1fr);}
+  .dfs-totals-row{grid-template-columns:repeat(3,1fr);}
+  .dfs-perf-grid{grid-template-columns:repeat(2,1fr);}
 }
 </style>
 <!-- Google Analytics -->
@@ -1237,7 +1273,7 @@ button,
   <div class="scrollable">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
       <div class="section-lbl" style="margin-bottom:0;">DFS LINEUP OPTIMIZER</div>
-      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">Powered by Claude AI + Web Search</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">Claude AI + Web Search</div>
     </div>
 
     <!-- Selectors -->
@@ -1263,6 +1299,26 @@ button,
           <button class="dfs-sel-btn" onclick="dfsSetContest('cash')" id="dfs-contest-cash">💵 Cash Game</button>
         </div>
       </div>
+      <div class="dfs-selector-group">
+        <div class="form-label">INJURY FILTER</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn active" onclick="dfsSetInjuryFilter('out')" id="dfs-inj-out">Exclude OUT</button>
+          <button class="dfs-sel-btn" onclick="dfsSetInjuryFilter('q_and_out')" id="dfs-inj-q_and_out">Exclude Q + OUT</button>
+          <button class="dfs-sel-btn" onclick="dfsSetInjuryFilter('all')" id="dfs-inj-all">Show All</button>
+        </div>
+      </div>
+      <div class="dfs-selector-group">
+        <div class="form-label">GPP EDGE</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn" onclick="dfsToggleConfirmed()" id="dfs-confirmed-toggle">⚡ Highlight Confirmed Active Q</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Locked/Excluded players bar -->
+    <div id="dfs-locked-bar" style="display:none;" class="dfs-locked-bar">
+      <span id="dfs-locked-text"></span>
+      <button onclick="dfsClearLocks()" style="font-family:var(--mono);font-size:8px;background:transparent;border:none;color:var(--muted);cursor:pointer;margin-left:10px;">✕ CLEAR ALL</button>
     </div>
 
     <!-- Cap & slot info -->
@@ -1281,7 +1337,7 @@ button,
     <div id="dfs-loading" style="display:none;" class="loading-state">
       <div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
       <div class="loading-txt">BUILDING LINEUP...</div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:8px;text-align:center;">Checking injuries · salaries · projections · matchups</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:8px;text-align:center;">Checking injuries · salaries · projections · late news</div>
     </div>
 
     <!-- Error -->
@@ -1289,6 +1345,17 @@ button,
 
     <!-- Results -->
     <div id="dfs-results" style="display:none;">
+      <!-- Late news banner -->
+      <div id="dfs-late-banner" style="display:none;" class="dfs-late-banner">
+        <div class="dfs-late-banner-hdr"><span class="dfs-late-dot"></span>LATE NEWS</div>
+        <div id="dfs-late-items"></div>
+      </div>
+
+      <!-- Confirmed active banner -->
+      <div id="dfs-confirmed-banner" style="display:none;" class="dfs-alert confirmed-bar">
+        ✓ CONFIRMED ACTIVE: <span id="dfs-confirmed-names"></span> — GPP leverage plays with lower projected ownership
+      </div>
+
       <!-- Summary header card -->
       <div class="dfs-summary-card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -1296,14 +1363,17 @@ button,
             <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:2px;margin-bottom:3px;">OPTIMIZED LINEUP</div>
             <div id="dfs-result-meta" style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;"></div>
           </div>
-          <button class="btn ghost" style="font-size:8px;padding:6px 12px;" onclick="dfsOptimize()">↻ REGENERATE</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn ghost" style="font-size:8px;padding:6px 12px;" onclick="dfsOptimize()">↻ REGENERATE</button>
+            <button class="btn ghost" style="font-size:8px;padding:6px 12px;" onclick="dfsSaveToPerf()">💾 LOG</button>
+          </div>
         </div>
         <div class="dfs-totals-row" id="dfs-totals-row"></div>
         <div id="dfs-alerts" style="margin-top:10px;"></div>
       </div>
 
       <!-- Player cards -->
-      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:10px;">LINEUP PLAYERS</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:10px;">LINEUP PLAYERS — TAP LOCK/EXCLUDE TO CUSTOMIZE</div>
       <div id="dfs-lineup-cards"></div>
 
       <!-- Summary text -->
@@ -1311,6 +1381,16 @@ button,
         <div class="sec-hdr">LINEUP RATIONALE</div>
         <div class="sec-body" id="dfs-summary-text"></div>
       </div>
+    </div>
+
+    <!-- ── Performance Tracking ── -->
+    <div class="dfs-perf-section" id="dfs-perf-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div class="section-lbl" style="margin-bottom:0;font-size:11px;">PERFORMANCE TRACKER</div>
+        <button class="btn ghost" style="font-size:8px;padding:5px 10px;" onclick="dfsClearPerf()">CLEAR LOG</button>
+      </div>
+      <div class="dfs-perf-grid" id="dfs-perf-stats"></div>
+      <div id="dfs-perf-log" style="font-family:var(--mono);font-size:9px;color:var(--muted);"></div>
     </div>
   </div>
 </div>
@@ -1402,32 +1482,105 @@ const DFS_CAPS = {
 };
 const DFS_SLOT_LABELS = {
   nba: { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
-  mlb: { draftkings: 'P + P + C + 1B + 2B + 3B + SS + OF×3 (10 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
+  mlb: { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9)' },
 };
-let dfsState = { sport: 'nba', platform: 'draftkings', contestType: 'gpp' };
 
-function dfsSetSport(sport) {
-  dfsState.sport = sport;
+let dfsState = {
+  sport: 'nba',
+  platform: 'draftkings',
+  contestType: 'gpp',
+  injuryFilter: 'out',
+  confirmedActiveOnly: false,
+  lockedPlayers: [],
+  excludedPlayers: [],
+};
+let dfsLastLineup = null;
+
+function dfsSetSport(s) {
+  dfsState.sport = s;
   document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
-  document.getElementById('dfs-sport-' + sport).classList.add('active');
+  document.getElementById('dfs-sport-' + s).classList.add('active');
   dfsUpdateCapDisplay();
 }
-function dfsSetPlatform(platform) {
-  dfsState.platform = platform;
+function dfsSetPlatform(p) {
+  dfsState.platform = p;
   document.querySelectorAll('[id^="dfs-plat-"]').forEach(el => el.classList.remove('active'));
-  document.getElementById('dfs-plat-' + platform).classList.add('active');
+  document.getElementById('dfs-plat-' + p).classList.add('active');
   dfsUpdateCapDisplay();
 }
-function dfsSetContest(contest) {
-  dfsState.contestType = contest;
+function dfsSetContest(c) {
+  dfsState.contestType = c;
   document.querySelectorAll('[id^="dfs-contest-"]').forEach(el => el.classList.remove('active'));
-  document.getElementById('dfs-contest-' + contest).classList.add('active');
+  document.getElementById('dfs-contest-' + c).classList.add('active');
+}
+function dfsSetInjuryFilter(f) {
+  dfsState.injuryFilter = f;
+  document.querySelectorAll('[id^="dfs-inj-"]').forEach(el => el.classList.remove('active'));
+  document.getElementById('dfs-inj-' + f).classList.add('active');
+}
+function dfsToggleConfirmed() {
+  dfsState.confirmedActiveOnly = !dfsState.confirmedActiveOnly;
+  const btn = document.getElementById('dfs-confirmed-toggle');
+  btn.classList.toggle('active-confirmed', dfsState.confirmedActiveOnly);
+  btn.textContent = dfsState.confirmedActiveOnly ? '✓ Confirmed Active Highlighted' : '⚡ Highlight Confirmed Active Q';
 }
 function dfsUpdateCapDisplay() {
   const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
-  const slots = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
   document.getElementById('dfs-cap-display').textContent = '$' + cap.toLocaleString();
-  document.getElementById('dfs-slots-display').textContent = slots;
+  document.getElementById('dfs-slots-display').textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+}
+function dfsLockPlayer(name) {
+  if (dfsState.lockedPlayers.includes(name)) {
+    dfsState.lockedPlayers = dfsState.lockedPlayers.filter(n => n !== name);
+  } else {
+    dfsState.lockedPlayers.push(name);
+    dfsState.excludedPlayers = dfsState.excludedPlayers.filter(n => n !== name);
+  }
+  dfsUpdateLockedBar();
+  dfsUpdatePlayerCardButtons(name);
+}
+function dfsExcludePlayer(name) {
+  if (dfsState.excludedPlayers.includes(name)) {
+    dfsState.excludedPlayers = dfsState.excludedPlayers.filter(n => n !== name);
+  } else {
+    dfsState.excludedPlayers.push(name);
+    dfsState.lockedPlayers = dfsState.lockedPlayers.filter(n => n !== name);
+  }
+  dfsUpdateLockedBar();
+  dfsUpdatePlayerCardButtons(name);
+}
+function dfsClearLocks() {
+  dfsState.lockedPlayers = [];
+  dfsState.excludedPlayers = [];
+  dfsUpdateLockedBar();
+  document.querySelectorAll('.dfs-act-btn').forEach(btn => {
+    btn.classList.remove('is-locked', 'is-excluded');
+    if (btn.dataset.action === 'lock') btn.textContent = '🔒 Lock';
+    if (btn.dataset.action === 'excl') btn.textContent = '✕ Exclude';
+  });
+}
+function dfsUpdateLockedBar() {
+  const bar = document.getElementById('dfs-locked-bar');
+  const txt = document.getElementById('dfs-locked-text');
+  const parts = [];
+  if (dfsState.lockedPlayers.length) parts.push('🔒 Locked: ' + dfsState.lockedPlayers.join(', '));
+  if (dfsState.excludedPlayers.length) parts.push('✕ Excluded: ' + dfsState.excludedPlayers.join(', '));
+  if (parts.length) { bar.style.display = 'block'; txt.textContent = parts.join('   '); }
+  else { bar.style.display = 'none'; }
+}
+function dfsUpdatePlayerCardButtons(name) {
+  const isLocked = dfsState.lockedPlayers.includes(name);
+  const isExcluded = dfsState.excludedPlayers.includes(name);
+  document.querySelectorAll('.dfs-act-btn[data-player="' + CSS.escape(name) + '"]').forEach(btn => {
+    if (btn.dataset.action === 'lock') {
+      btn.classList.toggle('is-locked', isLocked);
+      btn.textContent = isLocked ? '🔒 Locked' : '🔒 Lock';
+    }
+    if (btn.dataset.action === 'excl') {
+      btn.classList.toggle('is-excluded', isExcluded);
+      btn.textContent = isExcluded ? '✕ Excluded' : '✕ Exclude';
+    }
+  });
 }
 
 async function dfsOptimize() {
@@ -1435,7 +1588,6 @@ async function dfsOptimize() {
   document.getElementById('dfs-error').style.display = 'none';
   document.getElementById('dfs-loading').style.display = 'flex';
   document.getElementById('dfs-optimize-btn').disabled = true;
-
   try {
     const res = await fetch('/api/dfs/optimize', {
       method: 'POST',
@@ -1444,17 +1596,18 @@ async function dfsOptimize() {
         sport: dfsState.sport,
         platform: dfsState.platform,
         contestType: dfsState.contestType,
+        injuryFilter: dfsState.injuryFilter,
+        lockedPlayers: dfsState.lockedPlayers,
+        excludedPlayers: dfsState.excludedPlayers,
       }),
     });
-
     const body = await res.json();
-
     if (!res.ok) {
       if (body.paywall) { showPaywall(); return; }
       if (body.authRequired) { document.getElementById('auth-overlay').style.display = 'flex'; return; }
       throw new Error(body.error || 'Optimization failed');
     }
-
+    dfsLastLineup = body;
     dfsRenderResults(body);
   } catch (err) {
     const errEl = document.getElementById('dfs-error');
@@ -1470,66 +1623,98 @@ function dfsRenderResults(data) {
   const platformName = dfsState.platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
   const sportName = dfsState.sport.toUpperCase();
   const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
+  const isGpp = dfsState.contestType === 'gpp';
+  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
 
   document.getElementById('dfs-result-meta').textContent =
-    `${platformName} · ${sportName} · ${contestName} · CAP $${(data.salaryCap || DFS_CAPS[dfsState.platform][dfsState.sport]).toLocaleString()}`;
+    `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}`;
 
+  // Late news banner
+  const lateItems = Array.isArray(data.lateNewsItems) ? data.lateNewsItems.filter(Boolean) : [];
+  const lateBanner = document.getElementById('dfs-late-banner');
+  if (lateItems.length) {
+    document.getElementById('dfs-late-items').innerHTML = lateItems.map(item => `<div>· ${item}</div>`).join('');
+    lateBanner.style.display = 'block';
+  } else {
+    lateBanner.style.display = 'none';
+  }
+
+  // Confirmed active banner
+  const confirmedBanner = document.getElementById('dfs-confirmed-banner');
+  const confirmedPlayers = Array.isArray(data.confirmedActivePlayers) ? data.confirmedActivePlayers.filter(Boolean) : [];
+  if (confirmedPlayers.length) {
+    document.getElementById('dfs-confirmed-names').textContent = confirmedPlayers.join(', ');
+    confirmedBanner.style.display = 'block';
+  } else {
+    confirmedBanner.style.display = 'none';
+  }
+
+  // Totals row — 5 stats
   const totalSal = data.totalSalary || 0;
-  const remaining = data.remainingSalary != null ? data.remainingSalary : (data.salaryCap - totalSal);
+  const remaining = data.remainingSalary != null ? data.remainingSalary : (cap - totalSal);
   document.getElementById('dfs-totals-row').innerHTML = `
-    <div class="dfs-total-card">
-      <div class="dfs-total-label">PROJ PTS</div>
-      <div class="dfs-total-val accent">${(data.totalProjectedPoints || 0).toFixed(1)}</div>
-    </div>
-    <div class="dfs-total-card">
-      <div class="dfs-total-label">CEILING</div>
-      <div class="dfs-total-val good">${(data.totalCeilingPoints || 0).toFixed(1)}</div>
-    </div>
-    <div class="dfs-total-card">
-      <div class="dfs-total-label">SALARY USED</div>
-      <div class="dfs-total-val">$${totalSal.toLocaleString()}</div>
-    </div>
-    <div class="dfs-total-card">
-      <div class="dfs-total-label">REMAINING</div>
-      <div class="dfs-total-val">$${remaining.toLocaleString()}</div>
-    </div>
+    <div class="dfs-total-card"><div class="dfs-total-label">FLOOR</div><div class="dfs-total-val warm">${(data.totalFloorPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">PROJ</div><div class="dfs-total-val accent">${(data.totalProjectedPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">CEILING</div><div class="dfs-total-val good">${(data.totalCeilingPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">SALARY</div><div class="dfs-total-val">$${totalSal.toLocaleString()}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">LEFT</div><div class="dfs-total-val">$${remaining.toLocaleString()}</div></div>
   `;
 
+  // Alerts
   const alerts = [];
-  if (data.weatherAlert && data.weatherAlert !== 'null') alerts.push({ type: 'warn', msg: '🌤 ' + data.weatherAlert });
-  if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ type: 'warn', msg: '📊 ' + data.ownershipWarning });
-  if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ type: 'info', msg: '🔗 Stack: ' + data.stackInfo });
-  document.getElementById('dfs-alerts').innerHTML = alerts
-    .map(a => `<div class="dfs-alert ${a.type === 'info' ? 'info' : ''}">${a.msg}</div>`).join('');
+  if (data.weatherAlert && data.weatherAlert !== 'null') alerts.push({ cls: '', msg: '🌤 ' + data.weatherAlert });
+  if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ cls: '', msg: '⚠ ' + data.ownershipWarning });
+  if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ cls: 'info', msg: '🔗 ' + data.stackInfo });
+  document.getElementById('dfs-alerts').innerHTML = alerts.map(a => `<div class="dfs-alert ${a.cls}">${a.msg}</div>`).join('');
 
+  // Player cards
   const lineup = Array.isArray(data.lineup) ? data.lineup : [];
-  document.getElementById('dfs-lineup-cards').innerHTML = lineup.map((player, i) => {
+  document.getElementById('dfs-lineup-cards').innerHTML = lineup.map((p, i) => {
     const isCpt = i === 0;
-    const hasInjury = player.injuryStatus && player.injuryStatus !== 'null';
-    const highOwn = dfsState.contestType === 'gpp' && (player.ownershipPct || 0) > 35;
+    const hasInjury = p.injuryStatus && p.injuryStatus !== 'null';
+    const isConfirmed = !!p.confirmedActive;
+    const isPrimeMvp = !!p.primeMvp;
+    const isChalk = isGpp && (p.ownershipPct || 0) > 30;
+    const isLocked = dfsState.lockedPlayers.includes(p.name);
+
     let cardCls = 'dfs-player-card';
     if (isCpt) cardCls += ' captain';
-    if (hasInjury) cardCls += ' injury-warn';
+    if (isConfirmed) cardCls += ' confirmed-active';
+    else if (hasInjury) cardCls += ' injury-warn';
+    if (isLocked) cardCls += ' locked-card';
+
     const slotCls = isCpt ? 'dfs-slot-badge cpt' : 'dfs-slot-badge';
-    const injuryText = hasInjury
-      ? `<span class="dfs-badge injury">⚠ ${player.injuryStatus}${player.injuryNote && player.injuryNote !== 'null' ? ': ' + player.injuryNote : ''}</span>`
-      : '';
-    const chalkText = highOwn
-      ? `<span class="dfs-badge chalk">CHALK ${player.ownershipPct}% OWN</span>`
-      : '';
-    return `<div class="${cardCls}">
-  <div><span class="${slotCls}">${player.slot || ''}</span></div>
-  <div class="dfs-player-info">
-    <div class="dfs-player-name">${player.name || '—'}</div>
-    <div class="dfs-player-meta">${player.team || ''} vs ${player.opponent || ''} &nbsp;·&nbsp; ${player.position || ''} &nbsp;·&nbsp; $${(player.salary || 0).toLocaleString()}</div>
-    <div class="dfs-player-stats">
-      <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(player.projectedFppg || 0).toFixed(1)}</div></div>
-      <div class="dfs-stat"><div class="dfs-stat-lbl">CEILING</div><div class="dfs-stat-val">${(player.ceilingFppg || 0).toFixed(1)}</div></div>
-      <div class="dfs-stat"><div class="dfs-stat-lbl">VALUE</div><div class="dfs-stat-val">${(player.valueScore || 0).toFixed(2)}x</div></div>
-      <div class="dfs-stat"><div class="dfs-stat-lbl">OWN%</div><div class="dfs-stat-val">${player.ownershipPct != null ? player.ownershipPct + '%' : '—'}</div></div>
+
+    const badges = [];
+    if (isPrimeMvp) badges.push(`<span class="dfs-badge prime-mvp">⭐ PRIME MVP</span>`);
+    if (isConfirmed) badges.push(`<span class="dfs-badge confirmed">✓ CONFIRMED ACTIVE</span>`);
+    else if (hasInjury) badges.push(`<span class="dfs-badge injury">⚠ ${p.injuryStatus}${p.injuryNote && p.injuryNote !== 'null' ? ': ' + p.injuryNote : ''}</span>`);
+    if (isChalk) badges.push(`<span class="dfs-badge chalk">CHALK ${p.ownershipPct}%</span>`);
+    if (isLocked) badges.push(`<span class="dfs-badge locked">🔒 LOCKED</span>`);
+
+    const escapedName = (p.name || '').replace(/'/g, "\\'");
+    const dataName = (p.name || '').replace(/"/g, '&quot;');
+
+    return `<div class="${cardCls}" id="dfs-card-${i}">
+  <div class="dfs-player-top">
+    <span class="${slotCls}">${p.slot || ''}</span>
+    <div class="dfs-player-info">
+      <div class="dfs-player-name">${p.name || '—'}</div>
+      <div class="dfs-player-meta">${p.team || ''} vs ${p.opponent || ''} &nbsp;·&nbsp; ${p.position || ''} &nbsp;·&nbsp; $${(p.salary || 0).toLocaleString()}</div>
+      <div class="dfs-player-stats">
+        <div class="dfs-stat"><div class="dfs-stat-lbl">FLOOR</div><div class="dfs-stat-val warm">${(p.floorFppg || 0).toFixed(1)}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(p.projectedFppg || 0).toFixed(1)}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">CEILING</div><div class="dfs-stat-val good">${(p.ceilingFppg || 0).toFixed(1)}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">VALUE</div><div class="dfs-stat-val">${(p.valueScore || 0).toFixed(2)}x</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">OWN%</div><div class="dfs-stat-val">${p.ownershipPct != null ? p.ownershipPct + '%' : '—'}</div></div>
+      </div>
+      <div>${badges.join('')}</div>
+      ${p.notes ? `<div class="dfs-player-notes">${p.notes}</div>` : ''}
     </div>
-    ${injuryText}${chalkText}
-    ${player.notes ? `<div class="dfs-player-notes">${player.notes}</div>` : ''}
+  </div>
+  <div class="dfs-player-actions">
+    <button class="dfs-act-btn${isLocked ? ' is-locked' : ''}" data-player="${dataName}" data-action="lock" onclick="dfsLockPlayer('${escapedName}')">${isLocked ? '🔒 Locked' : '🔒 Lock'}</button>
+    <button class="dfs-act-btn${dfsState.excludedPlayers.includes(p.name) ? ' is-excluded' : ''}" data-player="${dataName}" data-action="excl" onclick="dfsExcludePlayer('${escapedName}')">${dfsState.excludedPlayers.includes(p.name) ? '✕ Excluded' : '✕ Exclude'}</button>
   </div>
 </div>`;
   }).join('');
@@ -1537,6 +1722,96 @@ function dfsRenderResults(data) {
   document.getElementById('dfs-summary-text').textContent = data.summary || '';
   document.getElementById('dfs-results').style.display = 'block';
 }
+
+// ── DFS Performance Tracking ───────────────────────────────────────────────
+function dfsGetPerf() {
+  try { return JSON.parse(localStorage.getItem('dfs_perf') || '[]'); } catch { return []; }
+}
+function dfsSavePerf(log) {
+  localStorage.setItem('dfs_perf', JSON.stringify(log));
+}
+
+function dfsSaveToPerf() {
+  if (!dfsLastLineup) { showToast('No lineup to save', 'error'); return; }
+  const log = dfsGetPerf();
+  const entry = {
+    id: Date.now(),
+    date: new Date().toLocaleDateString(),
+    sport: dfsState.sport.toUpperCase(),
+    platform: dfsState.platform === 'draftkings' ? 'DK' : 'FD',
+    contestType: dfsState.contestType.toUpperCase(),
+    projectedPoints: dfsLastLineup.totalProjectedPoints || 0,
+    ceilingPoints: dfsLastLineup.totalCeilingPoints || 0,
+    floorPoints: dfsLastLineup.totalFloorPoints || 0,
+    players: (dfsLastLineup.lineup || []).map(p => p.name).filter(Boolean),
+    actualTotal: null,
+  };
+  log.unshift(entry);
+  if (log.length > 30) log.length = 30;
+  dfsSavePerf(log);
+  dfsRenderPerfSection();
+  showToast('Lineup saved to tracker', 'success');
+}
+
+function dfsLogActual(id, val) {
+  const log = dfsGetPerf();
+  const entry = log.find(e => e.id === id);
+  if (entry) {
+    entry.actualTotal = parseFloat(val) || null;
+    dfsSavePerf(log);
+    dfsRenderPerfSection();
+  }
+}
+
+function dfsClearPerf() {
+  if (!confirm('Clear all performance logs?')) return;
+  localStorage.removeItem('dfs_perf');
+  dfsRenderPerfSection();
+}
+
+function dfsRenderPerfSection() {
+  const log = dfsGetPerf();
+
+  // Summary stats
+  const statsEl = document.getElementById('dfs-perf-stats');
+  const withActual = log.filter(e => e.actualTotal != null);
+  const totalLogged = log.length;
+  const avgProj = totalLogged ? (log.reduce((s, e) => s + (e.projectedPoints || 0), 0) / totalLogged).toFixed(1) : '—';
+  const avgActual = withActual.length ? (withActual.reduce((s, e) => s + e.actualTotal, 0) / withActual.length).toFixed(1) : '—';
+  const accuracy = withActual.length
+    ? ((withActual.reduce((s, e) => s + (e.actualTotal / (e.projectedPoints || 1)), 0) / withActual.length) * 100).toFixed(0) + '%'
+    : '—';
+
+  statsEl.innerHTML = totalLogged ? `
+    <div class="dfs-perf-card"><div class="dfs-perf-label">LINEUPS LOGGED</div><div class="dfs-perf-val">${totalLogged}</div></div>
+    <div class="dfs-perf-card"><div class="dfs-perf-label">AVG PROJ PTS</div><div class="dfs-perf-val" style="color:var(--accent)">${avgProj}</div></div>
+    <div class="dfs-perf-card"><div class="dfs-perf-label">AVG ACTUAL PTS</div><div class="dfs-perf-val" style="color:var(--green)">${avgActual}</div></div>
+    <div class="dfs-perf-card"><div class="dfs-perf-label">PROJ ACCURACY</div><div class="dfs-perf-val">${accuracy}</div></div>
+    <div class="dfs-perf-card"><div class="dfs-perf-label">RESULTS LOGGED</div><div class="dfs-perf-val">${withActual.length}</div></div>
+    <div class="dfs-perf-card"><div class="dfs-perf-label">ALGO SIGNAL</div><div class="dfs-perf-val" style="color:var(--muted);font-size:10px;">${withActual.length < 3 ? 'Need 3+' : parseFloat(accuracy) >= 90 ? '✓ ON TARGET' : parseFloat(accuracy) < 75 ? '↓ LOWER CEIL' : '~ TRACKING'}</div></div>
+  ` : `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);grid-column:1/-1;">No lineups logged yet — optimize a lineup and tap LOG to start tracking.</div>`;
+
+  // Log entries
+  const logEl = document.getElementById('dfs-perf-log');
+  logEl.innerHTML = log.map(entry => {
+    const diff = entry.actualTotal != null ? (entry.actualTotal - entry.projectedPoints) : null;
+    const diffCls = diff == null ? '' : diff >= 0 ? 'over' : 'under';
+    const diffStr = diff == null ? '' : (diff >= 0 ? '+' : '') + diff.toFixed(1);
+    return `<div class="dfs-log-row">
+      <div class="dfs-log-meta">${entry.date} · ${entry.sport} ${entry.platform} ${entry.contestType}</div>
+      <div class="dfs-log-proj">Proj: ${(entry.projectedPoints || 0).toFixed(1)}</div>
+      ${entry.actualTotal != null
+        ? `<div class="dfs-log-actual ${diffCls}">Act: ${entry.actualTotal.toFixed(1)} <span style="font-size:9px;">(${diffStr})</span></div>`
+        : `<input class="dfs-score-inp" type="number" placeholder="Actual pts" onchange="dfsLogActual(${entry.id}, this.value)" />`
+      }
+    </div>`;
+  }).join('') || '';
+}
+
+// Init perf section on DFS tab open
+document.addEventListener('DOMContentLoaded', function() {
+  dfsRenderPerfSection();
+});
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 let currentEmail = null;
