@@ -90,12 +90,12 @@ const SPORT_CONFIG = {
     correlationBonus: 0.05,
     antiCorrelationPenalty: 0.10,
     boomRateThreshold: 0.40,
-    safeFloorSigma: 5,
+    safeFloorSigma: 1.0,
     ceilingMultiplier: 1.5,
     floorMultiplier: 1.0,
   },
   NFL: {
-    usageMetric: 'snap_count_pct',
+    usageMetric: 'target_share_pct',
     touchMetric: 'targets_plus_carries',
     lineupSpot: 'snaps_per_game',
     paceMetric: 'plays_per_game',
@@ -106,8 +106,8 @@ const SPORT_CONFIG = {
     closeGameML: -175,
     blowoutML: -400,
     positionGroups: {
-      big: ['TE', 'RB'],
-      wing: ['WR', 'WR/TE'],
+      big: ['RB', 'FB'],
+      wing: ['WR', 'TE', 'WR/TE'],
       guard: ['QB'],
     },
     minutesReallocation: 0.20,
@@ -122,12 +122,12 @@ const SPORT_CONFIG = {
     correlationBonus: 0.06,
     antiCorrelationPenalty: 0.12,
     boomRateThreshold: 0.35,
-    safeFloorSigma: 6,
+    safeFloorSigma: 1.2,
     ceilingMultiplier: 1.5,
     floorMultiplier: 1.0,
   },
   MLB: {
-    usageMetric: 'lineup_spot',
+    usageMetric: 'woba',
     touchMetric: 'plate_appearances_per_game',
     lineupSpot: 'batting_order_position',
     paceMetric: 'runs_per_inning',
@@ -154,7 +154,7 @@ const SPORT_CONFIG = {
     correlationBonus: 0.07,
     antiCorrelationPenalty: 0.08,
     boomRateThreshold: 0.38,
-    safeFloorSigma: 4,
+    safeFloorSigma: 1.0,
     ceilingMultiplier: 1.5,
     floorMultiplier: 1.0,
   },
@@ -298,13 +298,14 @@ STEP 1 — FPPM BASELINE (Advanced Layer 1):
   recentFormFppg = average FP over L10 games (store this value)
 
 STEP 2 — VACATED MINUTES REALLOCATION (Advanced Layer 1 — position-weighted):
+  Position groups for ${sport.toUpperCase()}: big=[${cfg.positionGroups.big.join(',')}], wing=[${cfg.positionGroups.wing.join(',')}], guard=[${cfg.positionGroups.guard.join(',')}]
   For each player confirmed OUT today, distribute their avg minutes to active teammates
   using POSITION OVERLAP weighting:
-    Same position: receives OUT_player_avg_minutes × ${minSame}
-    Adjacent position: receives OUT_player_avg_minutes × ${minAdj}
-    Distant position: receives OUT_player_avg_minutes × ${minDist}
+    Same group: receives OUT_player_avg_minutes × ${minSame}
+    Adjacent group: receives OUT_player_avg_minutes × ${minAdj}
+    Distant group: receives OUT_player_avg_minutes × ${minDist}
   Apply same positional weight to usage redistribution (usage is more elastic):
-    Same position: OUT_player_avg_usage × ${usgSame}
+    Same group:    OUT_player_avg_usage × ${usgSame}
     Adjacent:      OUT_player_avg_usage × ${usgAdj}
     Distant:       OUT_player_avg_usage × ${usgDist}
   Update: projectedMinutes += minutesReallocated, usageRate += usageReallocated
@@ -315,7 +316,7 @@ STEP 3 — STANDARD DEVIATION VARIANCE + BOOM RATE (Advanced Layer 2):
     mean_L15 = average of those 15 scores
     sigma = standard deviation of those 15 scores
   Apply by contest type:
-    Cash game  → adjustedFloor   = mean_L15 - (${cfg.floorMultiplier.toFixed(1)} × sigma) → use as floorFppg
+    Cash game  → adjustedFloor   = mean_L15 - (${cfg.safeFloorSigma} × sigma) → use as floorFppg
     GPP        → adjustedCeiling = mean_L15 + (${cfg.ceilingMultiplier.toFixed(1)} × sigma) → use as ceilingFppg
   High sigma = volatile player. Low sigma = consistent floor player.
   BOOM RATE (GPP ceiling identifier):
