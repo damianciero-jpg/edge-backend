@@ -835,6 +835,15 @@ button,
 .dfs-upload-meta{font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.6;margin-bottom:8px;}
 .dfs-upload-success{display:none;background:rgba(0,211,100,0.08);border:1px solid rgba(0,211,100,0.28);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:9px;color:var(--green);margin-top:10px;line-height:1.6;}
 .dfs-upload-error{display:none;background:rgba(255,59,92,0.08);border:1px solid rgba(255,59,92,0.28);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:9px;color:var(--red);margin-top:10px;line-height:1.6;}
+.dfs-action-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;margin-bottom:22px;}
+.dfs-action-row .analyze-btn{margin-bottom:0!important;flex:1 1 220px;max-width:360px;}
+.dfs-refresh-btn{min-height:52px;border:1px solid var(--border2);border-radius:12px;background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;flex:1 1 180px;max-width:260px;}
+.dfs-refresh-btn:disabled{opacity:0.55;cursor:not-allowed;}
+.dfs-refresh-btn.loading::before{content:"";width:14px;height:14px;border:2px solid rgba(0,122,255,0.25);border-top-color:var(--accent);border-radius:50%;animation:dfs-spin 0.8s linear infinite;}
+.dfs-refresh-meta{font-family:var(--mono);font-size:9px;color:var(--muted);margin:-12px 0 14px;line-height:1.6;}
+.dfs-weather-banner{display:none;background:rgba(0,122,255,0.06);border:1px solid rgba(0,122,255,0.22);border-radius:12px;padding:11px 13px;margin-bottom:14px;font-family:var(--mono);font-size:9px;color:var(--accent);line-height:1.7;}
+.dfs-weather-line{display:flex;gap:8px;align-items:flex-start;margin-top:4px;}
+.dfs-weather-impact{background:rgba(0,122,255,0.06);border:1px solid rgba(0,122,255,0.2);border-radius:8px;padding:8px 10px;margin:8px 0;font-family:var(--mono);font-size:9px;color:var(--accent);line-height:1.6;}
 .dfs-csv-panel{display:none;margin-top:12px;}
 .dfs-csv-controls{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
 .dfs-csv-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:12px;background:var(--surface2);}
@@ -874,6 +883,7 @@ button,
 .dfs-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:4px;margin-top:4px;}
 .dfs-badge.injury{background:rgba(255,214,0,0.12);border:1px solid var(--yellow);color:var(--yellow);}
 .dfs-il-warning{background:rgba(255,59,92,0.10);border:1px solid rgba(255,59,92,0.45);color:var(--red);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;margin:8px 0;line-height:1.5;}
+.dfs-new-injury-warning{background:rgba(255,59,92,0.12);border:1px solid rgba(255,59,92,0.5);color:var(--red);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;margin:8px 0;line-height:1.5;}
 .dfs-badge.chalk{background:rgba(255,59,92,0.08);border:1px solid var(--red);color:var(--red);}
 .dfs-badge.confirmed{background:rgba(0,211,100,0.12);border:1px solid var(--green);color:var(--green);}
 .dfs-badge.prime-mvp{background:rgba(91,92,226,0.12);border:1px solid var(--accent2);color:var(--accent2);}
@@ -923,10 +933,11 @@ button,
 .dfs-log-actual.under{color:var(--red);}
 .dfs-score-inp{font-family:var(--mono);font-size:11px;width:70px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:6px;}
 @keyframes dfs-pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
+@keyframes dfs-spin{to{transform:rotate(360deg);}}
 @media (max-width:768px){
   #view-dfs{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);overflow-y:auto;}
-  .dfs-upload-actions,.dfs-csv-controls{display:grid;grid-template-columns:1fr;gap:10px;}
-  .dfs-upload-btn,.dfs-sample-btn,.dfs-sel-btn,.dfs-act-btn{min-height:48px;width:100%;}
+  .dfs-upload-actions,.dfs-csv-controls,.dfs-action-row{display:grid;grid-template-columns:1fr;gap:10px;}
+  .dfs-upload-btn,.dfs-sample-btn,.dfs-sel-btn,.dfs-act-btn,.dfs-refresh-btn{min-height:48px;width:100%;max-width:none;}
   .dfs-btn-group{display:grid;grid-template-columns:1fr;gap:8px;}
   .dfs-totals-row{grid-template-columns:repeat(3,1fr);}
   .dfs-perf-grid{grid-template-columns:repeat(2,1fr);}
@@ -1403,10 +1414,18 @@ button,
       LINEUP: <span id="dfs-slots-display" style="color:var(--accent);">CPT + 5 FLEX (6 players)</span>
     </div>
 
-    <!-- Optimize button -->
-    <button class="analyze-btn" id="dfs-optimize-btn" onclick="dfsOptimize()" style="margin-bottom:22px;width:100%;max-width:360px;display:block;">
-      ⚡ OPTIMIZE LINEUP
-    </button>
+    <div id="dfs-weather-banner" class="dfs-weather-banner"></div>
+
+    <!-- Optimize / refresh actions -->
+    <div class="dfs-action-row">
+      <button class="analyze-btn" id="dfs-optimize-btn" onclick="dfsOptimize()" style="width:100%;display:block;">
+        ⚡ OPTIMIZE LINEUP
+      </button>
+      <button class="dfs-refresh-btn" id="dfs-refresh-injuries-btn" onclick="dfsRefreshInjuries()">
+        Refresh Injuries
+      </button>
+    </div>
+    <div class="dfs-refresh-meta" id="dfs-injury-refresh-meta">Injuries not refreshed yet.</div>
 
     <!-- Loading -->
     <div id="dfs-loading" style="display:none;" class="loading-state">
@@ -1571,6 +1590,8 @@ let dfsState = {
   csvSort: 'value',
   uploadedPlayers: [],
   uploadedFile: null,
+  injuryRefresh: null,
+  weather: null,
   excludeIlPlayers: false,
   confirmedActiveOnly: false,
   lockedPlayers: [],
@@ -1584,8 +1605,25 @@ const DFS_CSV_COLUMNS = {
   salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$'],
   fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints'],
   injuryStatus: ['injury', 'status', 'notes', 'injury status', 'injurystatus', 'injury indicator'],
+  team: ['team', 'team abbrev', 'teamabbrev', 'team abbreviation', 'teamabbr'],
+  opponent: ['opponent', 'opp', 'opposing team', 'opposingteam'],
+  gameInfo: ['game info', 'gameinfo', 'game', 'matchup', 'event'],
+  gameLocation: ['location', 'venue', 'stadium', 'ballpark', 'city', 'game city', 'gamecity'],
   gameTotal: ['game total', 'gametotal', 'vegas total', 'vegastotal', 'total', 'o/u', 'over under', 'overunder'],
   opposingPitcherEra: ['opposing pitcher era', 'opposingpitcherera', 'opp pitcher era', 'opppitcherera', 'pitcher era', 'pitcherera', 'opp era', 'oppera'],
+};
+
+const DFS_TEAM_CITY = {
+  ARI: 'Phoenix, AZ', ATL: 'Atlanta, GA', BAL: 'Baltimore, MD', BOS: 'Boston, MA', BUF: 'Buffalo, NY',
+  CAR: 'Charlotte, NC', CHC: 'Chicago, IL', CHW: 'Chicago, IL', CIN: 'Cincinnati, OH', CLE: 'Cleveland, OH',
+  COL: 'Denver, CO', DAL: 'Arlington, TX', DEN: 'Denver, CO', DET: 'Detroit, MI', GB: 'Green Bay, WI',
+  HOU: 'Houston, TX', IND: 'Indianapolis, IN', JAX: 'Jacksonville, FL', KC: 'Kansas City, MO',
+  LAC: 'Inglewood, CA', LAD: 'Los Angeles, CA', LAR: 'Inglewood, CA', LV: 'Las Vegas, NV', MIA: 'Miami, FL',
+  MIL: 'Milwaukee, WI', MIN: 'Minneapolis, MN', NE: 'Foxborough, MA', NO: 'New Orleans, LA',
+  NYG: 'East Rutherford, NJ', NYJ: 'East Rutherford, NJ', NYM: 'New York, NY', NYY: 'New York, NY',
+  OAK: 'Oakland, CA', PHI: 'Philadelphia, PA', PIT: 'Pittsburgh, PA', SEA: 'Seattle, WA',
+  SF: 'Santa Clara, CA', STL: 'St. Louis, MO', TB: 'Tampa, FL', TEN: 'Nashville, TN', TEX: 'Arlington, TX',
+  TOR: 'Toronto, ON', WSH: 'Washington, DC', WAS: 'Washington, DC', SD: 'San Diego, CA'
 };
 
 function dfsEscapeHtml(value) {
@@ -1657,6 +1695,39 @@ function dfsCleanPlayerName(name) {
   return String(name || '').replace(/\s+\(\d+\)\s*$/, '').replace(/\s+#?\d+$/, '').trim();
 }
 
+function dfsNormalizeTeam(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function dfsExtractTeamsFromGameInfo(gameInfo) {
+  const raw = String(gameInfo || '').toUpperCase();
+  const match = raw.match(/\b([A-Z]{2,3})\s*@\s*([A-Z]{2,3})\b/);
+  if (!match) return { away: '', home: '' };
+  return { away: dfsNormalizeTeam(match[1]), home: dfsNormalizeTeam(match[2]) };
+}
+
+function dfsInferGameLocation(player) {
+  if (player.gameLocation) return player.gameLocation;
+  const infoTeams = dfsExtractTeamsFromGameInfo(player.gameInfo);
+  const home = infoTeams.home || dfsNormalizeTeam(player.homeTeam);
+  if (home && DFS_TEAM_CITY[home]) return DFS_TEAM_CITY[home];
+  const team = dfsNormalizeTeam(player.team);
+  const opp = dfsNormalizeTeam(player.opponent);
+  const fallback = opp && DFS_TEAM_CITY[opp] ? opp : team;
+  return DFS_TEAM_CITY[fallback] || '';
+}
+
+function dfsGameKeyForPlayer(player) {
+  const infoTeams = dfsExtractTeamsFromGameInfo(player.gameInfo);
+  const away = infoTeams.away;
+  const home = infoTeams.home;
+  if (away && home) return `${away}@${home}`;
+  const team = dfsNormalizeTeam(player.team);
+  const opp = dfsNormalizeTeam(player.opponent);
+  if (team && opp) return [team, opp].sort().join('@');
+  return dfsInferGameLocation(player) || 'unknown';
+}
+
 function dfsFormatBytes(bytes) {
   if (!bytes) return '0 KB';
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -1671,11 +1742,11 @@ function dfsOpenCsvPicker() {
 function dfsDownloadSampleCsv(event) {
   event.preventDefault();
   const sample = [
-    'Name,Position,Salary,FPPG,Injury',
-    'Jalen Brunson,PG,9600,45.8,',
-    'Josh Hart,SF/PF,7100,34.2,Q',
-    'Isaiah Hartenstein,C,6200,30.4,',
-    'Example OUT Player,SG,4300,18.1,OUT'
+    'Name,Position,Salary,FPPG,Injury,Team,Opponent,Game Info,Location',
+    'Jalen Brunson,PG,9600,45.8,,NYK,BOS,NYK@BOS,Boston MA',
+    'Josh Hart,SF/PF,7100,34.2,Q,NYK,BOS,NYK@BOS,Boston MA',
+    'Isaiah Hartenstein,C,6200,30.4,,OKC,DEN,OKC@DEN,Denver CO',
+    'Example OUT Player,SG,4300,18.1,OUT,OKC,DEN,OKC@DEN,Denver CO'
   ].join('\n');
   const blob = new Blob([sample], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1728,6 +1799,8 @@ async function dfsHandleCsvUpload(event) {
       uploadedAt: new Date(),
       columns: parsed.columns,
     };
+    dfsState.injuryRefresh = null;
+    dfsState.weather = null;
     if (parsed.source === 'fanduel_mlb_malformed') {
       dfsSetPlatform('fanduel');
       dfsSetSport('mlb');
@@ -1744,6 +1817,8 @@ async function dfsHandleCsvUpload(event) {
       : `Upload successful: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
     successEl.style.display = 'block';
     showToast(`${parsed.players.length} DFS players loaded`, 'success');
+    dfsUpdateInjuryRefreshMeta();
+    dfsRenderWeatherBanner();
   } catch (err) {
     dfsState.uploadedPlayers = [];
     dfsState.uploadedFile = null;
@@ -1768,6 +1843,10 @@ function dfsBuildPlayersFromCsv(text) {
     salary: dfsFindCsvColumn(headers, 'salary'),
     fppg: dfsFindCsvColumn(headers, 'fppg'),
     injuryStatus: dfsFindCsvColumn(headers, 'injuryStatus'),
+    team: dfsFindCsvColumn(headers, 'team'),
+    opponent: dfsFindCsvColumn(headers, 'opponent'),
+    gameInfo: dfsFindCsvColumn(headers, 'gameInfo'),
+    gameLocation: dfsFindCsvColumn(headers, 'gameLocation'),
     gameTotal: dfsFindCsvColumn(headers, 'gameTotal'),
     opposingPitcherEra: dfsFindCsvColumn(headers, 'opposingPitcherEra'),
   };
@@ -1783,6 +1862,10 @@ function dfsBuildPlayersFromCsv(text) {
     const name = dfsCleanPlayerName(row[idx[columns.name]]);
     const position = String(row[idx[columns.position]] || '').trim().toUpperCase();
     const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
+    const team = columns.team ? dfsNormalizeTeam(row[idx[columns.team]]) : '';
+    const opponent = columns.opponent ? dfsNormalizeTeam(row[idx[columns.opponent]]) : '';
+    const gameInfo = columns.gameInfo ? String(row[idx[columns.gameInfo]] || '').trim() : '';
+    const gameLocation = columns.gameLocation ? String(row[idx[columns.gameLocation]] || '').trim() : '';
     const gameTotal = columns.gameTotal ? dfsParsePoints(row[idx[columns.gameTotal]]) : null;
     const opposingPitcherEra = columns.opposingPitcherEra ? dfsParsePoints(row[idx[columns.opposingPitcherEra]]) : null;
     return {
@@ -1795,6 +1878,10 @@ function dfsBuildPlayersFromCsv(text) {
       floorFppg: fppg * 0.75,
       ceilingFppg: fppg * 1.25,
       injuryStatus,
+      team,
+      opponent,
+      gameInfo,
+      gameLocation,
       gameTotal,
       opposingPitcherEra,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
@@ -1843,6 +1930,10 @@ function dfsTryParseFanDuelMalformedCsv(rows) {
       salary: 'Column 20 Salary',
       fppg: 'Column 18 FPPG',
       injuryStatus: 'Column 21+ Injury',
+      team: null,
+      opponent: null,
+      gameInfo: null,
+      gameLocation: null,
       gameTotal: null,
       opposingPitcherEra: null,
     },
@@ -1901,7 +1992,7 @@ function dfsRenderCsvPlayers() {
       <td>$${Math.round(p.salary).toLocaleString()}</td>
       <td>${p.fppg.toFixed(1)}</td>
       <td>${p.valueScore.toFixed(2)}x</td>
-      <td class="${p.injuryStatus ? 'dfs-csv-injury' : ''}">${dfsEscapeHtml(p.injuryStatus || 'OK')}</td>
+      <td class="${p.injuryStatus ? 'dfs-csv-injury' : ''}">${dfsEscapeHtml(p.injuryStatus || 'OK')}${p.newlyInjured ? ' - NEW' : ''}</td>
     </tr>
   `).join('');
 }
@@ -1910,7 +2001,9 @@ function dfsSetSport(s) {
   dfsState.sport = s;
   document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
   document.getElementById('dfs-sport-' + s).classList.add('active');
+  dfsState.weather = null;
   dfsUpdateCapDisplay();
+  dfsRenderWeatherBanner();
 }
 function dfsSetPlatform(p) {
   dfsState.platform = p;
@@ -2037,6 +2130,224 @@ function dfsMlbGameEnvironmentMultiplier(player) {
   return multiplier;
 }
 
+function dfsIsOutStatus(status) {
+  return /\b(OUT|IR|IL|DNP|SUSP)\b/.test(String(status || '').toUpperCase());
+}
+
+function dfsIsQuestionableStatus(status) {
+  return /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(String(status || '').toUpperCase());
+}
+
+function dfsRelativeTime(ts) {
+  if (!ts) return 'Injuries not refreshed yet.';
+  const seconds = Math.max(1, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+  if (seconds < 60) return 'Injuries updated just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Injuries updated ${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  return `Injuries updated ${hours} hour${hours === 1 ? '' : 's'} ago`;
+}
+
+function dfsUpdateInjuryRefreshMeta() {
+  const el = document.getElementById('dfs-injury-refresh-meta');
+  if (el) el.textContent = dfsRelativeTime(dfsState.injuryRefresh && dfsState.injuryRefresh.updatedAt);
+}
+
+async function dfsRefreshInjuries() {
+  if (!dfsState.uploadedPlayers.length) {
+    showToast('Upload a CSV first', 'error');
+    return;
+  }
+  const btn = document.getElementById('dfs-refresh-injuries-btn');
+  const errEl = document.getElementById('dfs-error');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('loading');
+    btn.textContent = 'Refreshing...';
+  }
+  if (errEl) errEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/dfs/refresh-injuries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sport: dfsState.sport,
+        players: dfsState.uploadedPlayers.map(p => ({
+          name: p.name,
+          team: p.team,
+          opponent: p.opponent,
+          position: p.position,
+          injuryStatus: p.injuryStatus,
+        })),
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      if (body.authRequired) { document.getElementById('auth-overlay').style.display = 'flex'; return; }
+      throw new Error(body.error || 'Could not refresh injuries.');
+    }
+    const data = body.data || body;
+    const byName = new Map((data.players || []).map(p => [String(p.name || '').toLowerCase(), p]));
+    let changed = 0;
+    dfsState.uploadedPlayers = dfsState.uploadedPlayers.map(player => {
+      const update = byName.get(String(player.name || '').toLowerCase());
+      if (!update) return player;
+      const oldStatus = player.injuryStatus || '';
+      const nextStatus = update.status === 'OK' ? '' : update.status;
+      const newlyInjured = !dfsIsOutStatus(oldStatus) && !dfsIsQuestionableStatus(oldStatus) && (dfsIsOutStatus(nextStatus) || dfsIsQuestionableStatus(nextStatus));
+      if (newlyInjured || String(oldStatus || '').toUpperCase() !== String(nextStatus || '').toUpperCase()) changed++;
+      return {
+        ...player,
+        injuryStatus: nextStatus,
+        injuryNote: update.note || player.injuryNote || '',
+        injurySource: update.source || '',
+        newlyInjured,
+        injuryRefreshedAt: data.updatedAt || new Date().toISOString(),
+      };
+    });
+    dfsState.injuryRefresh = {
+      updatedAt: data.updatedAt || new Date().toISOString(),
+      lateNewsItems: data.lateNewsItems || [],
+    };
+    dfsRenderCsvPlayers();
+    dfsUpdateInjuryRefreshMeta();
+    if (dfsLastLineup && Array.isArray(dfsLastLineup.lineup)) {
+      dfsLastLineup.lineup = dfsLastLineup.lineup.map(p => {
+        const refreshed = dfsState.uploadedPlayers.find(u => u.name === p.name);
+        return refreshed ? { ...p, injuryStatus: refreshed.injuryStatus, injuryNote: refreshed.injuryNote, newlyInjured: refreshed.newlyInjured, injurySource: refreshed.injurySource } : p;
+      });
+      dfsRenderResults(dfsLastLineup);
+    }
+    showToast(`Injuries refreshed: ${changed} status update${changed === 1 ? '' : 's'}`, 'success');
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message || 'Could not refresh injuries.';
+      errEl.style.display = 'block';
+    }
+    showToast('Injury refresh failed', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      btn.textContent = 'Refresh Injuries';
+    }
+  }
+}
+
+function dfsBuildWeatherGames() {
+  const games = new Map();
+  if (!['mlb', 'nfl'].includes(dfsState.sport)) return [];
+  dfsState.uploadedPlayers.forEach(player => {
+    const location = dfsInferGameLocation(player);
+    if (!location) return;
+    const key = dfsGameKeyForPlayer(player);
+    if (!games.has(key)) {
+      games.set(key, { key, location, label: player.gameInfo || key });
+    }
+  });
+  return [...games.values()];
+}
+
+async function dfsRefreshWeather(showLoading = true) {
+  if (!['mlb', 'nfl'].includes(dfsState.sport) || !dfsState.uploadedPlayers.length) {
+    dfsState.weather = null;
+    dfsRenderWeatherBanner();
+    return null;
+  }
+  const games = dfsBuildWeatherGames();
+  if (!games.length) {
+    dfsState.weather = { updatedAt: new Date().toISOString(), games: [], banner: 'No game locations found in CSV.' };
+    dfsRenderWeatherBanner();
+    return dfsState.weather;
+  }
+  if (showLoading) document.getElementById('dfs-loading').style.display = 'flex';
+  const res = await fetch('/api/dfs/weather', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sport: dfsState.sport, games }),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    if (body.authRequired) { document.getElementById('auth-overlay').style.display = 'flex'; return null; }
+    throw new Error(body.error || 'Could not refresh weather.');
+  }
+  dfsState.weather = body.data || body;
+  dfsRenderWeatherBanner();
+  return dfsState.weather;
+}
+
+function dfsRenderWeatherBanner() {
+  const el = document.getElementById('dfs-weather-banner');
+  if (!el) return;
+  const weather = dfsState.weather;
+  if (!weather || !['mlb', 'nfl'].includes(dfsState.sport)) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const games = Array.isArray(weather.games) ? weather.games : [];
+  if (!games.length) {
+    el.style.display = 'block';
+    el.textContent = weather.banner || 'No weather locations found.';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = `<strong>WEATHER IMPACT</strong>${games.map(g => `<div class="dfs-weather-line"><span>${dfsWeatherIcon(g)}</span><span>${dfsEscapeHtml(g.label || g.location)}: ${dfsEscapeHtml(g.summary || 'Weather loaded')}</span></div>`).join('')}`;
+}
+
+function dfsWeatherForPlayer(player) {
+  const weather = dfsState.weather;
+  if (!weather || !Array.isArray(weather.games)) return null;
+  const key = dfsGameKeyForPlayer(player);
+  return weather.games.find(g => g.key === key || g.location === dfsInferGameLocation(player)) || null;
+}
+
+function dfsWeatherIcon(weather) {
+  const precip = String(weather && weather.precipitation || '').toLowerCase();
+  if (precip.includes('snow')) return 'SNOW';
+  if (precip.includes('rain')) return 'RAIN';
+  if (Number(weather && weather.temperatureF) < (dfsState.sport === 'nfl' ? 32 : 50)) return 'COLD';
+  if (Number(weather && weather.windMph) > 10) return 'WIND';
+  return 'WX';
+}
+
+function dfsWeatherImpactForPlayer(player) {
+  if (!['mlb', 'nfl'].includes(dfsState.sport)) return { multiplier: 1, notes: [], weather: null };
+  const weather = dfsWeatherForPlayer(player);
+  if (!weather || weather.isDome) return { multiplier: 1, notes: [], weather };
+  const pos = String(player.position || '').toUpperCase();
+  const wind = Number(weather.windMph) || 0;
+  const dir = String(weather.windDirection || '').toLowerCase();
+  const precip = String(weather.precipitation || '').toLowerCase();
+  const temp = Number(weather.temperatureF);
+  let multiplier = 1;
+  const notes = [];
+  if (dfsState.sport === 'mlb' && !dfsIsMlbPitcher(player)) {
+    if (wind > 10 && (dir.includes('out to left') || dir.includes('out to center')) && (pos.includes('LF') || pos.includes('CF') || pos.includes('OF'))) {
+      multiplier *= 1.15; notes.push('Wind: +15%');
+    }
+    if (wind > 10 && ((dir.includes('right') && dir.includes('in')) || dir.includes('in to right') || dir.includes('in from right')) && (pos.includes('RF') || pos.includes('OF'))) {
+      multiplier *= 0.90; notes.push('Wind in: -10%');
+    }
+    if (precip.includes('rain') || precip.includes('precip')) {
+      multiplier *= 0.95; notes.push('Rain: -5%');
+    }
+    if (Number.isFinite(temp) && temp < 50) {
+      multiplier *= 0.92; notes.push('Cold: -8%');
+    }
+  }
+  if (dfsState.sport === 'nfl') {
+    const passing = /\b(QB|WR|TE)\b/.test(pos);
+    const rushing = /\b(RB|FB)\b/.test(pos);
+    if (wind > 15 && passing) { multiplier *= 0.88; notes.push('Wind: -12%'); }
+    if (wind > 15 && rushing) { multiplier *= 1.05; notes.push('Wind ground: +5%'); }
+    if ((precip.includes('rain') || precip.includes('snow')) && passing) { multiplier *= 0.90; notes.push(`${precip.includes('snow') ? 'Snow' : 'Rain'}: -10%`); }
+    if ((precip.includes('rain') || precip.includes('snow')) && rushing) { multiplier *= 1.08; notes.push(`${precip.includes('snow') ? 'Snow' : 'Rain'} rush: +8%`); }
+    if (Number.isFinite(temp) && temp < 32) { multiplier *= 0.92; notes.push('Cold: -8%'); }
+  }
+  return { multiplier, notes, weather };
+}
+
 function dfsLineupSlots() {
   const { sport, platform } = dfsState;
   if (sport === 'nba') return platform === 'draftkings'
@@ -2054,6 +2365,7 @@ function dfsGetEligiblePlayersForOptimization() {
   const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
   return dfsState.uploadedPlayers
     .filter(p => dfsCsvPlayerVisible(p, filter))
+    .filter(p => !(p.newlyInjured && dfsIsOutStatus(p.injuryStatus)))
     .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
 }
@@ -2067,19 +2379,28 @@ function dfsSlotMultiplier(slot) {
 function dfsProjectCsvPlayerForSlot(player, slot) {
   const multiplier = dfsSlotMultiplier(slot);
   const envMultiplier = dfsMlbGameEnvironmentMultiplier(player);
-  const projectedFppg = player.fppg * multiplier * envMultiplier;
-  const ceilingFppg = player.fppg * 1.25 * multiplier * envMultiplier;
+  const weatherImpact = dfsWeatherImpactForPlayer(player);
+  const totalMultiplier = multiplier * envMultiplier * weatherImpact.multiplier;
+  const projectedFppg = player.fppg * totalMultiplier;
+  const ceilingFppg = player.fppg * 1.25 * totalMultiplier;
   const envNotes = envMultiplier > 1
     ? ` MLB environment x${envMultiplier.toFixed(2)}${Number(player.opposingPitcherEra) > 4.5 ? ' (pitcher ERA > 4.50)' : ''}${Number(player.gameTotal) > 9 ? ' (game total > 9)' : ''}.`
+    : '';
+  const weatherNotes = weatherImpact.notes.length
+    ? ` Weather x${weatherImpact.multiplier.toFixed(2)} (${weatherImpact.notes.join(', ')}).`
     : '';
   return {
     ...player,
     slot,
     projectedFppg,
-    floorFppg: player.fppg * 0.75 * multiplier,
+    originalFppg: player.fppg,
+    weatherMultiplier: weatherImpact.multiplier,
+    weatherNotes: weatherImpact.notes,
+    weatherSummary: weatherImpact.weather ? weatherImpact.weather.summary : '',
+    floorFppg: player.fppg * 0.75 * totalMultiplier,
     ceilingFppg,
     valueScore: player.salary ? (projectedFppg / player.salary) * 1000 : 0,
-    notes: `Loaded from uploaded CSV.${envNotes}`,
+    notes: `Loaded from uploaded CSV.${envNotes}${weatherNotes}`,
   };
 }
 
@@ -2222,6 +2543,12 @@ async function dfsOptimize() {
   document.getElementById('dfs-optimize-btn').disabled = true;
   try {
     if (dfsState.uploadedPlayers.length) {
+      if (['mlb', 'nfl'].includes(dfsState.sport)) {
+        const updatedAt = dfsState.weather && dfsState.weather.updatedAt ? new Date(dfsState.weather.updatedAt).getTime() : 0;
+        if (!updatedAt || Date.now() - updatedAt > 30 * 60 * 1000) {
+          await dfsRefreshWeather(false);
+        }
+      }
       const data = dfsOptimizeUploadedCsv();
       dfsLastLineup = data;
       dfsRenderResults(data);
@@ -2316,8 +2643,10 @@ function dfsRenderResults(data) {
   const lineup = Array.isArray(data.lineup) ? data.lineup : [];
   const minSalCount = lineup.filter(p => (p.salary || 0) < 2500 && (p.salary || 0) > 0).length;
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
+  const newlyInjuredPlayers = lineup.filter(p => p.newlyInjured).map(p => p.name).filter(Boolean);
   if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players under $2,500. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
+  if (newlyInjuredPlayers.length) alerts.push({ cls: 'warn', msg: `NEW INJURY WARNING — ${newlyInjuredPlayers.join(', ')} updated after refresh.` });
   if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
   if (data.salaryAlert && data.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + data.salaryAlert });
   if (data.antiCorrelationWarning && data.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + data.antiCorrelationWarning });
@@ -2333,6 +2662,8 @@ function dfsRenderResults(data) {
     const isCpt = i === 0;
     const hasInjury = p.injuryStatus && p.injuryStatus !== 'null';
     const isIl = dfsIsIlPlayer(p);
+    const isOut = dfsIsOutStatus(p.injuryStatus);
+    const weatherNotes = Array.isArray(p.weatherNotes) ? p.weatherNotes : [];
     const isConfirmed = !!p.confirmedActive;
     const isPrimeMvp = !!p.primeMvp;
     const isChalk = isGpp && (p.ownershipPct || 0) > 30;
@@ -2343,7 +2674,7 @@ function dfsRenderResults(data) {
     let cardCls = 'dfs-player-card';
     if (isCpt) cardCls += ' captain';
     if (isConfirmed) cardCls += ' confirmed-active';
-    else if (hasInjury || isIl) cardCls += ' injury-warn';
+    else if (hasInjury || isIl || p.newlyInjured) cardCls += ' injury-warn';
     if (isLocked) cardCls += ' locked-card';
 
     const slotCls = isCpt ? 'dfs-slot-badge cpt' : 'dfs-slot-badge';
@@ -2383,6 +2714,7 @@ function dfsRenderResults(data) {
     if ((p.minutesReallocated || 0) > 0) badges.push(`<span class="dfs-badge confirmed">+${(+p.minutesReallocated).toFixed(1)} MIN VACATED</span>`);
     if (isRising) badges.push(`<span class="dfs-badge salary-up">↑ RISING SALARY</span>`);
     if (isFalling) badges.push(`<span class="dfs-badge salary-down">↓ VALUE TARGET</span>`);
+    if (weatherNotes.length) badges.push(`<span class="dfs-badge pace-fast">${dfsWeatherIcon(dfsWeatherForPlayer(p))} WEATHER x${(p.weatherMultiplier || 1).toFixed(2)}</span>`);
 
     const escapedName = (p.name || '').replace(/'/g, "\\'");
     const dataName = (p.name || '').replace(/"/g, '&quot;');
@@ -2393,7 +2725,10 @@ function dfsRenderResults(data) {
     <div class="dfs-player-info">
       <div class="dfs-player-name">${p.name || '—'}${trendHtml}</div>
       <div class="dfs-player-meta">${p.team || ''} vs ${p.opponent || ''} &nbsp;·&nbsp; ${p.position || ''} &nbsp;·&nbsp; $${(p.salary || 0).toLocaleString()}${impliedHtml}${salTrajHtml}</div>
+      ${p.newlyInjured ? `<div class="dfs-new-injury-warning">NEW INJURY STATUS: ${dfsEscapeHtml(p.injuryStatus || 'OUT')} ${p.injuryNote ? '- ' + dfsEscapeHtml(p.injuryNote) : ''}</div>` : ''}
+      ${isOut && !isIl ? '<div class="dfs-new-injury-warning">INJURED - OUT</div>' : ''}
       ${isIl ? '<div class="dfs-il-warning">INJURED - OUT</div>' : ''}
+      ${weatherNotes.length ? `<div class="dfs-weather-impact">${dfsWeatherIcon(dfsWeatherForPlayer(p))} ${weatherNotes.map(dfsEscapeHtml).join(' · ')}<br>Original FPPG: ${(p.originalFppg || p.fppg || 0).toFixed(1)} · Adjusted FPPG: ${(p.projectedFppg || 0).toFixed(1)}</div>` : ''}
       <div class="dfs-player-stats">
         <div class="dfs-stat"><div class="dfs-stat-lbl">FLOOR</div><div class="dfs-stat-val warm">${(p.floorFppg || 0).toFixed(1)}</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(p.projectedFppg || 0).toFixed(1)}</div></div>

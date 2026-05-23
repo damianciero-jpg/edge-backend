@@ -6,8 +6,11 @@ const { getUser, addCredits } = require('../lib/users');
 const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 const { OWNER_EMAILS } = require('../lib/owners');
+const { hasRedisConfig, createRedis } = require('../lib/redis');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const memoryWeatherCache = new Map();
+const WEATHER_TTL_SEC = 30 * 60;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -59,6 +62,98 @@ function cleanJson(raw) {
     out += c;
   }
   return out;
+}
+
+function parseJsonFromText(rawText) {
+  const match = String(rawText || '').match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI returned no structured JSON.');
+  const clean = cleanJson(match[0]);
+  try {
+    return JSON.parse(clean);
+  } catch {
+    return JSON.parse(jsonrepair(clean));
+  }
+}
+
+function normalizeStatus(status) {
+  const s = String(status || '').trim().toUpperCase();
+  if (/\b(IL|INJURED LIST|IR)\b/.test(s)) return 'IL';
+  if (/\b(OUT|DNP|SUSP|SUSPENDED|INACTIVE)\b/.test(s)) return 'OUT';
+  if (/\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(s)) return 'Q';
+  if (/\b(PROBABLE|AVAILABLE|ACTIVE|OK|HEALTHY|NONE)\b/.test(s)) return 'OK';
+  return s || 'OK';
+}
+
+function requireDfsSession(req, res) {
+  const session = verifySession(req.cookies && req.cookies.edge_session);
+  if (!session || !session.email) {
+    fail(res, 401, { error: 'Login required', data: { authRequired: true } });
+    return null;
+  }
+  return session;
+}
+
+function compactPlayers(players, limit = 90) {
+  return (Array.isArray(players) ? players : [])
+    .filter(p => p && p.name)
+    .slice(0, limit)
+    .map(p => ({
+      name: String(p.name || '').slice(0, 80),
+      team: String(p.team || '').slice(0, 20),
+      opponent: String(p.opponent || '').slice(0, 20),
+      position: String(p.position || '').slice(0, 20),
+      currentStatus: String(p.injuryStatus || '').slice(0, 40),
+    }));
+}
+
+async function getWeatherCache(location) {
+  const key = `edge:dfs:weather:${String(location || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  if (hasRedisConfig()) {
+    const redis = createRedis();
+    const cached = await redis.get(key);
+    return { key, redis, cached };
+  }
+  const entry = memoryWeatherCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return { key, redis: null, cached: entry.value };
+  return { key, redis: null, cached: null };
+}
+
+async function setWeatherCache(key, redis, value) {
+  if (redis) {
+    await redis.set(key, value, { ex: WEATHER_TTL_SEC });
+  } else {
+    memoryWeatherCache.set(key, { value, expiresAt: Date.now() + WEATHER_TTL_SEC * 1000 });
+  }
+}
+
+async function fetchEspnInjurySnapshot(sport) {
+  const sportPath = sport === 'nfl' ? 'football/nfl' : sport === 'mlb' ? 'baseball/mlb' : 'basketball/nba';
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard`;
+    const res = await withTimeout(fetch(url), 5000, 'ESPN injury API');
+    if (!res.ok) return [];
+    const json = await res.json();
+    const injuries = [];
+    (json.events || []).forEach(event => {
+      (event.competitions || []).forEach(comp => {
+        (comp.competitors || []).forEach(team => {
+          const teamName = team.team && (team.team.abbreviation || team.team.displayName);
+          (team.injuries || []).forEach(injury => {
+            const athlete = injury.athlete || {};
+            injuries.push({
+              name: athlete.displayName || athlete.fullName || athlete.name || '',
+              team: teamName || '',
+              status: injury.status || injury.type || '',
+              detail: injury.detail || injury.description || '',
+            });
+          });
+        });
+      });
+    });
+    return injuries.filter(i => i.name).slice(0, 120);
+  } catch {
+    return [];
+  }
 }
 
 const SPORT_CONFIG = {
@@ -702,6 +797,184 @@ router.post('/optimize', async (req, res) => {
     if (status === 429) return fail(res, 429, { error: 'AI rate limit hit. Wait a moment and try again.' });
     if (status === 401 || status === 403) return fail(res, status, { error: 'AI API key issue.' });
     return fail(res, 500, { error: err.message || 'DFS optimization failed. Try again.' });
+  }
+});
+
+router.post('/refresh-injuries', async (req, res) => {
+  const session = requireDfsSession(req, res);
+  if (!session) return;
+
+  const { sport = 'nba', players = [] } = req.body || {};
+  if (!['nba', 'nfl', 'mlb'].includes(sport)) return fail(res, 400, { error: 'Invalid sport.' });
+
+  const playerList = compactPlayers(players);
+  if (!playerList.length) return fail(res, 400, { error: 'No players provided.' });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const espnSnapshot = await fetchEspnInjurySnapshot(sport);
+  const prompt = `Refresh DFS injury statuses for this ${sport.toUpperCase()} uploaded CSV.
+Today is ${today}.
+Use the ESPN API snapshot below first, then use web_search to fill gaps. Prioritize ESPN injury data, official league/team reports, and recent beat-reporter updates.
+Return ONLY raw JSON with this shape:
+{
+  "updatedAt": "ISO timestamp",
+  "players": [
+    { "name": "exact input name", "status": "OK|Q|OUT|IL", "note": "short source note", "source": "ESPN/team/reporter if known" }
+  ],
+  "lateNewsItems": ["short important updates"]
+}
+Rules:
+- Include every input player exactly once by name.
+- Normalize Injured List/IR to IL, Out/Inactive/Suspended to OUT, Questionable/Doubtful to Q, no injury to OK.
+- If unsure, keep currentStatus or return OK with note "No current injury found".
+
+Players:
+${JSON.stringify(playerList)}
+
+ESPN API injury snapshot:
+${JSON.stringify(espnSnapshot)}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 5000,
+      system: 'You refresh DFS injury statuses. Always use web_search, prioritize ESPN and official sources, and return only raw JSON.',
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    }, { timeout: 90000 });
+
+    const rawText = (response.content || [])
+      .filter(b => b.type === 'text' && b.text)
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+    const parsed = parseJsonFromText(rawText);
+    const statuses = (Array.isArray(parsed.players) ? parsed.players : []).map(p => ({
+      name: String(p.name || ''),
+      status: normalizeStatus(p.status),
+      note: String(p.note || ''),
+      source: String(p.source || ''),
+    })).filter(p => p.name);
+    return ok(res, {
+      data: {
+        updatedAt: parsed.updatedAt || new Date().toISOString(),
+        players: statuses,
+        lateNewsItems: Array.isArray(parsed.lateNewsItems) ? parsed.lateNewsItems : [],
+      },
+    });
+  } catch (err) {
+    console.error('DFS injury refresh error:', err.message);
+    return fail(res, 500, { error: err.message || 'Could not refresh injuries.' });
+  }
+});
+
+router.post('/weather', async (req, res) => {
+  try {
+    const session = requireDfsSession(req, res);
+    if (!session) return;
+
+  const { sport = 'mlb', games = [] } = req.body || {};
+  if (!['mlb', 'nfl'].includes(sport)) {
+    return ok(res, { data: { updatedAt: new Date().toISOString(), games: [], banner: 'Weather impact applies only to MLB and NFL.' } });
+  }
+
+  const inputGames = (Array.isArray(games) ? games : [])
+    .filter(g => g && g.location)
+    .slice(0, 20)
+    .map(g => ({
+      key: String(g.key || g.location),
+      location: String(g.location || '').slice(0, 80),
+      label: String(g.label || g.key || g.location).slice(0, 120),
+    }));
+  if (!inputGames.length) return ok(res, { data: { updatedAt: new Date().toISOString(), games: [], banner: 'No game locations found in CSV.' } });
+
+  const output = [];
+  const uncached = [];
+  for (const game of inputGames) {
+    const cache = await getWeatherCache(game.location);
+    if (cache.cached) {
+      output.push({ ...game, ...(typeof cache.cached === 'string' ? JSON.parse(cache.cached) : cache.cached), cached: true });
+    } else {
+      uncached.push({ ...game, cacheKey: cache.key, redis: cache.redis });
+    }
+  }
+
+  if (uncached.length) {
+    const today = new Date().toISOString().slice(0, 10);
+    const prompt = `Get today's outdoor game weather for DFS ${sport.toUpperCase()}.
+For each location, use web_search with query "{city} weather today".
+Return ONLY raw JSON:
+{
+  "games": [
+    {
+      "key": "same input key",
+      "location": "city/stadium",
+      "summary": "short weather summary",
+      "temperatureF": 72,
+      "windMph": 12,
+      "windDirection": "out to center|out to left|in from right|crosswind|unknown",
+      "precipitation": "none|rain|snow",
+      "isDome": false,
+      "conditions": ["wind", "rain", "cold"]
+    }
+  ]
+}
+If a venue is a dome/retractable roof expected closed, set isDome=true and neutral weather.
+Locations:
+${JSON.stringify(uncached.map(({ key, location, label }) => ({ key, location, label })))}`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: 'You return current sports-weather JSON. Always use web_search. Return only raw JSON.',
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    }, { timeout: 90000 });
+
+    const rawText = (response.content || [])
+      .filter(b => b.type === 'text' && b.text)
+      .map(b => b.text)
+      .join('\n')
+      .trim();
+    const parsed = parseJsonFromText(rawText);
+    const byKey = new Map((Array.isArray(parsed.games) ? parsed.games : []).map(g => [String(g.key || ''), g]));
+    for (const game of uncached) {
+      const weather = byKey.get(game.key) || {
+        location: game.location,
+        summary: 'Weather unavailable',
+        temperatureF: null,
+        windMph: null,
+        windDirection: 'unknown',
+        precipitation: 'none',
+        isDome: false,
+        conditions: [],
+      };
+      const clean = {
+        location: String(weather.location || game.location),
+        summary: String(weather.summary || 'Weather unavailable'),
+        temperatureF: weather.temperatureF == null ? null : Number(weather.temperatureF),
+        windMph: weather.windMph == null ? null : Number(weather.windMph),
+        windDirection: String(weather.windDirection || 'unknown').toLowerCase(),
+        precipitation: String(weather.precipitation || 'none').toLowerCase(),
+        isDome: !!weather.isDome,
+        conditions: Array.isArray(weather.conditions) ? weather.conditions.map(String) : [],
+      };
+      await setWeatherCache(game.cacheKey, game.redis, clean);
+      output.push({ key: game.key, label: game.label, ...clean, cached: false });
+    }
+  }
+
+  output.sort((a, b) => String(a.label || a.location).localeCompare(String(b.label || b.location)));
+    return ok(res, {
+      data: {
+        updatedAt: new Date().toISOString(),
+        games: output,
+        banner: output.map(g => `${g.label || g.location}: ${g.summary}`).join(' | '),
+      },
+    });
+  } catch (err) {
+    console.error('DFS weather error:', err.message);
+    return fail(res, 500, { error: err.message || 'Could not refresh weather.' });
   }
 });
 
