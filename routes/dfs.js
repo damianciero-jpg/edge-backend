@@ -117,7 +117,7 @@ const SPORT_CONFIG = {
     impliedMultiplierStarter: 1.12,
     impliedMultiplierBench: 1.05,
     defenseMultiplier: 1.10,
-    maxMultiplier: 1.15,
+    maxMultiplier: 1.30,
     correlationCap: 4,
     correlationBonus: 0.06,
     antiCorrelationPenalty: 0.12,
@@ -131,9 +131,11 @@ const SPORT_CONFIG = {
     touchMetric: 'plate_appearances_per_game',
     lineupSpot: 'batting_order_position',
     paceMetric: 'runs_per_inning',
-    defenseMetrics: ['strikeouts_per_9', 'whip'],
-    defenseThreshold: 8.0,
-    impliedTotalThreshold: 9.5,
+    batterVsPitcherEraThreshold: 4.50,
+    batterVsPitcherMultiplier: 1.15,
+    highGameTotalThreshold: 9,
+    highGameTotalMultiplier: 1.12,
+    impliedTotalThreshold: 9,
     closeGameSpread: 1.5,
     closeGameML: -135,
     blowoutML: -250,
@@ -148,7 +150,6 @@ const SPORT_CONFIG = {
     paceMultiplier: 1.08,
     impliedMultiplierStarter: 1.12,
     impliedMultiplierBench: 1.04,
-    defenseMultiplier: 1.10,
     maxMultiplier: 1.15,
     correlationCap: 5,
     correlationBonus: 0.07,
@@ -287,6 +288,22 @@ function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData,
   const boomPct = Math.round(cfg.boomRateThreshold * 100);
   const corrBonusPct  = Math.round(cfg.correlationBonus * 100);
   const antiCorrPct   = Math.round(cfg.antiCorrelationPenalty * 100);
+  const defenseBoostBlock = isMlb
+    ? `  MLB GAME ENVIRONMENT:
+    Batter vs pitcher advantage: if a batter faces a pitcher with ERA > ${cfg.batterVsPitcherEraThreshold.toFixed(2)}, boost that batter's ceilingFppg × ${cfg.batterVsPitcherMultiplier.toFixed(2)}.
+    Game total importance: if Vegas game total is over ${cfg.highGameTotalThreshold} runs, boost all batters in that game × ${cfg.highGameTotalMultiplier.toFixed(2)}.
+    Keep pitcher scoring unchanged; use FPPG/projection as-is for pitchers.`
+    : `  STACKED CONDITION — Vegas × Close Game (tightest edge):
+    If impliedTeamTotal >= ${cfg.impliedTotalThreshold} AND gameScript="close" (spread < ${cfg.closeGameSpread} ${spreadUnit}s):
+      Apply ${cfg.defenseMultiplier.toFixed(2)}× SPECIFICALLY to defensive specialists (≥${cfg.defenseThreshold} ${cfg.defenseMetrics[0].replace(/_/g, '/')} OR ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[1].replace(/_/g, '/')}) in that game.`;
+
+  const closeGameBoostBlock = isMlb
+    ? `  CLOSE GAME (gameScript="close", spread < ${cfg.closeGameSpread} ${spreadUnit}s):
+    No defense-metric boost for MLB. Use game total, opposing pitcher ERA, ballpark, weather, and batting order for batter upside.`
+    : `  CLOSE GAME (gameScript="close", spread < ${cfg.closeGameSpread} ${spreadUnit}s):
+    Defensive specialists — any player averaging ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[0].replace(/_/g, '/')} OR ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[1].replace(/_/g, '/')}:
+      ceilingFppg × 1.30  (full crunch-time volume, high-value stat accumulation)
+    Other players: no adjustment`;
 
   const factorChain = `
 PROJECTION FACTOR CHAIN — apply these steps in exact order:
@@ -335,9 +352,7 @@ STEP 5 — PACE + VEGAS PACING MULTIPLIER (Advanced Layer 3):
   VEGAS MULTIPLIER: if a team's impliedTeamTotal >= ${cfg.impliedTotalThreshold} OR pace is top-25%:
     Apply additional ${cfg.impliedMultiplierStarter.toFixed(2)}× to ALL starters/key rotators from that team.
     vegasPaceMultiplied=true for those players.
-  STACKED CONDITION — Vegas × Close Game (tightest edge):
-    If impliedTeamTotal >= ${cfg.impliedTotalThreshold} AND gameScript="close" (spread < ${cfg.closeGameSpread} ${spreadUnit}s):
-      Apply ${cfg.defenseMultiplier.toFixed(2)}× SPECIFICALLY to defensive specialists (≥${cfg.defenseThreshold} ${cfg.defenseMetrics[0].replace(/_/g, '/')} OR ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[1].replace(/_/g, '/')}) in that game.
+${defenseBoostBlock}
   MULTIPLIER CAP: combined multipliers for any starter must not exceed ${cfg.maxMultiplier.toFixed(2)}× total.
 
 STEP 6 — USAGE ADJUSTMENT:
@@ -348,10 +363,7 @@ STEP 7 — GAME SCRIPT (moneyline/spread from slate above):
   BLOWOUT RISK (gameScript="blowout", favML ≤ ${cfg.blowoutML}):
     Stars: projectedFppg × 0.90 (early rest/garbage-time risk)
     Cheap role players: projectedFppg × 1.15 (garbage time upside)
-  CLOSE GAME (gameScript="close", spread < ${cfg.closeGameSpread} ${spreadUnit}s):
-    Defensive specialists — any player averaging ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[0].replace(/_/g, '/')} OR ≥${cfg.defenseThreshold} ${cfg.defenseMetrics[1].replace(/_/g, '/')}:
-      ceilingFppg × 1.30  (full crunch-time volume, high-value stat accumulation)
-    Other players: no adjustment
+${closeGameBoostBlock}
   Set gameScript field on every player from that game.
 
 STEP 8 — INJURY/CONFIRMATION BOOST:
@@ -470,8 +482,11 @@ ${factorChain}
 
 STARTING PITCHERS: Rank by K/9 (×2 weight) + ERA inverse + opposing OPS. CONFIRMED starts only.
   High O/U (>${cfg.impliedTotalThreshold + 0.5}): avoid that game's SP. Low O/U (<7.5): prioritize pitcher's duel SPs.
+  Keep pitcher scoring unchanged when CSV/FPPG projections are provided.
 
 BATTERS: Stack 3-4 consecutive batters from teams with implied total ≥ ${cfg.impliedTotalThreshold} or O/U >${cfg.impliedTotalThreshold}. Platoon advantage applies.
+BATTER VS PITCHER ADVANTAGE: if opposing pitcher ERA > ${cfg.batterVsPitcherEraThreshold.toFixed(2)}, boost that batter's ceilingFppg × ${cfg.batterVsPitcherMultiplier.toFixed(2)}.
+GAME TOTAL IMPORTANCE: if Vegas game total is over ${cfg.highGameTotalThreshold} runs, boost all batters in that game × ${cfg.highGameTotalMultiplier.toFixed(2)}. Do not apply this to pitchers.
 BALLPARK: Coors Field +15% ceilingFppg; Petco/Oracle/Dodger -10% ceilingFppg.
 WEATHER: Wind out to CF ≥10 mph = +8% ceilingFppg. Rain risk → weatherAlert.
 SALARY/OWNERSHIP: Same guardrails — max 2 under $2,500, trajectory search, chalk avoidance.
@@ -562,6 +577,7 @@ ${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
     isGpp ? `HARD CONSTRAINT: ${isNba ? `${mvpSlot} game` : 'QB game'} must have a run-back player from opposing team in the lineup.` : '',
     'HARD CONSTRAINT: Populate lateNewsItems with any injury/lineup updates found.',
     isNfl ? 'HARD CONSTRAINT: stealsPerGame = sacks_per_game, blocksPerGame = interceptions_per_game for DST players. Required for all players.'
+           : isMlb ? 'HARD CONSTRAINT: MLB has no stealsPerGame/blocksPerGame defense boost. Do not use BLK/STL or defenseMetrics for MLB scoring.'
            : 'HARD CONSTRAINT: stealsPerGame and blocksPerGame required for every player (used in MVP_Score).',
     'HARD CONSTRAINT: fppm, sigma, adjustedFloor, adjustedCeiling, boomRate required for every player.',
     `HARD CONSTRAINT: Never more than ${cfg.correlationCap} players from any single game (correlation cap).`,

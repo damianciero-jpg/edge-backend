@@ -1581,6 +1581,8 @@ const DFS_CSV_COLUMNS = {
   salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$'],
   fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints'],
   injuryStatus: ['injury', 'status', 'notes', 'injury status', 'injurystatus', 'injury indicator'],
+  gameTotal: ['game total', 'gametotal', 'vegas total', 'vegastotal', 'total', 'o/u', 'over under', 'overunder'],
+  opposingPitcherEra: ['opposing pitcher era', 'opposingpitcherera', 'opp pitcher era', 'opppitcherera', 'pitcher era', 'pitcherera', 'opp era', 'oppera'],
 };
 
 function dfsEscapeHtml(value) {
@@ -1763,6 +1765,8 @@ function dfsBuildPlayersFromCsv(text) {
     salary: dfsFindCsvColumn(headers, 'salary'),
     fppg: dfsFindCsvColumn(headers, 'fppg'),
     injuryStatus: dfsFindCsvColumn(headers, 'injuryStatus'),
+    gameTotal: dfsFindCsvColumn(headers, 'gameTotal'),
+    opposingPitcherEra: dfsFindCsvColumn(headers, 'opposingPitcherEra'),
   };
   if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Player Name.');
   if (!columns.position) throw new Error('Missing Position column. Try Pos, Position, or Pos.');
@@ -1776,6 +1780,8 @@ function dfsBuildPlayersFromCsv(text) {
     const name = dfsCleanPlayerName(row[idx[columns.name]]);
     const position = String(row[idx[columns.position]] || '').trim().toUpperCase();
     const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
+    const gameTotal = columns.gameTotal ? dfsParsePoints(row[idx[columns.gameTotal]]) : null;
+    const opposingPitcherEra = columns.opposingPitcherEra ? dfsParsePoints(row[idx[columns.opposingPitcherEra]]) : null;
     return {
       id: `${name}-${i}`,
       name,
@@ -1786,6 +1792,8 @@ function dfsBuildPlayersFromCsv(text) {
       floorFppg: fppg * 0.75,
       ceilingFppg: fppg * 1.25,
       injuryStatus,
+      gameTotal,
+      opposingPitcherEra,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
   }).filter(p => p.name && p.position && p.salary > 0 && p.fppg > 0);
@@ -1832,6 +1840,8 @@ function dfsTryParseFanDuelMalformedCsv(rows) {
       salary: 'Column 20 Salary',
       fppg: 'Column 18 FPPG',
       injuryStatus: 'Column 21+ Injury',
+      gameTotal: null,
+      opposingPitcherEra: null,
     },
     source: 'fanduel_mlb_malformed',
   };
@@ -1982,6 +1992,20 @@ function dfsPositionMatches(playerPosition, slot) {
   return parts.includes(slot);
 }
 
+function dfsIsMlbPitcher(player) {
+  const raw = String(player && player.position || '').toUpperCase();
+  const parts = raw.split(/[\/, ]+/).filter(Boolean);
+  return parts.includes('P') || parts.includes('SP') || parts.includes('RP');
+}
+
+function dfsMlbGameEnvironmentMultiplier(player) {
+  if (dfsState.sport !== 'mlb' || dfsIsMlbPitcher(player)) return 1;
+  let multiplier = 1;
+  if (Number(player.opposingPitcherEra) > 4.5) multiplier *= 1.15;
+  if (Number(player.gameTotal) > 9) multiplier *= 1.12;
+  return multiplier;
+}
+
 function dfsLineupSlots() {
   const { sport, platform } = dfsState;
   if (sport === 'nba') return platform === 'draftkings'
@@ -2027,8 +2051,10 @@ function dfsPickBestCsvLineup() {
       .filter(p => dfsPositionMatches(p.position, slot))
       .filter(p => salary + p.salary <= cap)
       .sort((a, b) => {
-        const aScore = a.fppg + (a.valueScore * 1.8);
-        const bScore = b.fppg + (b.valueScore * 1.8);
+        const aAdj = a.fppg * dfsMlbGameEnvironmentMultiplier(a);
+        const bAdj = b.fppg * dfsMlbGameEnvironmentMultiplier(b);
+        const aScore = aAdj + (a.salary ? (aAdj / a.salary) * 1000 * 1.8 : 0);
+        const bScore = bAdj + (b.salary ? (bAdj / b.salary) * 1000 * 1.8 : 0);
         return bScore - aScore;
       });
     const pick = candidates[0];
@@ -2042,7 +2068,13 @@ function dfsPickBestCsvLineup() {
     const fill = players
       .filter(p => !used.has(p.name))
       .filter(p => salary + p.salary <= cap)
-      .sort((a, b) => b.valueScore - a.valueScore);
+      .sort((a, b) => {
+        const aAdj = a.fppg * dfsMlbGameEnvironmentMultiplier(a);
+        const bAdj = b.fppg * dfsMlbGameEnvironmentMultiplier(b);
+        const aValue = a.salary ? (aAdj / a.salary) * 1000 : 0;
+        const bValue = b.salary ? (bAdj / b.salary) * 1000 : 0;
+        return bValue - aValue;
+      });
     for (const pick of fill) {
       if (lineup.length >= slots.length) break;
       lineup.push({ ...pick });
@@ -2058,14 +2090,20 @@ function dfsPickBestCsvLineup() {
   return lineup.map((p, i) => {
     const slot = slots[i] || 'UTIL';
     const multiplier = (slot === 'CPT' || slot === 'MVP') ? 1.5 : (slot === 'STAR' ? 1.2 : 1);
+    const envMultiplier = dfsMlbGameEnvironmentMultiplier(p);
+    const projectedFppg = p.fppg * multiplier * envMultiplier;
+    const ceilingFppg = p.fppg * 1.25 * multiplier * envMultiplier;
+    const envNotes = envMultiplier > 1
+      ? ` MLB environment x${envMultiplier.toFixed(2)}${Number(p.opposingPitcherEra) > 4.5 ? ' (pitcher ERA > 4.50)' : ''}${Number(p.gameTotal) > 9 ? ' (game total > 9)' : ''}.`
+      : '';
     return {
       ...p,
       slot,
-      projectedFppg: p.fppg * multiplier,
+      projectedFppg,
       floorFppg: p.fppg * 0.75 * multiplier,
-      ceilingFppg: p.fppg * 1.25 * multiplier,
-      valueScore: p.salary ? ((p.fppg * multiplier) / p.salary) * 1000 : 0,
-      notes: 'Loaded from uploaded CSV.',
+      ceilingFppg,
+      valueScore: p.salary ? (projectedFppg / p.salary) * 1000 : 0,
+      notes: `Loaded from uploaded CSV.${envNotes}`,
     };
   });
 }
