@@ -862,6 +862,21 @@ button,
 .dfs-badge.prime-mvp{background:rgba(91,92,226,0.12);border:1px solid var(--accent2);color:var(--accent2);}
 .dfs-badge.late{background:rgba(0,229,255,0.10);border:1px solid var(--accent);color:var(--accent);}
 .dfs-badge.locked{background:rgba(0,122,255,0.10);border:1px solid var(--accent);color:var(--accent);}
+.dfs-badge.blowout{background:rgba(255,102,0,0.12);border:1px solid #ff6600;color:#ff6600;}
+.dfs-badge.close-game{background:rgba(0,229,255,0.10);border:1px solid var(--accent);color:var(--accent);}
+.dfs-badge.pace-fast{background:rgba(0,211,100,0.10);border:1px solid var(--green);color:var(--green);}
+.dfs-badge.pace-slow{background:rgba(255,214,0,0.10);border:1px solid var(--yellow);color:var(--yellow);}
+.dfs-badge.salary-up{background:rgba(255,59,92,0.08);border:1px solid var(--red);color:var(--red);}
+.dfs-badge.salary-down{background:rgba(0,211,100,0.12);border:1px solid var(--green);color:var(--green);}
+.dfs-badge.contrarian{background:rgba(153,51,255,0.12);border:1px solid #9933ff;color:#9933ff;}
+.dfs-badge.dd-upside{background:rgba(0,229,255,0.12);border:1px solid var(--accent);color:var(--accent);}
+.dfs-trend-up{color:var(--green);font-size:9px;font-weight:700;margin-left:5px;}
+.dfs-trend-down{color:var(--red);font-size:9px;font-weight:700;margin-left:5px;}
+.dfs-badge.ceiling-play{background:rgba(255,160,0,0.13);border:1px solid #ffa000;color:#ffa000;}
+.dfs-corr-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:var(--mono);font-size:9px;color:var(--muted);}
+.dfs-corr-val{font-size:13px;font-weight:700;color:var(--accent);margin-left:2px;}
+.dfs-corr-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.dfs-corr-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--red),var(--yellow),var(--green));}
 .dfs-player-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
 .dfs-act-btn{font-family:var(--mono);font-size:8px;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--muted);transition:all 0.15s;letter-spacing:0.5px;}
 .dfs-act-btn:hover{border-color:var(--accent);color:var(--accent);}
@@ -870,6 +885,7 @@ button,
 .dfs-player-notes{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:5px;line-height:1.6;}
 .dfs-alert{background:rgba(255,214,0,0.08);border:1px solid rgba(255,214,0,0.3);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;color:var(--yellow);margin-bottom:6px;line-height:1.6;}
 .dfs-alert.info{background:rgba(0,122,255,0.06);border-color:rgba(0,122,255,0.25);color:var(--accent);}
+.dfs-alert.warn{background:rgba(255,59,92,0.08);border-color:rgba(255,59,92,0.3);color:var(--red);}
 .dfs-alert.confirmed-bar{background:rgba(0,211,100,0.06);border-color:rgba(0,211,100,0.25);color:var(--green);}
 .dfs-late-banner{background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.25);border-radius:10px;padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:9px;color:var(--accent);line-height:1.7;}
 .dfs-late-banner-hdr{font-size:8px;font-weight:700;letter-spacing:2px;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
@@ -1282,6 +1298,7 @@ button,
         <div class="form-label">SPORT</div>
         <div class="dfs-btn-group">
           <button class="dfs-sel-btn active" onclick="dfsSetSport('nba')" id="dfs-sport-nba">🏀 NBA</button>
+          <button class="dfs-sel-btn" onclick="dfsSetSport('nfl')" id="dfs-sport-nfl">🏈 NFL</button>
           <button class="dfs-sel-btn" onclick="dfsSetSport('mlb')" id="dfs-sport-mlb">⚾ MLB</button>
         </div>
       </div>
@@ -1369,7 +1386,8 @@ button,
           </div>
         </div>
         <div class="dfs-totals-row" id="dfs-totals-row"></div>
-        <div id="dfs-alerts" style="margin-top:10px;"></div>
+        <div id="dfs-corr-bar" style="display:none;margin-top:10px;"></div>
+        <div id="dfs-alerts" style="margin-top:8px;"></div>
       </div>
 
       <!-- Player cards -->
@@ -1477,11 +1495,12 @@ function closeDetail() {
 
 // ─── DFS OPTIMIZER ────────────────────────────────────────────────────────────
 const DFS_CAPS = {
-  draftkings: { nba: 50000, mlb: 50000 },
-  fanduel:    { nba: 60000, mlb: 35000 },
+  draftkings: { nba: 50000, nfl: 50000, mlb: 50000 },
+  fanduel:    { nba: 60000, nfl: 60000, mlb: 35000 },
 };
 const DFS_SLOT_LABELS = {
   nba: { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
+  nfl: { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
   mlb: { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9)' },
 };
 
@@ -1660,15 +1679,32 @@ function dfsRenderResults(data) {
     <div class="dfs-total-card"><div class="dfs-total-label">LEFT</div><div class="dfs-total-val">$${remaining.toLocaleString()}</div></div>
   `;
 
-  // Alerts
+  // Correlation score bar
+  const corrScore = data.correlationScore != null ? Math.max(0, Math.min(100, +data.correlationScore)) : null;
+  const corrEl = document.getElementById('dfs-corr-bar');
+  if (corrScore != null) {
+    const corrColor = corrScore >= 70 ? 'var(--green)' : corrScore >= 45 ? 'var(--yellow)' : 'var(--red)';
+    corrEl.style.display = 'block';
+    corrEl.innerHTML = `<div class="dfs-corr-bar"><span>CORRELATION</span><span class="dfs-corr-val" style="color:${corrColor}">${corrScore}</span><span style="color:var(--muted)">/100</span><div class="dfs-corr-track"><div class="dfs-corr-fill" style="width:${corrScore}%"></div></div></div>`;
+  } else {
+    corrEl.style.display = 'none';
+  }
+
+  // Alerts (including salary allocation check)
   const alerts = [];
+  const lineup = Array.isArray(data.lineup) ? data.lineup : [];
+  const minSalCount = lineup.filter(p => (p.salary || 0) < 2500 && (p.salary || 0) > 0).length;
+  if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players under $2,500. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
+  if (data.salaryAlert && data.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + data.salaryAlert });
+  if (data.antiCorrelationWarning && data.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + data.antiCorrelationWarning });
+  if (data.sameGameBonus) alerts.push({ cls: 'info', msg: '🔗 SAME-GAME BONUS — 3+ players from one game: +5% ceiling applied to lineup total.' });
   if (data.weatherAlert && data.weatherAlert !== 'null') alerts.push({ cls: '', msg: '🌤 ' + data.weatherAlert });
   if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ cls: '', msg: '⚠ ' + data.ownershipWarning });
   if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ cls: 'info', msg: '🔗 ' + data.stackInfo });
+  if (data.runBackPlayer && data.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${data.runBackPlayer}${data.runBackGame && data.runBackGame !== 'null' ? ' — ' + data.runBackGame : ''}` });
   document.getElementById('dfs-alerts').innerHTML = alerts.map(a => `<div class="dfs-alert ${a.cls}">${a.msg}</div>`).join('');
 
   // Player cards
-  const lineup = Array.isArray(data.lineup) ? data.lineup : [];
   document.getElementById('dfs-lineup-cards').innerHTML = lineup.map((p, i) => {
     const isCpt = i === 0;
     const hasInjury = p.injuryStatus && p.injuryStatus !== 'null';
@@ -1676,6 +1712,8 @@ function dfsRenderResults(data) {
     const isPrimeMvp = !!p.primeMvp;
     const isChalk = isGpp && (p.ownershipPct || 0) > 30;
     const isLocked = dfsState.lockedPlayers.includes(p.name);
+    const isRising = p.salaryTrajectory === 'rising' && Math.abs(p.salaryTrajDelta || 0) >= 500;
+    const isFalling = p.salaryTrajectory === 'falling' && Math.abs(p.salaryTrajDelta || 0) >= 500;
 
     let cardCls = 'dfs-player-card';
     if (isCpt) cardCls += ' captain';
@@ -1685,12 +1723,41 @@ function dfsRenderResults(data) {
 
     const slotCls = isCpt ? 'dfs-slot-badge cpt' : 'dfs-slot-badge';
 
+    const trendHtml = p.trend === 'up'
+      ? `<span class="dfs-trend-up">▲${p.trendPct > 0 ? ' ' + p.trendPct + '%' : ''}</span>`
+      : p.trend === 'down'
+      ? `<span class="dfs-trend-down">▼${p.trendPct ? ' ' + Math.abs(p.trendPct) + '%' : ''}</span>`
+      : '';
+
+    const salTrajHtml = isRising
+      ? ` &nbsp;·&nbsp; <span style="color:var(--red);font-size:8px;">↑ $${Math.abs(p.salaryTrajDelta)}</span>`
+      : isFalling
+      ? ` &nbsp;·&nbsp; <span style="color:var(--green);font-size:8px;">↓ $${Math.abs(p.salaryTrajDelta)}</span>`
+      : '';
+
+    const impliedHtml = p.impliedTeamTotal
+      ? ` &nbsp;·&nbsp; <span style="color:var(--green);font-size:8px;">${p.impliedTeamTotal} implied</span>`
+      : '';
+
     const badges = [];
     if (isPrimeMvp) badges.push(`<span class="dfs-badge prime-mvp">⭐ PRIME MVP</span>`);
     if (isConfirmed) badges.push(`<span class="dfs-badge confirmed">✓ CONFIRMED ACTIVE</span>`);
     else if (hasInjury) badges.push(`<span class="dfs-badge injury">⚠ ${p.injuryStatus}${p.injuryNote && p.injuryNote !== 'null' ? ': ' + p.injuryNote : ''}</span>`);
     if (isChalk) badges.push(`<span class="dfs-badge chalk">CHALK ${p.ownershipPct}%</span>`);
     if (isLocked) badges.push(`<span class="dfs-badge locked">🔒 LOCKED</span>`);
+    if (p.isContrarian && !isConfirmed) badges.push(`<span class="dfs-badge contrarian">🎯 CONTRARIAN GPP</span>`);
+    if (p.isGppCeilingPlay) badges.push(`<span class="dfs-badge ceiling-play">🚀 GPP CEILING PLAY</span>`);
+    if (p.ddUpside) badges.push(`<span class="dfs-badge dd-upside">🔥 DD UPSIDE</span>`);
+    if (p.runBackCandidate) badges.push(`<span class="dfs-badge contrarian">↩ RUN-BACK</span>`);
+    if (p.antiCorrelationPenalty) badges.push(`<span class="dfs-badge injury">⚠ ANTI-CORR -10%</span>`);
+    if (p.gameScript === 'blowout') badges.push(`<span class="dfs-badge blowout">💥 BLOWOUT RISK</span>`);
+    if (p.gameScript === 'close') badges.push(`<span class="dfs-badge close-game">⚔ CLOSE GAME</span>`);
+    if (p.paceImpact === 'fast') badges.push(`<span class="dfs-badge pace-fast">⚡ FAST PACE +10%</span>`);
+    if (p.paceImpact === 'slow') badges.push(`<span class="dfs-badge pace-slow">🐢 SLOW PACE -10%</span>`);
+    if (p.vegasPaceMultiplied) badges.push(`<span class="dfs-badge pace-fast">📈 VEGAS PACE ×1.10</span>`);
+    if ((p.minutesReallocated || 0) > 0) badges.push(`<span class="dfs-badge confirmed">+${(+p.minutesReallocated).toFixed(1)} MIN VACATED</span>`);
+    if (isRising) badges.push(`<span class="dfs-badge salary-up">↑ RISING SALARY</span>`);
+    if (isFalling) badges.push(`<span class="dfs-badge salary-down">↓ VALUE TARGET</span>`);
 
     const escapedName = (p.name || '').replace(/'/g, "\\'");
     const dataName = (p.name || '').replace(/"/g, '&quot;');
@@ -1699,14 +1766,24 @@ function dfsRenderResults(data) {
   <div class="dfs-player-top">
     <span class="${slotCls}">${p.slot || ''}</span>
     <div class="dfs-player-info">
-      <div class="dfs-player-name">${p.name || '—'}</div>
-      <div class="dfs-player-meta">${p.team || ''} vs ${p.opponent || ''} &nbsp;·&nbsp; ${p.position || ''} &nbsp;·&nbsp; $${(p.salary || 0).toLocaleString()}</div>
+      <div class="dfs-player-name">${p.name || '—'}${trendHtml}</div>
+      <div class="dfs-player-meta">${p.team || ''} vs ${p.opponent || ''} &nbsp;·&nbsp; ${p.position || ''} &nbsp;·&nbsp; $${(p.salary || 0).toLocaleString()}${impliedHtml}${salTrajHtml}</div>
       <div class="dfs-player-stats">
         <div class="dfs-stat"><div class="dfs-stat-lbl">FLOOR</div><div class="dfs-stat-val warm">${(p.floorFppg || 0).toFixed(1)}</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(p.projectedFppg || 0).toFixed(1)}</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">CEILING</div><div class="dfs-stat-val good">${(p.ceilingFppg || 0).toFixed(1)}</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">VALUE</div><div class="dfs-stat-val">${(p.valueScore || 0).toFixed(2)}x</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">OWN%</div><div class="dfs-stat-val">${p.ownershipPct != null ? p.ownershipPct + '%' : '—'}</div></div>
+      </div>
+      <div class="dfs-player-stats">
+        <div class="dfs-stat"><div class="dfs-stat-lbl">L10 AVG</div><div class="dfs-stat-val">${p.recentFormFppg != null ? (+p.recentFormFppg).toFixed(1) : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">FPPM</div><div class="dfs-stat-val">${p.fppm != null ? (+p.fppm).toFixed(2) : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">σ</div><div class="dfs-stat-val">${p.sigma != null ? (+p.sigma).toFixed(1) : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">BOOM%</div><div class="dfs-stat-val${(p.boomRate || 0) > 40 ? ' good' : ''}">${p.boomRate != null ? (+p.boomRate).toFixed(0) + '%' : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">USG%</div><div class="dfs-stat-val">${p.usageRate != null ? p.usageRate + '%' : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">MIN</div><div class="dfs-stat-val">${p.projectedMinutes != null ? p.projectedMinutes : '—'}${(p.minutesReallocated || 0) > 0 ? `<span style="color:var(--green);font-size:7px"> +${(+p.minutesReallocated).toFixed(1)}</span>` : ''}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">STL</div><div class="dfs-stat-val">${p.stealsPerGame != null ? (+p.stealsPerGame).toFixed(1) : '—'}</div></div>
+        <div class="dfs-stat"><div class="dfs-stat-lbl">BLK</div><div class="dfs-stat-val">${p.blocksPerGame != null ? (+p.blocksPerGame).toFixed(1) : '—'}</div></div>
       </div>
       <div>${badges.join('')}</div>
       ${p.notes ? `<div class="dfs-player-notes">${p.notes}</div>` : ''}
