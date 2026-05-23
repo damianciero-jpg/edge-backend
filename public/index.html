@@ -828,6 +828,22 @@ button,
 .dfs-sel-btn{font-family:var(--mono);font-size:9px;padding:7px 14px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all 0.15s;letter-spacing:1px;border-radius:8px;}
 .dfs-sel-btn:hover,.dfs-sel-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,122,255,0.06);}
 .dfs-sel-btn.active-confirmed{border-color:var(--green);color:var(--green);background:rgba(0,211,100,0.08);}
+.dfs-upload-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:16px;margin-bottom:18px;box-shadow:0 8px 18px rgba(16,32,48,0.06);}
+.dfs-upload-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.dfs-upload-btn{min-height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:2px;padding:12px 18px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;}
+.dfs-sample-btn{min-height:48px;border:1px solid var(--border2);border-radius:12px;background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1px;padding:12px 16px;cursor:pointer;text-decoration:none;display:flex;align-items:center;justify-content:center;}
+.dfs-upload-meta{font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.6;margin-bottom:8px;}
+.dfs-upload-success{display:none;background:rgba(0,211,100,0.08);border:1px solid rgba(0,211,100,0.28);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:9px;color:var(--green);margin-top:10px;line-height:1.6;}
+.dfs-upload-error{display:none;background:rgba(255,59,92,0.08);border:1px solid rgba(255,59,92,0.28);border-radius:10px;padding:10px 12px;font-family:var(--mono);font-size:9px;color:var(--red);margin-top:10px;line-height:1.6;}
+.dfs-csv-panel{display:none;margin-top:12px;}
+.dfs-csv-controls{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+.dfs-csv-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:12px;background:var(--surface2);}
+.dfs-csv-table{width:100%;min-width:620px;border-collapse:collapse;font-family:var(--mono);font-size:9px;}
+.dfs-csv-table th,.dfs-csv-table td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+.dfs-csv-table th{font-size:8px;color:var(--muted);letter-spacing:1.5px;background:rgba(0,122,255,0.04);cursor:pointer;}
+.dfs-csv-table tr:last-child td{border-bottom:none;}
+.dfs-csv-injury{color:var(--yellow);font-weight:700;}
+.dfs-csv-empty{font-family:var(--mono);font-size:9px;color:var(--muted);padding:14px;}
 .dfs-cap-info{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:18px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;}
 .dfs-summary-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(16,32,48,0.06);margin-bottom:14px;}
 .dfs-totals-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
@@ -908,6 +924,9 @@ button,
 @keyframes dfs-pulse{0%,100%{opacity:1;}50%{opacity:0.35;}}
 @media (max-width:768px){
   #view-dfs{height:calc(100vh - 56px - 56px);height:calc(100dvh - 56px - 56px);overflow-y:auto;}
+  .dfs-upload-actions,.dfs-csv-controls{display:grid;grid-template-columns:1fr;gap:10px;}
+  .dfs-upload-btn,.dfs-sample-btn,.dfs-sel-btn,.dfs-act-btn{min-height:48px;width:100%;}
+  .dfs-btn-group{display:grid;grid-template-columns:1fr;gap:8px;}
   .dfs-totals-row{grid-template-columns:repeat(3,1fr);}
   .dfs-perf-grid{grid-template-columns:repeat(2,1fr);}
 }
@@ -1289,7 +1308,44 @@ button,
   <div class="scrollable">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
       <div class="section-lbl" style="margin-bottom:0;">DFS LINEUP OPTIMIZER</div>
-      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">Claude AI + Web Search</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">CSV Upload + Optimizer</div>
+    </div>
+
+    <!-- CSV upload -->
+    <div class="dfs-upload-card">
+      <div class="dfs-upload-actions">
+        <button class="dfs-upload-btn" onclick="dfsOpenCsvPicker()">Upload CSV</button>
+        <a class="dfs-sample-btn" href="#" onclick="dfsDownloadSampleCsv(event)">Download Sample CSV</a>
+      </div>
+      <input id="dfs-csv-input" type="file" accept=".csv,text/csv" style="display:none;" onchange="dfsHandleCsvUpload(event)">
+      <div class="dfs-upload-meta" id="dfs-upload-meta">Upload a DraftKings or FanDuel CSV to optimize offline from contest data.</div>
+      <div class="dfs-upload-success" id="dfs-upload-success"></div>
+      <div class="dfs-upload-error" id="dfs-upload-error"></div>
+      <div class="dfs-csv-panel" id="dfs-csv-panel">
+        <div class="dfs-csv-controls">
+          <button class="dfs-sel-btn active" onclick="dfsSetCsvInjuryFilter('all')" id="dfs-csv-inj-all">Show All</button>
+          <button class="dfs-sel-btn" onclick="dfsSetCsvInjuryFilter('out')" id="dfs-csv-inj-out">Exclude OUT</button>
+          <button class="dfs-sel-btn" onclick="dfsSetCsvInjuryFilter('q_and_out')" id="dfs-csv-inj-q_and_out">Exclude Q + OUT</button>
+          <button class="dfs-sel-btn active" onclick="dfsSetCsvSort('value')" id="dfs-csv-sort-value">Sort Value</button>
+          <button class="dfs-sel-btn" onclick="dfsSetCsvSort('fppg')" id="dfs-csv-sort-fppg">Sort FPPG</button>
+          <button class="dfs-sel-btn" onclick="dfsSetCsvSort('salary')" id="dfs-csv-sort-salary">Sort Salary</button>
+        </div>
+        <div class="dfs-csv-table-wrap">
+          <table class="dfs-csv-table">
+            <thead>
+              <tr>
+                <th onclick="dfsSetCsvSort('name')">NAME</th>
+                <th onclick="dfsSetCsvSort('position')">POS</th>
+                <th onclick="dfsSetCsvSort('salary')">SALARY</th>
+                <th onclick="dfsSetCsvSort('fppg')">FPPG</th>
+                <th onclick="dfsSetCsvSort('value')">VALUE</th>
+                <th onclick="dfsSetCsvSort('injury')">INJURY</th>
+              </tr>
+            </thead>
+            <tbody id="dfs-csv-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Selectors -->
@@ -1509,11 +1565,267 @@ let dfsState = {
   platform: 'draftkings',
   contestType: 'gpp',
   injuryFilter: 'out',
+  csvInjuryFilter: 'all',
+  csvSort: 'value',
+  uploadedPlayers: [],
+  uploadedFile: null,
   confirmedActiveOnly: false,
   lockedPlayers: [],
   excludedPlayers: [],
 };
 let dfsLastLineup = null;
+
+const DFS_CSV_COLUMNS = {
+  name: ['name', 'player', 'playername', 'player name', 'nickname', 'name + id', 'player name + id'],
+  position: ['pos', 'position', 'pos.', 'roster position', 'rosterposition'],
+  salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$'],
+  fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints'],
+  injuryStatus: ['injury', 'status', 'notes', 'injury status', 'injurystatus', 'injury indicator'],
+};
+
+function dfsEscapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+function dfsNormalizeHeader(value) {
+  return String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+function dfsCompactHeader(value) {
+  return dfsNormalizeHeader(value).replace(/\s+/g, '');
+}
+
+function dfsFindCsvColumn(headers, field) {
+  const choices = DFS_CSV_COLUMNS[field] || [];
+  const normalized = headers.map(h => ({ raw: h, norm: dfsNormalizeHeader(h), compact: dfsCompactHeader(h) }));
+  for (const choice of choices) {
+    const normChoice = dfsNormalizeHeader(choice);
+    const compactChoice = dfsCompactHeader(choice);
+    const exact = normalized.find(h => h.norm === normChoice || h.compact === compactChoice);
+    if (exact) return exact.raw;
+  }
+  return null;
+}
+
+function dfsParseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') { cell += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      row.push(cell);
+      cell = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i++;
+      row.push(cell);
+      if (row.some(v => String(v).trim() !== '')) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some(v => String(v).trim() !== '')) rows.push(row);
+  return rows;
+}
+
+function dfsParseMoney(value) {
+  const num = parseFloat(String(value || '').replace(/[$,\s]/g, ''));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function dfsParsePoints(value) {
+  const num = parseFloat(String(value || '').replace(/[^\d.-]/g, ''));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function dfsCleanPlayerName(name) {
+  return String(name || '').replace(/\s+\(\d+\)\s*$/, '').replace(/\s+#?\d+$/, '').trim();
+}
+
+function dfsFormatBytes(bytes) {
+  if (!bytes) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function dfsOpenCsvPicker() {
+  const input = document.getElementById('dfs-csv-input');
+  if (input) input.click();
+}
+
+function dfsDownloadSampleCsv(event) {
+  event.preventDefault();
+  const sample = [
+    'Name,Position,Salary,FPPG,Injury',
+    'Jalen Brunson,PG,9600,45.8,',
+    'Josh Hart,SF/PF,7100,34.2,Q',
+    'Isaiah Hartenstein,C,6200,30.4,',
+    'Example OUT Player,SG,4300,18.1,OUT'
+  ].join('\n');
+  const blob = new Blob([sample], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'edge-dfs-sample.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dfsSetCsvInjuryFilter(filter) {
+  dfsState.csvInjuryFilter = filter;
+  dfsState.injuryFilter = filter;
+  document.querySelectorAll('[id^="dfs-csv-inj-"]').forEach(el => el.classList.remove('active'));
+  const btn = document.getElementById('dfs-csv-inj-' + filter);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('[id^="dfs-inj-"]').forEach(el => el.classList.remove('active'));
+  const mainBtn = document.getElementById('dfs-inj-' + filter);
+  if (mainBtn) mainBtn.classList.add('active');
+  dfsRenderCsvPlayers();
+}
+
+function dfsSetCsvSort(sort) {
+  dfsState.csvSort = sort;
+  document.querySelectorAll('[id^="dfs-csv-sort-"]').forEach(el => el.classList.remove('active'));
+  const btn = document.getElementById('dfs-csv-sort-' + sort);
+  if (btn) btn.classList.add('active');
+  dfsRenderCsvPlayers();
+}
+
+async function dfsHandleCsvUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const successEl = document.getElementById('dfs-upload-success');
+  const errEl = document.getElementById('dfs-upload-error');
+  successEl.style.display = 'none';
+  errEl.style.display = 'none';
+  try {
+    if (!/\.csv$/i.test(file.name) && file.type && !file.type.includes('csv')) {
+      throw new Error('Please select a CSV file.');
+    }
+    const text = await file.text();
+    const parsed = dfsBuildPlayersFromCsv(text);
+    dfsState.uploadedPlayers = parsed.players;
+    dfsState.uploadedFile = {
+      name: file.name,
+      size: file.size,
+      uploadedAt: new Date(),
+      columns: parsed.columns,
+    };
+    dfsState.csvInjuryFilter = 'all';
+    dfsState.csvSort = 'value';
+    dfsSetCsvInjuryFilter('all');
+    dfsSetCsvSort('value');
+    document.getElementById('dfs-csv-panel').style.display = 'block';
+    document.getElementById('dfs-upload-meta').textContent =
+      `${file.name} · ${dfsFormatBytes(file.size)} · ${parsed.players.length} players loaded`;
+    successEl.textContent =
+      `Upload successful: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
+    successEl.style.display = 'block';
+    showToast(`${parsed.players.length} DFS players loaded`, 'success');
+  } catch (err) {
+    dfsState.uploadedPlayers = [];
+    dfsState.uploadedFile = null;
+    document.getElementById('dfs-csv-panel').style.display = 'none';
+    errEl.textContent = err.message || 'CSV upload failed. Check the file and try again.';
+    errEl.style.display = 'block';
+  } finally {
+    event.target.value = '';
+  }
+}
+
+function dfsBuildPlayersFromCsv(text) {
+  const rows = dfsParseCsv(text);
+  if (rows.length < 2) throw new Error('CSV is malformed: no player rows found.');
+  const headers = rows[0].map(h => String(h || '').trim());
+  const columns = {
+    name: dfsFindCsvColumn(headers, 'name'),
+    position: dfsFindCsvColumn(headers, 'position'),
+    salary: dfsFindCsvColumn(headers, 'salary'),
+    fppg: dfsFindCsvColumn(headers, 'fppg'),
+    injuryStatus: dfsFindCsvColumn(headers, 'injuryStatus'),
+  };
+  if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Player Name.');
+  if (!columns.position) throw new Error('Missing Position column. Try Pos, Position, or Pos.');
+  if (!columns.salary) throw new Error('Missing Salary column. Try Salary, Cost, or Avg Cost.');
+  if (!columns.fppg) throw new Error('Missing FPPG column. Try FPPG, Avg Points, or Projected Points.');
+
+  const idx = Object.fromEntries(headers.map((h, i) => [h, i]));
+  const players = rows.slice(1).map((row, i) => {
+    const salary = dfsParseMoney(row[idx[columns.salary]]);
+    const fppg = dfsParsePoints(row[idx[columns.fppg]]);
+    const name = dfsCleanPlayerName(row[idx[columns.name]]);
+    const position = String(row[idx[columns.position]] || '').trim().toUpperCase();
+    const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
+    return {
+      id: `${name}-${i}`,
+      name,
+      position,
+      salary,
+      fppg,
+      projectedFppg: fppg,
+      floorFppg: fppg * 0.75,
+      ceilingFppg: fppg * 1.25,
+      injuryStatus,
+      valueScore: salary ? (fppg / salary) * 1000 : 0,
+    };
+  }).filter(p => p.name && p.position && p.salary > 0 && p.fppg > 0);
+  if (!players.length) throw new Error('No players parsed. Check column names and salary/FPPG values.');
+  return { players, columns };
+}
+
+function dfsCsvPlayerVisible(player, filter) {
+  const status = String(player.injuryStatus || '').toUpperCase();
+  const isOut = /\b(OUT|IR|IL|DNP|SUSP)\b/.test(status);
+  const isQuestionable = /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(status);
+  if (filter === 'out') return !isOut;
+  if (filter === 'q_and_out') return !isOut && !isQuestionable;
+  return true;
+}
+
+function dfsGetVisibleCsvPlayers(filter = dfsState.csvInjuryFilter) {
+  const players = dfsState.uploadedPlayers.filter(p => dfsCsvPlayerVisible(p, filter));
+  const sort = dfsState.csvSort;
+  return players.slice().sort((a, b) => {
+    if (sort === 'salary') return b.salary - a.salary;
+    if (sort === 'fppg') return b.fppg - a.fppg;
+    if (sort === 'name') return a.name.localeCompare(b.name);
+    if (sort === 'position') return a.position.localeCompare(b.position);
+    if (sort === 'injury') return String(a.injuryStatus || '').localeCompare(String(b.injuryStatus || ''));
+    return b.valueScore - a.valueScore;
+  });
+}
+
+function dfsRenderCsvPlayers() {
+  const body = document.getElementById('dfs-csv-body');
+  if (!body) return;
+  const players = dfsGetVisibleCsvPlayers();
+  if (!players.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="dfs-csv-empty">No players match the current injury filter.</div></td></tr>`;
+    return;
+  }
+  body.innerHTML = players.map(p => `
+    <tr>
+      <td>${dfsEscapeHtml(p.name)}</td>
+      <td>${dfsEscapeHtml(p.position)}</td>
+      <td>$${Math.round(p.salary).toLocaleString()}</td>
+      <td>${p.fppg.toFixed(1)}</td>
+      <td>${p.valueScore.toFixed(2)}x</td>
+      <td class="${p.injuryStatus ? 'dfs-csv-injury' : ''}">${dfsEscapeHtml(p.injuryStatus || 'OK')}</td>
+    </tr>
+  `).join('');
+}
 
 function dfsSetSport(s) {
   dfsState.sport = s;
@@ -1536,6 +1848,13 @@ function dfsSetInjuryFilter(f) {
   dfsState.injuryFilter = f;
   document.querySelectorAll('[id^="dfs-inj-"]').forEach(el => el.classList.remove('active'));
   document.getElementById('dfs-inj-' + f).classList.add('active');
+  if (dfsState.uploadedPlayers.length) {
+    dfsState.csvInjuryFilter = f;
+    document.querySelectorAll('[id^="dfs-csv-inj-"]').forEach(el => el.classList.remove('active'));
+    const csvBtn = document.getElementById('dfs-csv-inj-' + f);
+    if (csvBtn) csvBtn.classList.add('active');
+    dfsRenderCsvPlayers();
+  }
 }
 function dfsToggleConfirmed() {
   dfsState.confirmedActiveOnly = !dfsState.confirmedActiveOnly;
@@ -1602,12 +1921,136 @@ function dfsUpdatePlayerCardButtons(name) {
   });
 }
 
+function dfsPositionMatches(playerPosition, slot) {
+  const raw = String(playerPosition || '').toUpperCase();
+  const parts = raw.split(/[\/, ]+/).filter(Boolean);
+  if (slot === 'FLEX' || slot === 'UTIL' || slot === 'CPT' || slot === 'MVP' || slot === 'STAR' || slot === 'PRO') return true;
+  if (slot === 'C/1B') return parts.includes('C') || parts.includes('1B');
+  if (slot === 'DST') return parts.includes('DST') || parts.includes('DEF') || raw.includes('D/ST');
+  return parts.includes(slot);
+}
+
+function dfsLineupSlots() {
+  const { sport, platform } = dfsState;
+  if (sport === 'nba') return platform === 'draftkings'
+    ? ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX']
+    : ['MVP', 'STAR', 'STAR', 'PRO', 'PRO', 'UTIL'];
+  if (sport === 'nfl') return platform === 'draftkings'
+    ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
+    : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
+  return platform === 'draftkings'
+    ? ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF']
+    : ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL'];
+}
+
+function dfsGetEligiblePlayersForOptimization() {
+  const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
+  return dfsState.uploadedPlayers
+    .filter(p => dfsCsvPlayerVisible(p, filter))
+    .filter(p => !dfsState.excludedPlayers.includes(p.name));
+}
+
+function dfsPickBestCsvLineup() {
+  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const slots = dfsLineupSlots();
+  const players = dfsGetEligiblePlayersForOptimization();
+  const byName = new Map(players.map(p => [p.name, p]));
+  const lineup = [];
+  const used = new Set();
+  let salary = 0;
+
+  dfsState.lockedPlayers.forEach(name => {
+    const player = byName.get(name);
+    if (player && !used.has(player.name) && salary + player.salary <= cap) {
+      lineup.push({ ...player });
+      used.add(player.name);
+      salary += player.salary;
+    }
+  });
+
+  for (let i = lineup.length; i < slots.length; i++) {
+    const slot = slots[i];
+    const candidates = players
+      .filter(p => !used.has(p.name))
+      .filter(p => dfsPositionMatches(p.position, slot))
+      .filter(p => salary + p.salary <= cap)
+      .sort((a, b) => {
+        const aScore = a.fppg + (a.valueScore * 1.8);
+        const bScore = b.fppg + (b.valueScore * 1.8);
+        return bScore - aScore;
+      });
+    const pick = candidates[0];
+    if (!pick) continue;
+    lineup.push({ ...pick });
+    used.add(pick.name);
+    salary += pick.salary;
+  }
+
+  if (lineup.length < slots.length) {
+    const fill = players
+      .filter(p => !used.has(p.name))
+      .filter(p => salary + p.salary <= cap)
+      .sort((a, b) => b.valueScore - a.valueScore);
+    for (const pick of fill) {
+      if (lineup.length >= slots.length) break;
+      lineup.push({ ...pick });
+      used.add(pick.name);
+      salary += pick.salary;
+    }
+  }
+
+  if (lineup.length < slots.length) {
+    throw new Error(`Only ${lineup.length} eligible players fit the ${slots.length}-player roster. Try Show All, remove exclusions, or upload a larger contest CSV.`);
+  }
+
+  return lineup.map((p, i) => {
+    const slot = slots[i] || 'UTIL';
+    const multiplier = (slot === 'CPT' || slot === 'MVP') ? 1.5 : (slot === 'STAR' ? 1.2 : 1);
+    return {
+      ...p,
+      slot,
+      projectedFppg: p.fppg * multiplier,
+      floorFppg: p.fppg * 0.75 * multiplier,
+      ceilingFppg: p.fppg * 1.25 * multiplier,
+      valueScore: p.salary ? ((p.fppg * multiplier) / p.salary) * 1000 : 0,
+      notes: 'Loaded from uploaded CSV.',
+    };
+  });
+}
+
+function dfsOptimizeUploadedCsv() {
+  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const lineup = dfsPickBestCsvLineup();
+  const totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
+  const totalProjectedPoints = lineup.reduce((sum, p) => sum + (p.projectedFppg || 0), 0);
+  const file = dfsState.uploadedFile;
+  return {
+    lineup,
+    totalSalary,
+    remainingSalary: cap - totalSalary,
+    totalProjectedPoints,
+    totalFloorPoints: lineup.reduce((sum, p) => sum + (p.floorFppg || 0), 0),
+    totalCeilingPoints: lineup.reduce((sum, p) => sum + (p.ceilingFppg || 0), 0),
+    correlationScore: null,
+    lateNewsItems: [],
+    confirmedActivePlayers: [],
+    summary: `Optimized locally from ${file ? file.name : 'uploaded CSV'} using salary cap, roster slots, locked/excluded players, injury filter, projected points, and value. Salary used: $${totalSalary.toLocaleString()} of $${cap.toLocaleString()}.`,
+  };
+}
+
 async function dfsOptimize() {
   document.getElementById('dfs-results').style.display = 'none';
   document.getElementById('dfs-error').style.display = 'none';
   document.getElementById('dfs-loading').style.display = 'flex';
   document.getElementById('dfs-optimize-btn').disabled = true;
   try {
+    if (dfsState.uploadedPlayers.length) {
+      const data = dfsOptimizeUploadedCsv();
+      dfsLastLineup = data;
+      dfsRenderResults(data);
+      showToast('Lineup optimized from CSV', 'success');
+      return;
+    }
     const res = await fetch('/api/dfs/optimize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
