@@ -1723,6 +1723,10 @@ async function dfsHandleCsvUpload(event) {
       uploadedAt: new Date(),
       columns: parsed.columns,
     };
+    if (parsed.source === 'fanduel_mlb_malformed') {
+      dfsSetPlatform('fanduel');
+      dfsSetSport('mlb');
+    }
     dfsState.csvInjuryFilter = 'all';
     dfsState.csvSort = 'value';
     dfsSetCsvInjuryFilter('all');
@@ -1730,8 +1734,9 @@ async function dfsHandleCsvUpload(event) {
     document.getElementById('dfs-csv-panel').style.display = 'block';
     document.getElementById('dfs-upload-meta').textContent =
       `${file.name} · ${dfsFormatBytes(file.size)} · ${parsed.players.length} players loaded`;
-    successEl.textContent =
-      `Upload successful: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
+    successEl.textContent = parsed.source === 'fanduel_mlb_malformed'
+      ? `FanDuel MLB CSV loaded successfully: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`
+      : `Upload successful: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
     successEl.style.display = 'block';
     showToast(`${parsed.players.length} DFS players loaded`, 'success');
   } catch (err) {
@@ -1748,6 +1753,9 @@ async function dfsHandleCsvUpload(event) {
 function dfsBuildPlayersFromCsv(text) {
   const rows = dfsParseCsv(text);
   if (rows.length < 2) throw new Error('CSV is malformed: no player rows found.');
+  const fanduelMalformed = dfsTryParseFanDuelMalformedCsv(rows);
+  if (fanduelMalformed) return fanduelMalformed;
+
   const headers = rows[0].map(h => String(h || '').trim());
   const columns = {
     name: dfsFindCsvColumn(headers, 'name'),
@@ -1782,7 +1790,51 @@ function dfsBuildPlayersFromCsv(text) {
     };
   }).filter(p => p.name && p.position && p.salary > 0 && p.fppg > 0);
   if (!players.length) throw new Error('No players parsed. Check column names and salary/FPPG values.');
-  return { players, columns };
+  return { players, columns, source: 'header' };
+}
+
+function dfsTryParseFanDuelMalformedCsv(rows) {
+  const players = rows.map((row, i) => {
+    const hasFanDuelShift = row.length >= 20 && row.slice(0, 11).every(v => String(v || '').trim() === '');
+    if (!hasFanDuelShift) return null;
+
+    const idName = String(row[11] || '').trim();
+    const colonName = idName.includes(':') ? idName.split(':').slice(1).join(':').trim() : '';
+    const fallbackName = String(row[15] || '').trim();
+    const name = dfsCleanPlayerName(colonName || fallbackName);
+    const position = String(row[13] || '').trim().toUpperCase();
+    const fppg = dfsParsePoints(row[17]);
+    const salary = dfsParseMoney(row[19]);
+    const injuryFields = row.slice(20).map(v => String(v || '').trim().toUpperCase()).filter(Boolean);
+    const injuryStatus = injuryFields.find(v => /\b(IL|OUT|IR|DNP|SUSP|Q|QUES|QUESTIONABLE|D|DOUBTFUL)\b/.test(v)) || '';
+
+    if (!name || !position || salary <= 0 || fppg <= 0) return null;
+    return {
+      id: `${name}-${i}`,
+      name,
+      position,
+      salary,
+      fppg,
+      projectedFppg: fppg,
+      floorFppg: fppg * 0.75,
+      ceilingFppg: fppg * 1.25,
+      injuryStatus,
+      valueScore: salary ? (fppg / salary) * 1000 : 0,
+    };
+  }).filter(Boolean);
+
+  if (!players.length) return null;
+  return {
+    players,
+    columns: {
+      name: 'Column 12 Player ID:Name',
+      position: 'Column 14 Position',
+      salary: 'Column 20 Salary',
+      fppg: 'Column 18 FPPG',
+      injuryStatus: 'Column 21+ Injury',
+    },
+    source: 'fanduel_mlb_malformed',
+  };
 }
 
 function dfsCsvPlayerVisible(player, filter) {
