@@ -414,11 +414,17 @@ ${isGpp ? `GPP RUN-BACK CONSTRAINT (Advanced Layer 4):
   Set runBackCandidate=true on that player. Report runBackGame and runBackPlayer in root JSON.` : ''}
 
 SALARY ALLOCATION (KNAPSACK GUARDRAIL):
-  Maximum 2 players with salary under $2,500 in any lineup.
-  VALUE OVERLOAD trigger: if the optimizer selects 3+ players under $2,500:
+  Optimization goal is maximize TOTAL PROJECTED CEILING under the salary cap, not value per dollar.
+  Fill every required roster slot.
+  Never leave more than $500 unused salary if any legal lineup can spend it.
+  If final salary is under 95% of the cap, regenerate with higher-salary players before returning JSON.
+  Prefer mid-tier $5,000–$12,000 players over stacking $1,000–$3,000 value plays.
+  Maximum 2 players with salary under $3,000 in any NBA lineup.
+  VALUE OVERLOAD trigger: if the optimizer selects 3+ players under $3,000:
     → Discard the third (and any further) cheap asset
-    → Reallocate that salary to 1-2 proven mid-tier producers ($5,000–$7,000 range)
+    → Reallocate that salary to 1-2 proven mid-tier producers ($5,000–$12,000 range)
     → Set salaryAlert="VALUE OVERLOAD — redistributed from min-salary overload to proven mid-tier producer(s)"
+  If salary remains more than $500 below the cap after all legal upgrades, set salaryAlert="Salary not optimized — tap REGENERATE to fill remaining cap".
 
 SALARY TRAJECTORY:
   Search current vs last week's ${platformName} salary for each player.
@@ -467,9 +473,13 @@ DST SELECTION:
   High sack rate DST vs pass-heavy offense = prime GPP target.
 
 SALARY ALLOCATION (KNAPSACK GUARDRAIL):
+  Optimization goal is maximize TOTAL PROJECTED CEILING under the salary cap, not value per dollar.
+  Fill every required roster slot. Never leave more than $500 unused salary if a legal upgrade exists.
+  If final salary is under 95% of the cap, regenerate with higher-salary players before returning JSON.
   Maximum 2 players with salary under $3,500 in any lineup.
   VALUE OVERLOAD trigger at 3+ cheap assets — reallocate to $5,500–$7,500 mid-tier.
   Set salaryAlert="VALUE OVERLOAD" if triggered.
+  If salary remains more than $500 below the cap after all legal upgrades, set salaryAlert="Salary not optimized — tap REGENERATE to fill remaining cap".
 
 SALARY TRAJECTORY: Same approach — current vs last week's ${platformName} salary. Flag trajectory.
 
@@ -492,7 +502,7 @@ BATTER VS PITCHER ADVANTAGE: if opposing pitcher ERA > ${cfg.batterVsPitcherEraT
 GAME TOTAL IMPORTANCE: if Vegas game total is over ${cfg.highGameTotalThreshold} runs, boost all batters in that game × ${cfg.highGameTotalMultiplier.toFixed(2)}. Do not apply this to pitchers.
 BALLPARK: Coors Field +15% ceilingFppg; Petco/Oracle/Dodger -10% ceilingFppg.
 WEATHER: Wind out to CF ≥10 mph = +8% ceilingFppg. Rain risk → weatherAlert.
-SALARY/OWNERSHIP: Same guardrails — max 2 under $2,500, trajectory search, chalk avoidance.
+SALARY/OWNERSHIP: Maximize total projected ceiling under the salary cap, fill every roster slot, and never leave more than $500 unused if a legal upgrade exists. If final salary is under 95% of the cap, regenerate with higher-salary players. Max 2 under $2,500, trajectory search, chalk avoidance. Set salaryAlert="Salary not optimized — tap REGENERATE to fill remaining cap" if more than $500 remains after legal upgrades.
 STACKING: ${isGpp ? 'Team stacks with <25% individual ownership.' : 'Cash: elite floor plays, confirmed starts.'}`;
 
   const algoBlock = isNba ? nbaAlgo : isNfl ? nflAlgo : mlbAlgo;
@@ -574,6 +584,12 @@ ${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
     '', 'WEB SEARCHES — DO ALL BEFORE BUILDING LINEUP:', ...searches,
     '', `LINEUP SLOTS (${slots.length} players): ${slots.join(', ')}`,
     `HARD CONSTRAINT: Total salary ≤ $${salaryCap.toLocaleString()}.`,
+    `HARD CONSTRAINT: Fill all ${slots.length} roster slots. Do not return a partial lineup.`,
+    'HARD CONSTRAINT: Optimization goal is highest total projected ceiling under the salary cap, not best value per dollar.',
+    'HARD CONSTRAINT: Never leave more than $500 unused salary if any legal lineup can spend it.',
+    'HARD CONSTRAINT: If final salary is under 95% of cap, regenerate once with higher-salary players before returning JSON.',
+    isNba ? 'HARD CONSTRAINT: NBA should prefer consistent mid-tier $5,000-$12,000 players over stacking $1,000-$3,000 punt plays.' : '',
+    'HARD CONSTRAINT: If remainingSalary > 500, set salaryAlert="Salary not optimized — tap REGENERATE to fill remaining cap".',
     'HARD CONSTRAINT: Real player names only. Realistic salaries and FPPG for today.',
     isNfl ? 'HARD CONSTRAINT: Maximum 2 players under $3,500. VALUE OVERLOAD if exceeded — see algorithm.'
            : 'HARD CONSTRAINT: Maximum 2 players under $2,500. VALUE OVERLOAD if exceeded — see algorithm.',

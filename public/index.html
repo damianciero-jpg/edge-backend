@@ -2058,105 +2058,160 @@ function dfsGetEligiblePlayersForOptimization() {
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
 }
 
+function dfsSlotMultiplier(slot) {
+  if (slot === 'CPT' || slot === 'MVP') return 1.5;
+  if (slot === 'STAR') return 1.2;
+  return 1;
+}
+
+function dfsProjectCsvPlayerForSlot(player, slot) {
+  const multiplier = dfsSlotMultiplier(slot);
+  const envMultiplier = dfsMlbGameEnvironmentMultiplier(player);
+  const projectedFppg = player.fppg * multiplier * envMultiplier;
+  const ceilingFppg = player.fppg * 1.25 * multiplier * envMultiplier;
+  const envNotes = envMultiplier > 1
+    ? ` MLB environment x${envMultiplier.toFixed(2)}${Number(player.opposingPitcherEra) > 4.5 ? ' (pitcher ERA > 4.50)' : ''}${Number(player.gameTotal) > 9 ? ' (game total > 9)' : ''}.`
+    : '';
+  return {
+    ...player,
+    slot,
+    projectedFppg,
+    floorFppg: player.fppg * 0.75 * multiplier,
+    ceilingFppg,
+    valueScore: player.salary ? (projectedFppg / player.salary) * 1000 : 0,
+    notes: `Loaded from uploaded CSV.${envNotes}`,
+  };
+}
+
+function dfsCsvCandidateScore(player, slot) {
+  const projected = dfsProjectCsvPlayerForSlot(player, slot);
+  let score = projected.ceilingFppg;
+  if (dfsState.sport === 'nba') {
+    if (player.salary >= 5000 && player.salary <= 12000) score += 8;
+    if (player.salary > 0 && player.salary < 3000) score -= 18;
+  }
+  return score;
+}
+
+function dfsRankCsvLineupState(state, cap) {
+  const remaining = cap - state.salary;
+  const salaryScore = state.salary / cap;
+  const cheapPenalty = dfsState.sport === 'nba' ? state.cheapNba * 9 : 0;
+  return (state.ceiling * 100) + (salaryScore * 18) - cheapPenalty - (remaining > 500 ? 12 : 0);
+}
+
+function dfsSortCsvLineupStates(a, b, cap) {
+  const aRemaining = cap - a.salary;
+  const bRemaining = cap - b.salary;
+  const aUnder500 = aRemaining <= 500;
+  const bUnder500 = bRemaining <= 500;
+  if (aUnder500 !== bUnder500) return aUnder500 ? -1 : 1;
+  const aOver95 = a.salary >= cap * 0.95;
+  const bOver95 = b.salary >= cap * 0.95;
+  if (aOver95 !== bOver95) return aOver95 ? -1 : 1;
+  if (!aUnder500 && !aOver95 && a.salary !== b.salary) return b.salary - a.salary;
+  if (Math.abs(a.ceiling - b.ceiling) > 0.01) return b.ceiling - a.ceiling;
+  return b.salary - a.salary;
+}
+
 function dfsPickBestCsvLineup() {
   const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
   const slots = dfsLineupSlots();
   const players = dfsGetEligiblePlayersForOptimization();
-  const byName = new Map(players.map(p => [p.name, p]));
-  const lineup = [];
-  const used = new Set();
-  let salary = 0;
+  const locked = new Set(dfsState.lockedPlayers.filter(Boolean));
+  const eligibleLocked = [...locked].filter(name => players.some(p => p.name === name));
+  const lockedMissing = [...locked].filter(name => !players.some(p => p.name === name));
+  if (lockedMissing.length) {
+    throw new Error(`Locked player not eligible: ${lockedMissing.join(', ')}. Remove the lock or change filters.`);
+  }
 
-  dfsState.lockedPlayers.forEach(name => {
-    const player = byName.get(name);
-    if (player && !used.has(player.name) && salary + player.salary <= cap) {
-      lineup.push({ ...player });
-      used.add(player.name);
-      salary += player.salary;
-    }
-  });
+  let states = [{
+    lineup: [],
+    used: new Set(),
+    salary: 0,
+    projected: 0,
+    ceiling: 0,
+    cheapNba: 0,
+  }];
 
-  for (let i = lineup.length; i < slots.length; i++) {
-    const slot = slots[i];
-    const candidates = players
-      .filter(p => !used.has(p.name))
+  slots.forEach(slot => {
+    const slotCandidates = players
       .filter(p => dfsPositionMatches(p.position, slot))
-      .filter(p => salary + p.salary <= cap)
-      .sort((a, b) => {
-        const aAdj = a.fppg * dfsMlbGameEnvironmentMultiplier(a);
-        const bAdj = b.fppg * dfsMlbGameEnvironmentMultiplier(b);
-        const aScore = aAdj + (a.salary ? (aAdj / a.salary) * 1000 * 1.8 : 0);
-        const bScore = bAdj + (b.salary ? (bAdj / b.salary) * 1000 * 1.8 : 0);
-        return bScore - aScore;
+      .sort((a, b) => dfsCsvCandidateScore(b, slot) - dfsCsvCandidateScore(a, slot));
+    const lockedCandidates = slotCandidates.filter(p => locked.has(p.name));
+    const candidates = [];
+    const seen = new Set();
+    lockedCandidates.concat(slotCandidates.slice(0, 70)).forEach(p => {
+      if (!seen.has(p.name)) {
+        seen.add(p.name);
+        candidates.push(p);
+      }
+    });
+
+    const next = [];
+    states.forEach(state => {
+      candidates.forEach(player => {
+        if (state.used.has(player.name)) return;
+        const nextSalary = state.salary + (player.salary || 0);
+        if (nextSalary > cap) return;
+        const projected = dfsProjectCsvPlayerForSlot(player, slot);
+        const nextCheapNba = state.cheapNba + (dfsState.sport === 'nba' && player.salary > 0 && player.salary < 3000 ? 1 : 0);
+        if (dfsState.sport === 'nba' && nextCheapNba > 2 && !locked.has(player.name)) return;
+        const used = new Set(state.used);
+        used.add(player.name);
+        next.push({
+          lineup: state.lineup.concat(projected),
+          used,
+          salary: nextSalary,
+          projected: state.projected + projected.projectedFppg,
+          ceiling: state.ceiling + projected.ceilingFppg,
+          cheapNba: nextCheapNba,
+        });
       });
-    const pick = candidates[0];
-    if (!pick) continue;
-    lineup.push({ ...pick });
-    used.add(pick.name);
-    salary += pick.salary;
-  }
+    });
 
-  if (lineup.length < slots.length) {
-    const fill = players
-      .filter(p => !used.has(p.name))
-      .filter(p => salary + p.salary <= cap)
-      .sort((a, b) => {
-        const aAdj = a.fppg * dfsMlbGameEnvironmentMultiplier(a);
-        const bAdj = b.fppg * dfsMlbGameEnvironmentMultiplier(b);
-        const aValue = a.salary ? (aAdj / a.salary) * 1000 : 0;
-        const bValue = b.salary ? (bAdj / b.salary) * 1000 : 0;
-        return bValue - aValue;
-      });
-    for (const pick of fill) {
-      if (lineup.length >= slots.length) break;
-      lineup.push({ ...pick });
-      used.add(pick.name);
-      salary += pick.salary;
-    }
-  }
-
-  if (lineup.length < slots.length) {
-    throw new Error(`Only ${lineup.length} eligible players fit the ${slots.length}-player roster. Try Show All, remove exclusions, or upload a larger contest CSV.`);
-  }
-
-  return lineup.map((p, i) => {
-    const slot = slots[i] || 'UTIL';
-    const multiplier = (slot === 'CPT' || slot === 'MVP') ? 1.5 : (slot === 'STAR' ? 1.2 : 1);
-    const envMultiplier = dfsMlbGameEnvironmentMultiplier(p);
-    const projectedFppg = p.fppg * multiplier * envMultiplier;
-    const ceilingFppg = p.fppg * 1.25 * multiplier * envMultiplier;
-    const envNotes = envMultiplier > 1
-      ? ` MLB environment x${envMultiplier.toFixed(2)}${Number(p.opposingPitcherEra) > 4.5 ? ' (pitcher ERA > 4.50)' : ''}${Number(p.gameTotal) > 9 ? ' (game total > 9)' : ''}.`
-      : '';
-    return {
-      ...p,
-      slot,
-      projectedFppg,
-      floorFppg: p.fppg * 0.75 * multiplier,
-      ceilingFppg,
-      valueScore: p.salary ? (projectedFppg / p.salary) * 1000 : 0,
-      notes: `Loaded from uploaded CSV.${envNotes}`,
-    };
+    next.sort((a, b) => dfsRankCsvLineupState(b, cap) - dfsRankCsvLineupState(a, cap));
+    states = next.slice(0, 500);
   });
+
+  const complete = states.filter(state =>
+    state.lineup.length === slots.length &&
+    eligibleLocked.every(name => state.used.has(name))
+  );
+
+  if (!complete.length) {
+    throw new Error(`No complete ${slots.length}-player lineup fits under the $${cap.toLocaleString()} cap. Remove locks/exclusions, change injury filters, or upload a larger contest CSV.`);
+  }
+
+  const within500 = complete.filter(state => cap - state.salary <= 500);
+  const over95 = complete.filter(state => state.salary >= cap * 0.95);
+  const pool = within500.length ? within500 : over95.length ? over95 : complete;
+  pool.sort((a, b) => dfsSortCsvLineupStates(a, b, cap));
+  return pool[0].lineup;
 }
 
 function dfsOptimizeUploadedCsv() {
   const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
   const lineup = dfsPickBestCsvLineup();
   const totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
+  const remainingSalary = cap - totalSalary;
   const totalProjectedPoints = lineup.reduce((sum, p) => sum + (p.projectedFppg || 0), 0);
   const file = dfsState.uploadedFile;
+  const salaryAlert = remainingSalary > 500
+    ? 'Salary not optimized — tap REGENERATE to fill remaining cap'
+    : null;
   return {
     lineup,
     totalSalary,
-    remainingSalary: cap - totalSalary,
+    remainingSalary,
     totalProjectedPoints,
     totalFloorPoints: lineup.reduce((sum, p) => sum + (p.floorFppg || 0), 0),
     totalCeilingPoints: lineup.reduce((sum, p) => sum + (p.ceilingFppg || 0), 0),
     correlationScore: null,
     lateNewsItems: [],
     confirmedActivePlayers: [],
-    summary: `Optimized locally from ${file ? file.name : 'uploaded CSV'} using salary cap, roster slots, locked/excluded players, injury filter, projected points, and value. Salary used: $${totalSalary.toLocaleString()} of $${cap.toLocaleString()}.`,
+    salaryAlert,
+    summary: `Optimized locally from ${file ? file.name : 'uploaded CSV'} by maximizing total projected ceiling under the salary cap while filling all ${lineup.length} roster spots. Salary used: $${totalSalary.toLocaleString()} of $${cap.toLocaleString()}.`,
   };
 }
 
@@ -2263,6 +2318,7 @@ function dfsRenderResults(data) {
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
   if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players under $2,500. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
+  if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
   if (data.salaryAlert && data.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + data.salaryAlert });
   if (data.antiCorrelationWarning && data.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + data.antiCorrelationWarning });
   if (data.sameGameBonus) alerts.push({ cls: 'info', msg: '🔗 SAME-GAME BONUS — 3+ players from one game: +5% ceiling applied to lineup total.' });
