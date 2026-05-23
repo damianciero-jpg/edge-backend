@@ -9,7 +9,21 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(vercel --prod)",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(git rebase *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(git reset *)",
+      "Skill(vercel:deploy)",
+      "Bash(vercel *)",
+      "Bash(git commit *)",
+      "Bash(node -e \"require\\('./server.js'\\)\")",
+      "Bash(node *)",
+      "Bash(npx playwright *)",
+      "Bash(npm install *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\dciel\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--users-dciel-edge-backend\\\\bc7d6544-e145-49c7-b9bb-3ac047a6f836\\\\tasks\\\\baf0vt1or.output\")",
+      "Bash(Measure-Object -Line)",
+      "Bash(findstr TEST_LOGIN)"
     ]
   }
 }

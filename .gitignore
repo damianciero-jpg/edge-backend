@@ -14,3 +14,4 @@ daily.json
 .env 
 node_modules 
 .vercel 
+.env*.local
