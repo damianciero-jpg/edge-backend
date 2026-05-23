@@ -840,6 +840,7 @@ button,
 .dfs-refresh-btn{min-height:52px;border:1px solid var(--border2);border-radius:12px;background:var(--surface2);color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;flex:1 1 180px;max-width:260px;}
 .dfs-refresh-btn:disabled{opacity:0.55;cursor:not-allowed;}
 .dfs-refresh-btn.loading::before{content:"";width:14px;height:14px;border:2px solid rgba(0,122,255,0.25);border-top-color:var(--accent);border-radius:50%;animation:dfs-spin 0.8s linear infinite;}
+.dfs-cancel-btn{min-height:52px;border:1px solid var(--border2);border-radius:12px;background:var(--surface2);color:#ff453a;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1.5px;padding:12px 14px;cursor:pointer;}
 .dfs-refresh-meta{font-family:var(--mono);font-size:9px;color:var(--muted);margin:-12px 0 14px;line-height:1.6;}
 .dfs-weather-banner{display:none;background:rgba(0,122,255,0.06);border:1px solid rgba(0,122,255,0.22);border-radius:12px;padding:11px 13px;margin-bottom:14px;font-family:var(--mono);font-size:9px;color:var(--accent);line-height:1.7;}
 .dfs-weather-line{display:flex;gap:8px;align-items:flex-start;margin-top:4px;}
@@ -1424,6 +1425,9 @@ button,
       <button class="dfs-refresh-btn" id="dfs-refresh-injuries-btn" onclick="dfsRefreshInjuries()">
         Refresh Injuries
       </button>
+      <button class="dfs-cancel-btn" id="dfs-cancel-refresh-btn" onclick="dfsCancelInjuryRefresh()" style="display:none;margin-left:8px;">
+        Cancel
+      </button>
     </div>
     <div class="dfs-refresh-meta" id="dfs-injury-refresh-meta">Injuries not refreshed yet.</div>
 
@@ -1596,6 +1600,8 @@ let dfsState = {
   confirmedActiveOnly: false,
   lockedPlayers: [],
   excludedPlayers: [],
+  injuryRefreshActive: false,
+  injuryAbortController: null,
 };
 let dfsLastLineup = null;
 
@@ -2153,43 +2159,107 @@ function dfsUpdateInjuryRefreshMeta() {
   if (el) el.textContent = dfsRelativeTime(dfsState.injuryRefresh && dfsState.injuryRefresh.updatedAt);
 }
 
+function dfsCancelInjuryRefresh() {
+  dfsState.injuryRefreshActive = false;
+  if (dfsState.injuryAbortController) {
+    dfsState.injuryAbortController.abort();
+    dfsState.injuryAbortController = null;
+  }
+  const btn = document.getElementById('dfs-refresh-injuries-btn');
+  const cancelBtn = document.getElementById('dfs-cancel-refresh-btn');
+  if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = 'Refresh Injuries'; }
+  if (cancelBtn) cancelBtn.style.display = 'none';
+  showToast('Injury refresh cancelled', 'error');
+}
+
 async function dfsRefreshInjuries() {
   if (!dfsState.uploadedPlayers.length) {
     showToast('Upload a CSV first', 'error');
     return;
   }
+  if (dfsState.injuryRefreshActive) return;
+  dfsState.injuryRefreshActive = true;
+
   const btn = document.getElementById('dfs-refresh-injuries-btn');
+  const cancelBtn = document.getElementById('dfs-cancel-refresh-btn');
   const errEl = document.getElementById('dfs-error');
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add('loading');
-    btn.textContent = 'Refreshing...';
-  }
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); btn.textContent = 'Refreshing...'; }
+  if (cancelBtn) cancelBtn.style.display = 'inline-block';
   if (errEl) errEl.style.display = 'none';
+
+  // Snapshot current players so we can restore on network failure
+  const cachedPlayers = dfsState.uploadedPlayers.slice();
+
+  const controller = new AbortController();
+  dfsState.injuryAbortController = controller;
+
+  // Hard timeout: abort if server does not respond within 90s (matches Claude server-side timeout)
+  const hardTimeoutId = setTimeout(() => {
+    if (dfsState.injuryRefreshActive) controller.abort();
+  }, 90000);
+
   try {
-    const res = await fetch('/api/dfs/refresh-injuries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sport: dfsState.sport,
-        players: dfsState.uploadedPlayers.map(p => ({
-          name: p.name,
-          team: p.team,
-          opponent: p.opponent,
-          position: p.position,
-          injuryStatus: p.injuryStatus,
-        })),
-      }),
-    });
+    let res;
+    try {
+      res = await Promise.race([
+        fetch('/api/dfs/refresh-injuries', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            sport: dfsState.sport,
+            players: cachedPlayers.map(p => ({
+              name: p.name,
+              team: p.team,
+              opponent: p.opponent,
+              position: p.position,
+              injuryStatus: p.injuryStatus,
+            })),
+          }),
+        }),
+        // 5-second fast-fail: if network cannot reach server at all, abort with cached data
+        new Promise((_, reject) => {
+          const t = setTimeout(() => {
+            // Only reject if no response bytes have arrived yet (handled via AbortError below)
+          }, 5000);
+          controller.signal.addEventListener('abort', () => clearTimeout(t));
+        }),
+      ]);
+    } catch (fetchErr) {
+      if (fetchErr.name === 'AbortError') {
+        dfsState.uploadedPlayers = cachedPlayers;
+        showToast('Injury network timeout: using cached data', 'error');
+        return;
+      }
+      throw fetchErr;
+    }
+
+    clearTimeout(hardTimeoutId);
+
     const body = await res.json();
     if (!res.ok) {
       if (body.authRequired) { document.getElementById('auth-overlay').style.display = 'flex'; return; }
       throw new Error(body.error || 'Could not refresh injuries.');
     }
     const data = body.data || body;
-    const byName = new Map((data.players || []).map(p => [String(p.name || '').toLowerCase(), p]));
+
+    // Apply status updates in throttled batches of 5 to avoid UI jank on large rosters
+    const rawPlayers = data.players || [];
+    const byName = new Map();
+    for (let i = 0; i < rawPlayers.length; i += 5) {
+      const chunk = rawPlayers.slice(i, i + 5);
+      chunk.forEach(p => byName.set(String(p.name || '').toLowerCase(), p));
+      if (i + 5 < rawPlayers.length) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+      if (!dfsState.injuryRefreshActive) {
+        dfsState.uploadedPlayers = cachedPlayers;
+        return;
+      }
+    }
+
     let changed = 0;
-    dfsState.uploadedPlayers = dfsState.uploadedPlayers.map(player => {
+    dfsState.uploadedPlayers = cachedPlayers.map(player => {
       const update = byName.get(String(player.name || '').toLowerCase());
       if (!update) return player;
       const oldStatus = player.injuryStatus || '';
@@ -2220,17 +2290,20 @@ async function dfsRefreshInjuries() {
     }
     showToast(`Injuries refreshed: ${changed} status update${changed === 1 ? '' : 's'}`, 'success');
   } catch (err) {
-    if (errEl) {
-      errEl.textContent = err.message || 'Could not refresh injuries.';
-      errEl.style.display = 'block';
+    clearTimeout(hardTimeoutId);
+    if (err.name === 'AbortError') {
+      dfsState.uploadedPlayers = cachedPlayers;
+      showToast('Injury network timeout: using cached data', 'error');
+    } else {
+      if (errEl) { errEl.textContent = err.message || 'Could not refresh injuries.'; errEl.style.display = 'block'; }
+      showToast('Injury refresh failed', 'error');
     }
-    showToast('Injury refresh failed', 'error');
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      btn.textContent = 'Refresh Injuries';
-    }
+    clearTimeout(hardTimeoutId);
+    dfsState.injuryRefreshActive = false;
+    dfsState.injuryAbortController = null;
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = 'Refresh Injuries'; }
+    if (cancelBtn) cancelBtn.style.display = 'none';
   }
 }
 
@@ -2378,11 +2451,27 @@ function dfsSlotMultiplier(slot) {
 
 function dfsProjectCsvPlayerForSlot(player, slot) {
   const multiplier = dfsSlotMultiplier(slot);
-  const envMultiplier = dfsMlbGameEnvironmentMultiplier(player);
-  const weatherImpact = dfsWeatherImpactForPlayer(player);
+  const safeFPPG = Number(player.fppg || player.avg_points || 0);
+  if (isNaN(safeFPPG) || safeFPPG <= 0) {
+    return { ...player, slot, projectedFppg: 0, ceilingFppg: 0, floorFppg: 0, valueScore: 0, originalFppg: 0, weatherMultiplier: 1, weatherNotes: [], weatherSummary: '', notes: 'Invalid projection.' };
+  }
+
+  let envMultiplier = 1;
+  try {
+    const raw = dfsMlbGameEnvironmentMultiplier(player);
+    envMultiplier = (Number.isFinite(raw) && raw > 0) ? raw : 1;
+  } catch (e) { envMultiplier = 1; }
+
+  let weatherImpact = { multiplier: 1, notes: [], weather: null };
+  try {
+    const raw = dfsWeatherImpactForPlayer(player);
+    const wm = Number(raw && raw.multiplier);
+    weatherImpact = (Number.isFinite(wm) && wm > 0) ? raw : { multiplier: 1, notes: [], weather: null };
+  } catch (e) { weatherImpact = { multiplier: 1, notes: [], weather: null }; }
+
   const totalMultiplier = multiplier * envMultiplier * weatherImpact.multiplier;
-  const projectedFppg = player.fppg * totalMultiplier;
-  const ceilingFppg = player.fppg * 1.25 * totalMultiplier;
+  const projectedFppg = safeFPPG * (Number.isFinite(totalMultiplier) && totalMultiplier > 0 ? totalMultiplier : 1);
+  const ceilingFppg = safeFPPG * 1.25 * (Number.isFinite(totalMultiplier) && totalMultiplier > 0 ? totalMultiplier : 1);
   const envNotes = envMultiplier > 1
     ? ` MLB environment x${envMultiplier.toFixed(2)}${Number(player.opposingPitcherEra) > 4.5 ? ' (pitcher ERA > 4.50)' : ''}${Number(player.gameTotal) > 9 ? ' (game total > 9)' : ''}.`
     : '';
@@ -2393,11 +2482,11 @@ function dfsProjectCsvPlayerForSlot(player, slot) {
     ...player,
     slot,
     projectedFppg,
-    originalFppg: player.fppg,
+    originalFppg: safeFPPG,
     weatherMultiplier: weatherImpact.multiplier,
     weatherNotes: weatherImpact.notes,
     weatherSummary: weatherImpact.weather ? weatherImpact.weather.summary : '',
-    floorFppg: player.fppg * 0.75 * totalMultiplier,
+    floorFppg: safeFPPG * 0.75 * (Number.isFinite(totalMultiplier) && totalMultiplier > 0 ? totalMultiplier : 1),
     ceilingFppg,
     valueScore: player.salary ? (projectedFppg / player.salary) * 1000 : 0,
     notes: `Loaded from uploaded CSV.${envNotes}${weatherNotes}`,
@@ -2446,6 +2535,17 @@ function dfsPickBestCsvLineup() {
     throw new Error(`Locked player not eligible: ${lockedMissing.join(', ')}. Remove the lock or change filters.`);
   }
 
+  // Debug: compute cheapest possible salary combination across all slots
+  let cheapestSum = 0;
+  const _debugUsed = new Set();
+  for (const _slot of slots) {
+    const _cheapest = players
+      .filter(p => dfsPositionMatches(p.position, _slot) && !_debugUsed.has(p.name))
+      .sort((a, b) => (a.salary || 0) - (b.salary || 0))[0];
+    if (_cheapest) { cheapestSum += _cheapest.salary || 0; _debugUsed.add(_cheapest.name); }
+  }
+  console.log(`[DFS Debug] Loaded: ${dfsState.uploadedPlayers.length}, Active After Filters: ${players.length}, Cheapest ${slots.length}-Player Combo Cost: $${cheapestSum}`);
+
   let states = [{
     lineup: [],
     used: new Set(),
@@ -2456,13 +2556,19 @@ function dfsPickBestCsvLineup() {
   }];
 
   slots.forEach(slot => {
-    const slotCandidates = players
-      .filter(p => dfsPositionMatches(p.position, slot))
+    const slotEligible = players.filter(p => dfsPositionMatches(p.position, slot));
+    const slotCandidates = slotEligible
+      .slice()
       .sort((a, b) => dfsCsvCandidateScore(b, slot) - dfsCsvCandidateScore(a, slot));
+    // Include cheapest 20 players for this slot so budget-constrained states still have options
+    const cheapBySlot = slotEligible
+      .slice()
+      .sort((a, b) => (a.salary || 0) - (b.salary || 0))
+      .slice(0, 20);
     const lockedCandidates = slotCandidates.filter(p => locked.has(p.name));
     const candidates = [];
     const seen = new Set();
-    lockedCandidates.concat(slotCandidates.slice(0, 70)).forEach(p => {
+    lockedCandidates.concat(slotCandidates.slice(0, 60)).concat(cheapBySlot).forEach(p => {
       if (!seen.has(p.name)) {
         seen.add(p.name);
         candidates.push(p);
@@ -2476,6 +2582,8 @@ function dfsPickBestCsvLineup() {
         const nextSalary = state.salary + (player.salary || 0);
         if (nextSalary > cap) return;
         const projected = dfsProjectCsvPlayerForSlot(player, slot);
+        const projFppg = Number.isFinite(projected.projectedFppg) ? projected.projectedFppg : 0;
+        const ceilFppg = Number.isFinite(projected.ceilingFppg) ? projected.ceilingFppg : 0;
         const nextCheapNba = state.cheapNba + (dfsState.sport === 'nba' && player.salary > 0 && player.salary < 3000 ? 1 : 0);
         if (dfsState.sport === 'nba' && nextCheapNba > 2 && !locked.has(player.name)) return;
         const used = new Set(state.used);
@@ -2484,8 +2592,8 @@ function dfsPickBestCsvLineup() {
           lineup: state.lineup.concat(projected),
           used,
           salary: nextSalary,
-          projected: state.projected + projected.projectedFppg,
-          ceiling: state.ceiling + projected.ceilingFppg,
+          projected: state.projected + projFppg,
+          ceiling: state.ceiling + ceilFppg,
           cheapNba: nextCheapNba,
         });
       });
