@@ -2619,9 +2619,73 @@ function dfsPickBestCsvLineup() {
   return pool[0].lineup;
 }
 
+function dfsGetMinSalaryThreshold() {
+  if (dfsState.platform === 'fanduel' && dfsState.sport === 'mlb') return 2100;
+  return 2500;
+}
+
+function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
+  const MID_MIN = 2500;
+  const MID_MAX = 4000;
+  const minThreshold = dfsGetMinSalaryThreshold();
+  let current = lineup.slice();
+  let maxPasses = current.length;
+
+  while (maxPasses-- > 0) {
+    const currentSalary = current.reduce((s, p) => s + (p.salary || 0), 0);
+    const remaining = cap - currentSalary;
+    const cheapCount = current.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= minThreshold).length;
+    const valueOverload = cheapCount >= 3;
+
+    if (!valueOverload && remaining < 500) break;
+
+    // Find cheapest player at or below threshold (iterate lowest→highest salary)
+    const sorted = current
+      .map((p, i) => ({ ...p, _origIdx: i }))
+      .filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= minThreshold)
+      .sort((a, b) => (a.salary || 0) - (b.salary || 0));
+
+    if (!sorted.length) break;
+
+    let upgraded = false;
+    for (const cheapPlayer of sorted) {
+      const slot = cheapPlayer.slot;
+      const budget = remaining + (cheapPlayer.salary || 0);
+      const usedNames = new Set(current.map(p => p.name).filter(n => n !== cheapPlayer.name));
+
+      const candidates = eligiblePool
+        .filter(p =>
+          dfsPositionMatches(p.position, slot) &&
+          !usedNames.has(p.name) &&
+          (p.salary || 0) >= MID_MIN &&
+          (p.salary || 0) <= Math.min(MID_MAX, budget)
+        )
+        .sort((a, b) => (b.projectedFppg || b.fppg || 0) - (a.projectedFppg || a.fppg || 0));
+
+      if (!candidates.length) continue;
+
+      const upgrade = candidates[0];
+      const upgradedProjected = dfsProjectCsvPlayerForSlot(upgrade, slot);
+      current = current.map(p => p.name === cheapPlayer.name ? upgradedProjected : p);
+      upgraded = true;
+      break;
+    }
+
+    if (!upgraded) break;
+  }
+
+  return current;
+}
+
 function dfsOptimizeUploadedCsv() {
   const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
-  const lineup = dfsPickBestCsvLineup();
+  const eligiblePool = dfsGetEligiblePlayersForOptimization();
+  let lineup = dfsPickBestCsvLineup();
+
+  if (['mlb', 'nfl'].includes(dfsState.sport)) {
+    lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool);
+  }
+
   const totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
   const remainingSalary = cap - totalSalary;
   const totalProjectedPoints = lineup.reduce((sum, p) => sum + (p.projectedFppg || 0), 0);
@@ -2749,10 +2813,11 @@ function dfsRenderResults(data) {
   // Alerts (including salary allocation check)
   const alerts = [];
   const lineup = Array.isArray(data.lineup) ? data.lineup : [];
-  const minSalCount = lineup.filter(p => (p.salary || 0) < 2500 && (p.salary || 0) > 0).length;
+  const _minSalThreshold = dfsGetMinSalaryThreshold();
+  const minSalCount = lineup.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= _minSalThreshold).length;
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
   const newlyInjuredPlayers = lineup.filter(p => p.newlyInjured).map(p => p.name).filter(Boolean);
-  if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players under $2,500. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
+  if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players at or under $${_minSalThreshold.toLocaleString()}. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
   if (newlyInjuredPlayers.length) alerts.push({ cls: 'warn', msg: `NEW INJURY WARNING — ${newlyInjuredPlayers.join(', ')} updated after refresh.` });
   if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
