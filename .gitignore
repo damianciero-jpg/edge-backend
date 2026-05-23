@@ -15,3 +15,6 @@ daily.json
 node_modules 
 .vercel 
 .env*.local
+.env.production
+.env.test
+test-results/
