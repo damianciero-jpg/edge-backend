@@ -1,0 +1,9 @@
+.env*
+!.env.example
+.claude/
+playwright-report/
+test-results/
+server*.log
+watcher.log
+watcher.pid
+routes/*.bak
