@@ -232,7 +232,7 @@ async function fetchOddsData(apiKey, sport) {
   } catch { return []; }
 }
 
-function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, lockedPlayers, excludedPlayers }) {
+function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers }) {
   const today = new Date().toISOString().slice(0, 10);
   const isGpp = contestType === 'gpp';
   const isNba = sport === 'nba';
@@ -264,6 +264,9 @@ function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData,
     : injuryFilter === 'all'
     ? 'Include all players regardless of injury status. Flag all injuries in injuryStatus.'
     : 'EXCLUDE players listed OUT only. Include Q players — confirmed active Q players offer GPP leverage.';
+  const ilInstruction = excludeIlPlayers
+    ? 'EXCLUDE every player tagged IL or Injured List, even if otherwise lock-worthy.'
+    : 'If a player is tagged IL or Injured List, only include them if explicitly locked or if no healthy alternative exists, and flag injuryStatus="IL".';
 
   const qHandling = injuryFilter !== 'q_and_out'
     ? `QUESTIONABLE PLAYER HANDLING — CONTRARIAN CONFIRMED ACTIVE BIAS (GPP Fix #4):
@@ -567,7 +570,7 @@ ${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
     `Today is ${today}. Salary cap: $${salaryCap.toLocaleString()}. Platform: ${platformName}.`,
     `Contest type: ${isGpp ? 'GPP TOURNAMENT (maximize ceiling, use sigma+1.5 ceiling, run-back correlation)' : 'CASH GAME (maximize floor, use mean-sigma floor, avoid variance)'}`,
     '', gamesCtx, '', algoBlock,
-    'INJURY FILTER:', injuryInstruction, '', qHandling, '', lockExclude || '',
+    'INJURY FILTER:', injuryInstruction, ilInstruction, '', qHandling, '', lockExclude || '',
     '', 'WEB SEARCHES — DO ALL BEFORE BUILDING LINEUP:', ...searches,
     '', `LINEUP SLOTS (${slots.length} players): ${slots.join(', ')}`,
     `HARD CONSTRAINT: Total salary ≤ $${salaryCap.toLocaleString()}.`,
@@ -576,6 +579,7 @@ ${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
            : 'HARD CONSTRAINT: Maximum 2 players under $2,500. VALUE OVERLOAD if exceeded — see algorithm.',
     isGpp ? `HARD CONSTRAINT: ${isNba ? `${mvpSlot} game` : 'QB game'} must have a run-back player from opposing team in the lineup.` : '',
     'HARD CONSTRAINT: Populate lateNewsItems with any injury/lineup updates found.',
+    excludeIlPlayers ? 'HARD CONSTRAINT: No IL/Injured List players in the lineup.' : '',
     isNfl ? 'HARD CONSTRAINT: stealsPerGame = sacks_per_game, blocksPerGame = interceptions_per_game for DST players. Required for all players.'
            : isMlb ? 'HARD CONSTRAINT: MLB has no stealsPerGame/blocksPerGame defense boost. Do not use BLK/STL or defenseMetrics for MLB scoring.'
            : 'HARD CONSTRAINT: stealsPerGame and blocksPerGame required for every player (used in MVP_Score).',
@@ -597,6 +601,7 @@ router.post('/optimize', async (req, res) => {
     platform = 'draftkings',
     contestType = 'gpp',
     injuryFilter = 'out',
+    excludeIlPlayers = false,
     lockedPlayers = [],
     excludedPlayers = [],
   } = req.body || {};
@@ -633,6 +638,7 @@ router.post('/optimize', async (req, res) => {
   const prompt = buildPrompt({
     sport, platform, contestType, salaryCap, slots, liveData,
     injuryFilter,
+    excludeIlPlayers: !!excludeIlPlayers,
     lockedPlayers: Array.isArray(lockedPlayers) ? lockedPlayers : [],
     excludedPlayers: Array.isArray(excludedPlayers) ? excludedPlayers : [],
   });

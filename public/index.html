@@ -873,6 +873,7 @@ button,
 .dfs-stat-val.warm{color:var(--yellow);}
 .dfs-badge{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:4px;display:inline-block;margin-right:4px;margin-top:4px;}
 .dfs-badge.injury{background:rgba(255,214,0,0.12);border:1px solid var(--yellow);color:var(--yellow);}
+.dfs-il-warning{background:rgba(255,59,92,0.10);border:1px solid rgba(255,59,92,0.45);color:var(--red);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:9px;font-weight:800;letter-spacing:1px;margin:8px 0;line-height:1.5;}
 .dfs-badge.chalk{background:rgba(255,59,92,0.08);border:1px solid var(--red);color:var(--red);}
 .dfs-badge.confirmed{background:rgba(0,211,100,0.12);border:1px solid var(--green);color:var(--green);}
 .dfs-badge.prime-mvp{background:rgba(91,92,226,0.12);border:1px solid var(--accent2);color:var(--accent2);}
@@ -1378,6 +1379,7 @@ button,
           <button class="dfs-sel-btn active" onclick="dfsSetInjuryFilter('out')" id="dfs-inj-out">Exclude OUT</button>
           <button class="dfs-sel-btn" onclick="dfsSetInjuryFilter('q_and_out')" id="dfs-inj-q_and_out">Exclude Q + OUT</button>
           <button class="dfs-sel-btn" onclick="dfsSetInjuryFilter('all')" id="dfs-inj-all">Show All</button>
+          <button class="dfs-sel-btn" onclick="dfsToggleExcludeIl()" id="dfs-exclude-il-toggle">Exclude IL Players</button>
         </div>
       </div>
       <div class="dfs-selector-group">
@@ -1569,6 +1571,7 @@ let dfsState = {
   csvSort: 'value',
   uploadedPlayers: [],
   uploadedFile: null,
+  excludeIlPlayers: false,
   confirmedActiveOnly: false,
   lockedPlayers: [],
   excludedPlayers: [],
@@ -1851,9 +1854,23 @@ function dfsCsvPlayerVisible(player, filter) {
   const status = String(player.injuryStatus || '').toUpperCase();
   const isOut = /\b(OUT|IR|IL|DNP|SUSP)\b/.test(status);
   const isQuestionable = /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(status);
+  if (dfsState.excludeIlPlayers && dfsIsIlPlayer(player)) return false;
   if (filter === 'out') return !isOut;
   if (filter === 'q_and_out') return !isOut && !isQuestionable;
   return true;
+}
+
+function dfsIsIlPlayer(player) {
+  const status = String(player && player.injuryStatus || '').toUpperCase();
+  const note = String(player && player.injuryNote || '').toUpperCase();
+  return /\b(IL|INJURED LIST)\b/.test(status) || /\b(IL|INJURED LIST)\b/.test(note);
+}
+
+function dfsFindKnownPlayer(name) {
+  const all = []
+    .concat(dfsState.uploadedPlayers || [])
+    .concat((dfsLastLineup && Array.isArray(dfsLastLineup.lineup)) ? dfsLastLineup.lineup : []);
+  return all.find(p => p && p.name === name);
 }
 
 function dfsGetVisibleCsvPlayers(filter = dfsState.csvInjuryFilter) {
@@ -1924,6 +1941,18 @@ function dfsToggleConfirmed() {
   btn.classList.toggle('active-confirmed', dfsState.confirmedActiveOnly);
   btn.textContent = dfsState.confirmedActiveOnly ? '✓ Confirmed Active Highlighted' : '⚡ Highlight Confirmed Active Q';
 }
+function dfsToggleExcludeIl() {
+  dfsState.excludeIlPlayers = !dfsState.excludeIlPlayers;
+  const btn = document.getElementById('dfs-exclude-il-toggle');
+  if (btn) {
+    btn.classList.toggle('active', dfsState.excludeIlPlayers);
+    btn.textContent = dfsState.excludeIlPlayers ? '✓ Excluding IL Players' : 'Exclude IL Players';
+  }
+  dfsRenderCsvPlayers();
+  if (dfsState.uploadedPlayers.length && document.getElementById('dfs-results').style.display !== 'none') {
+    dfsOptimize();
+  }
+}
 function dfsUpdateCapDisplay() {
   const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
   document.getElementById('dfs-cap-display').textContent = '$' + cap.toLocaleString();
@@ -1933,6 +1962,8 @@ function dfsLockPlayer(name) {
   if (dfsState.lockedPlayers.includes(name)) {
     dfsState.lockedPlayers = dfsState.lockedPlayers.filter(n => n !== name);
   } else {
+    const player = dfsFindKnownPlayer(name);
+    if (dfsIsIlPlayer(player) && !confirm('This player is on injured list. Lock anyway?')) return;
     dfsState.lockedPlayers.push(name);
     dfsState.excludedPlayers = dfsState.excludedPlayers.filter(n => n !== name);
   }
@@ -2023,6 +2054,7 @@ function dfsGetEligiblePlayersForOptimization() {
   const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
   return dfsState.uploadedPlayers
     .filter(p => dfsCsvPlayerVisible(p, filter))
+    .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
 }
 
@@ -2149,6 +2181,7 @@ async function dfsOptimize() {
         platform: dfsState.platform,
         contestType: dfsState.contestType,
         injuryFilter: dfsState.injuryFilter,
+        excludeIlPlayers: dfsState.excludeIlPlayers,
         lockedPlayers: dfsState.lockedPlayers,
         excludedPlayers: dfsState.excludedPlayers,
       }),
@@ -2227,7 +2260,9 @@ function dfsRenderResults(data) {
   const alerts = [];
   const lineup = Array.isArray(data.lineup) ? data.lineup : [];
   const minSalCount = lineup.filter(p => (p.salary || 0) < 2500 && (p.salary || 0) > 0).length;
+  const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
   if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players under $2,500. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
+  if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
   if (data.salaryAlert && data.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + data.salaryAlert });
   if (data.antiCorrelationWarning && data.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + data.antiCorrelationWarning });
   if (data.sameGameBonus) alerts.push({ cls: 'info', msg: '🔗 SAME-GAME BONUS — 3+ players from one game: +5% ceiling applied to lineup total.' });
@@ -2241,6 +2276,7 @@ function dfsRenderResults(data) {
   document.getElementById('dfs-lineup-cards').innerHTML = lineup.map((p, i) => {
     const isCpt = i === 0;
     const hasInjury = p.injuryStatus && p.injuryStatus !== 'null';
+    const isIl = dfsIsIlPlayer(p);
     const isConfirmed = !!p.confirmedActive;
     const isPrimeMvp = !!p.primeMvp;
     const isChalk = isGpp && (p.ownershipPct || 0) > 30;
@@ -2251,7 +2287,7 @@ function dfsRenderResults(data) {
     let cardCls = 'dfs-player-card';
     if (isCpt) cardCls += ' captain';
     if (isConfirmed) cardCls += ' confirmed-active';
-    else if (hasInjury) cardCls += ' injury-warn';
+    else if (hasInjury || isIl) cardCls += ' injury-warn';
     if (isLocked) cardCls += ' locked-card';
 
     const slotCls = isCpt ? 'dfs-slot-badge cpt' : 'dfs-slot-badge';
@@ -2301,6 +2337,7 @@ function dfsRenderResults(data) {
     <div class="dfs-player-info">
       <div class="dfs-player-name">${p.name || '—'}${trendHtml}</div>
       <div class="dfs-player-meta">${p.team || ''} vs ${p.opponent || ''} &nbsp;·&nbsp; ${p.position || ''} &nbsp;·&nbsp; $${(p.salary || 0).toLocaleString()}${impliedHtml}${salTrajHtml}</div>
+      ${isIl ? '<div class="dfs-il-warning">INJURED - OUT</div>' : ''}
       <div class="dfs-player-stats">
         <div class="dfs-stat"><div class="dfs-stat-lbl">FLOOR</div><div class="dfs-stat-val warm">${(p.floorFppg || 0).toFixed(1)}</div></div>
         <div class="dfs-stat"><div class="dfs-stat-lbl">PROJ</div><div class="dfs-stat-val accent">${(p.projectedFppg || 0).toFixed(1)}</div></div>
