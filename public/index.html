@@ -2604,7 +2604,7 @@ function dfsGreedyFallbackLineup(cap, slots, players) {
   let remaining = cap;
   for (const slot of slots) {
     const eligible = players
-      .filter(p => dfsPositionMatches(p.position, slot) && !used.has(p.name) && (p.salary || 0) > 0 && (p.salary || 0) <= remaining)
+      .filter(p => dfsPositionMatches(p.position, slot) && !used.has(p.name) && (p.salary || 0) > 0 && (p.salary || 0) * dfsSlotMultiplier(slot) <= remaining)
       .sort((a, b) => {
         const aVal = a.salary ? (a.fppg || 0) / a.salary * 1000 : 0;
         const bVal = b.salary ? (b.fppg || 0) / b.salary * 1000 : 0;
@@ -2614,7 +2614,7 @@ function dfsGreedyFallbackLineup(cap, slots, players) {
     const pick = eligible[0];
     lineup.push(dfsProjectCsvPlayerForSlot(pick, slot));
     used.add(pick.name);
-    remaining -= (pick.salary || 0);
+    remaining -= (pick.salary || 0) * dfsSlotMultiplier(slot);
   }
   return lineup;
 }
@@ -2679,7 +2679,7 @@ function dfsPickBestCsvLineup(opts) {
     states.forEach(state => {
       candidates.forEach(player => {
         if (state.used.has(player.name)) return;
-        const nextSalary = state.salary + (player.salary || 0);
+        const nextSalary = state.salary + (player.salary || 0) * dfsSlotMultiplier(slot);
         if (nextSalary > cap) return;
         const projected = dfsProjectCsvPlayerForSlot(player, slot);
         const projFppg = Number.isFinite(projected.projectedFppg) ? projected.projectedFppg : 0;
@@ -2745,7 +2745,7 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
   let maxPasses = current.length;
 
   while (maxPasses-- > 0) {
-    const currentSalary = current.reduce((s, p) => s + (p.salary || 0), 0);
+    const currentSalary = current.reduce((s, p) => s + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
     const remaining = cap - currentSalary;
     const cheapCount = current.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= minThreshold).length;
     const valueOverload = cheapCount >= 2;
@@ -2769,17 +2769,18 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
       let capFilled = false;
       for (const player of capFillCandidates) {
         const slot = player.slot;
-        const budget = remaining + (player.salary || 0);
+        const slotMult = dfsSlotMultiplier(slot);
+        const budget = remaining + (player.salary || 0) * slotMult;
         const usedNames = new Set(current.map(p => p.name).filter(n => n !== player.name));
         const upgrade = eligiblePool
           .filter(p =>
             dfsPositionMatches(p.position, slot) &&
             !usedNames.has(p.name) &&
-            (p.salary || 0) > (player.salary || 0) &&
-            (p.salary || 0) <= budget &&
+            (p.salary || 0) * slotMult > (player.salary || 0) * slotMult &&
+            (p.salary || 0) * slotMult <= budget &&
             (p.fppg || 0) >= (player.originalFppg || player.fppg || 0) * 0.85
           )
-          .sort((a, b) => (b.salary || 0) - (a.salary || 0))[0];
+          .sort((a, b) => (b.salary || 0) * slotMult - (a.salary || 0) * slotMult)[0];
         if (upgrade) {
           current = current.map(p => p.name === player.name ? dfsProjectCsvPlayerForSlot(upgrade, slot) : p);
           capFilled = true;
@@ -2793,7 +2794,7 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
     let upgraded = false;
     for (const cheapPlayer of sorted) {
       const slot = cheapPlayer.slot;
-      const budget = remaining + (cheapPlayer.salary || 0);
+      const budget = remaining + (cheapPlayer.salary || 0) * dfsSlotMultiplier(slot);
       const usedNames = new Set(current.map(p => p.name).filter(n => n !== cheapPlayer.name));
 
       const candidates = eligiblePool
@@ -2801,7 +2802,8 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
           dfsPositionMatches(p.position, slot) &&
           !usedNames.has(p.name) &&
           (p.salary || 0) >= MID_MIN &&
-          (p.salary || 0) <= Math.min(MID_MAX, budget)
+          (p.salary || 0) <= MID_MAX &&
+          (p.salary || 0) * dfsSlotMultiplier(slot) <= budget
         )
         .sort((a, b) => (b.projectedFppg || b.fppg || 0) - (a.projectedFppg || a.fppg || 0));
 
@@ -2851,12 +2853,12 @@ function dfsOptimizeUploadedCsv() {
   lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool);
 
   // If still <95% cap used, run a second upgrade pass with expanded mid-tier ceiling
-  let totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
+  let totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
   if (totalSalary < cap * 0.95) {
     lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool.concat(
       dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0)
     ));
-    totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
+    totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
   }
 
   const remainingSalary = cap - totalSalary;
