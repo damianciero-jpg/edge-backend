@@ -2197,7 +2197,9 @@ function dfsIsOutStatus(status) {
 // Absolute hard exclusion — applied to every optimizer pool regardless of UI filter setting
 function dfsHardExcludePlayer(player) {
   const s = String(player.injuryStatus || '').trim().toUpperCase();
-  return s === 'O' || s === 'IL' || s === 'OUT';
+  if (s === 'O' || s === 'IL' || s === 'OUT') return true;
+  if ((player.salary || 0) < 3500) return true;
+  return false;
 }
 
 function dfsIsQuestionableStatus(status) {
@@ -2578,7 +2580,7 @@ function dfsCsvCandidateScore(player, slot) {
 function dfsRankCsvLineupState(state, cap) {
   const remaining = cap - state.salary;
   const salaryScore = state.salary / cap;
-  const cheapPenalty = dfsState.sport === 'nba' ? state.cheapNba * 9 : 0;
+  const cheapPenalty = state.cheapCount * 9;
   return (state.ceiling * 100) + (salaryScore * 18) - cheapPenalty - (remaining > 500 ? 12 : 0);
 }
 
@@ -2648,8 +2650,10 @@ function dfsPickBestCsvLineup(opts) {
     salary: 0,
     projected: 0,
     ceiling: 0,
-    cheapNba: 0,
+    cheapCount: 0,
   }];
+
+  const PUNT_SALARY_THRESHOLD = 4500;
 
   slots.forEach(slot => {
     const slotEligible = players.filter(p => dfsPositionMatches(p.position, slot));
@@ -2680,8 +2684,8 @@ function dfsPickBestCsvLineup(opts) {
         const projected = dfsProjectCsvPlayerForSlot(player, slot);
         const projFppg = Number.isFinite(projected.projectedFppg) ? projected.projectedFppg : 0;
         const ceilFppg = Number.isFinite(projected.ceilingFppg) ? projected.ceilingFppg : 0;
-        const nextCheapNba = state.cheapNba + (dfsState.sport === 'nba' && player.salary > 0 && player.salary < 3000 ? 1 : 0);
-        if (dfsState.sport === 'nba' && nextCheapNba > 2 && !locked.has(player.name)) return;
+        const nextCheapCount = state.cheapCount + (player.salary > 0 && player.salary < PUNT_SALARY_THRESHOLD ? 1 : 0);
+        if (nextCheapCount > 1 && !locked.has(player.name)) return;
         const used = new Set(state.used);
         used.add(player.name);
         next.push({
@@ -2690,7 +2694,7 @@ function dfsPickBestCsvLineup(opts) {
           salary: nextSalary,
           projected: state.projected + projFppg,
           ceiling: state.ceiling + ceilFppg,
-          cheapNba: nextCheapNba,
+          cheapCount: nextCheapCount,
         });
       });
     });
@@ -2744,7 +2748,7 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
     const currentSalary = current.reduce((s, p) => s + (p.salary || 0), 0);
     const remaining = cap - currentSalary;
     const cheapCount = current.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= minThreshold).length;
-    const valueOverload = cheapCount >= 3;
+    const valueOverload = cheapCount >= 2;
 
     if (!valueOverload && remaining < 500) break;
 
@@ -2961,7 +2965,7 @@ function dfsRenderResults(data) {
   const minSalCount = lineup.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= _minSalThreshold).length;
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
   const newlyInjuredPlayers = lineup.filter(p => p.newlyInjured).map(p => p.name).filter(Boolean);
-  if (minSalCount >= 3) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players at or under $${_minSalThreshold.toLocaleString()}. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
+  if (minSalCount >= 2) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players at or under $${_minSalThreshold.toLocaleString()}. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
   if (newlyInjuredPlayers.length) alerts.push({ cls: 'warn', msg: `NEW INJURY WARNING — ${newlyInjuredPlayers.join(', ')} updated after refresh.` });
   if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
