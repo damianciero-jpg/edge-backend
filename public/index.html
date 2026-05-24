@@ -2194,6 +2194,12 @@ function dfsIsOutStatus(status) {
   return /\b(OUT|IR|IL|DNP|SUSP)\b/.test(String(status || '').toUpperCase());
 }
 
+// Absolute hard exclusion — applied to every optimizer pool regardless of UI filter setting
+function dfsHardExcludePlayer(player) {
+  const s = String(player.injuryStatus || '').trim().toUpperCase();
+  return s === 'O' || s === 'IL' || s === 'OUT';
+}
+
 function dfsIsQuestionableStatus(status) {
   return /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(String(status || '').toUpperCase());
 }
@@ -2494,6 +2500,7 @@ function dfsLineupSlots() {
 function dfsGetEligiblePlayersForOptimization() {
   const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
   let players = dfsState.uploadedPlayers
+    .filter(p => !dfsHardExcludePlayer(p))
     .filter(p => dfsCsvPlayerVisible(p, filter))
     .filter(p => !(p.newlyInjured && dfsIsOutStatus(p.injuryStatus)))
     .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
@@ -2615,7 +2622,7 @@ function dfsPickBestCsvLineup(opts) {
   const cap = dfsGetCap();
   const slots = dfsLineupSlots();
   const players = relaxFilters
-    ? dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0)
+    ? dfsState.uploadedPlayers.filter(p => !dfsHardExcludePlayer(p) && (p.salary || 0) > 0 && (p.fppg || 0) > 0)
     : dfsGetEligiblePlayersForOptimization();
   const locked = new Set(dfsState.lockedPlayers.filter(Boolean));
   const eligibleLocked = [...locked].filter(name => players.some(p => p.name === name));
@@ -2793,8 +2800,8 @@ function dfsOptimizeUploadedCsv() {
     try {
       lineup = dfsPickBestCsvLineup({ relaxFilters: true });
     } catch (e2) {
-      // Attempt 3: pure points-per-dollar greedy with full unfiltered pool
-      const allPlayers = dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0);
+      // Attempt 3: pure greedy with full pool, still honour hard injury exclusions
+      const allPlayers = dfsState.uploadedPlayers.filter(p => !dfsHardExcludePlayer(p) && (p.salary || 0) > 0 && (p.fppg || 0) > 0);
       const greedy = dfsGreedyFallbackLineup(cap, slots, allPlayers);
       if (!greedy) throw e2;
       lineup = greedy;
@@ -2803,7 +2810,7 @@ function dfsOptimizeUploadedCsv() {
   }
 
   const eligiblePool = dfsGetEligiblePlayersForOptimization().concat(
-    usedFallback ? dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0) : []
+    usedFallback ? dfsState.uploadedPlayers.filter(p => !dfsHardExcludePlayer(p) && (p.salary || 0) > 0 && (p.fppg || 0) > 0) : []
   );
 
   // Always backtrack-upgrade to maximize cap usage; apply to all sports
