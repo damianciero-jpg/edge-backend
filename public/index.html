@@ -1411,6 +1411,16 @@ button,
     <!-- Cap & slot info -->
     <div class="dfs-cap-info">
       SALARY CAP: <span id="dfs-cap-display" style="color:var(--accent);font-weight:700;">$50,000</span>
+      <select id="dfs-cap-select" onchange="dfsSetCustomCap(+this.value)" style="font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:3px 6px;margin-left:6px;cursor:pointer;">
+        <option value="">Auto ($50,000)</option>
+        <option value="15000">$15,000</option>
+        <option value="20000">$20,000</option>
+        <option value="25000">$25,000</option>
+        <option value="30000">$30,000</option>
+        <option value="35000">$35,000</option>
+        <option value="50000">$50,000</option>
+        <option value="60000">$60,000</option>
+      </select>
       &nbsp;·&nbsp;
       LINEUP: <span id="dfs-slots-display" style="color:var(--accent);">CPT + 5 FLEX (6 players)</span>
     </div>
@@ -1602,6 +1612,7 @@ let dfsState = {
   excludedPlayers: [],
   injuryRefreshActive: false,
   injuryAbortController: null,
+  customCap: null,
 };
 let dfsLastLineup = null;
 
@@ -1617,6 +1628,7 @@ const DFS_CSV_COLUMNS = {
   gameLocation: ['location', 'venue', 'stadium', 'ballpark', 'city', 'game city', 'gamecity'],
   gameTotal: ['game total', 'gametotal', 'vegas total', 'vegastotal', 'total', 'o/u', 'over under', 'overunder'],
   opposingPitcherEra: ['opposing pitcher era', 'opposingpitcherera', 'opp pitcher era', 'opppitcherera', 'pitcher era', 'pitcherera', 'opp era', 'oppera'],
+  probablePitcher: ['probable pitcher', 'probablepitcher', 'probable starter', 'confirmedstarter', 'confirmed starter', 'starter'],
 };
 
 const DFS_TEAM_CITY = {
@@ -1858,6 +1870,7 @@ function dfsBuildPlayersFromCsv(text) {
     gameLocation: dfsFindCsvColumn(headers, 'gameLocation'),
     gameTotal: dfsFindCsvColumn(headers, 'gameTotal'),
     opposingPitcherEra: dfsFindCsvColumn(headers, 'opposingPitcherEra'),
+    probablePitcher: dfsFindCsvColumn(headers, 'probablePitcher'),
   };
   if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Player Name.');
   if (!columns.position) throw new Error('Missing Position column. Try Pos, Position, or Pos.');
@@ -1877,6 +1890,9 @@ function dfsBuildPlayersFromCsv(text) {
     const gameLocation = columns.gameLocation ? String(row[idx[columns.gameLocation]] || '').trim() : '';
     const gameTotal = columns.gameTotal ? dfsParsePoints(row[idx[columns.gameTotal]]) : null;
     const opposingPitcherEra = columns.opposingPitcherEra ? dfsParsePoints(row[idx[columns.opposingPitcherEra]]) : null;
+    const probablePitcher = columns.probablePitcher
+      ? String(row[idx[columns.probablePitcher]] || '').trim().toUpperCase() === 'YES'
+      : false;
     return {
       id: `${name}-${i}`,
       name,
@@ -1893,6 +1909,7 @@ function dfsBuildPlayersFromCsv(text) {
       gameLocation,
       gameTotal,
       opposingPitcherEra,
+      probablePitcher,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
   }).filter(p => p.name && p.position && p.salary > 0 && p.fppg > 0);
@@ -2008,6 +2025,7 @@ function dfsRenderCsvPlayers() {
 
 function dfsSetSport(s) {
   dfsState.sport = s;
+  dfsState.customCap = null;
   document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
   document.getElementById('dfs-sport-' + s).classList.add('active');
   dfsState.weather = null;
@@ -2016,6 +2034,7 @@ function dfsSetSport(s) {
 }
 function dfsSetPlatform(p) {
   dfsState.platform = p;
+  dfsState.customCap = null;
   document.querySelectorAll('[id^="dfs-plat-"]').forEach(el => el.classList.remove('active'));
   document.getElementById('dfs-plat-' + p).classList.add('active');
   dfsUpdateCapDisplay();
@@ -2055,10 +2074,28 @@ function dfsToggleExcludeIl() {
     dfsOptimize();
   }
 }
+function dfsGetCap() {
+  return dfsState.customCap || DFS_CAPS[dfsState.platform][dfsState.sport];
+}
+
+function dfsSetCustomCap(value) {
+  dfsState.customCap = value > 0 ? value : null;
+  dfsUpdateCapDisplay();
+  if (dfsLastLineup && dfsState.uploadedPlayers.length) dfsOptimize();
+}
+
 function dfsUpdateCapDisplay() {
-  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
-  document.getElementById('dfs-cap-display').textContent = '$' + cap.toLocaleString();
-  document.getElementById('dfs-slots-display').textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+  const autoCap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const cap = dfsGetCap();
+  const capEl = document.getElementById('dfs-cap-display');
+  if (capEl) capEl.textContent = '$' + cap.toLocaleString();
+  const slotsEl = document.getElementById('dfs-slots-display');
+  if (slotsEl) slotsEl.textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+  const sel = document.getElementById('dfs-cap-select');
+  if (sel) {
+    sel.options[0].text = `Auto ($${autoCap.toLocaleString()})`;
+    if (!dfsState.customCap) sel.value = '';
+  }
 }
 function dfsLockPlayer(name) {
   if (dfsState.lockedPlayers.includes(name)) {
@@ -2195,6 +2232,14 @@ async function dfsRefreshInjuries() {
     return;
   }
   if (dfsState.injuryRefreshActive) return;
+
+  // 30-minute cache: skip re-fetch if fresh data exists
+  const lastRefresh = dfsState.injuryRefresh && dfsState.injuryRefresh.updatedAt;
+  if (lastRefresh && Date.now() - new Date(lastRefresh).getTime() < 30 * 60 * 1000) {
+    showToast('Injury data is current (refreshed < 30 min ago)', 'success');
+    return;
+  }
+
   dfsState.injuryRefreshActive = true;
 
   const btn = document.getElementById('dfs-refresh-injuries-btn');
@@ -2204,13 +2249,11 @@ async function dfsRefreshInjuries() {
   if (cancelBtn) cancelBtn.style.display = 'inline-block';
   if (errEl) errEl.style.display = 'none';
 
-  // Snapshot current players so we can restore on network failure
   const cachedPlayers = dfsState.uploadedPlayers.slice();
-
   const controller = new AbortController();
   dfsState.injuryAbortController = controller;
 
-  // Hard timeout: abort if server does not respond within 90s (matches Claude server-side timeout)
+  // Hard abort after 90s (server-side Claude call can take up to 90s)
   const hardTimeoutId = setTimeout(() => {
     if (dfsState.injuryRefreshActive) controller.abort();
   }, 90000);
@@ -2234,18 +2277,16 @@ async function dfsRefreshInjuries() {
             })),
           }),
         }),
-        // 5-second fast-fail: if network cannot reach server at all, abort with cached data
+        // 5-second fast-fail: abort if server unreachable
         new Promise((_, reject) => {
-          const t = setTimeout(() => {
-            // Only reject if no response bytes have arrived yet (handled via AbortError below)
-          }, 5000);
+          const t = setTimeout(() => reject(Object.assign(new Error('Injury data unavailable, using cached data'), { name: 'AbortError' })), 5000);
           controller.signal.addEventListener('abort', () => clearTimeout(t));
         }),
       ]);
     } catch (fetchErr) {
       if (fetchErr.name === 'AbortError') {
         dfsState.uploadedPlayers = cachedPlayers;
-        showToast('Injury network timeout: using cached data', 'error');
+        showToast(fetchErr.message || 'Injury network timeout: using cached data', 'error');
         return;
       }
       throw fetchErr;
@@ -2260,15 +2301,14 @@ async function dfsRefreshInjuries() {
     }
     const data = body.data || body;
 
-    // Apply status updates in throttled batches of 5 to avoid UI jank on large rosters
     const rawPlayers = data.players || [];
+    const total = rawPlayers.length;
     const byName = new Map();
-    for (let i = 0; i < rawPlayers.length; i += 5) {
+    for (let i = 0; i < total; i += 5) {
       const chunk = rawPlayers.slice(i, i + 5);
       chunk.forEach(p => byName.set(String(p.name || '').toLowerCase(), p));
-      if (i + 5 < rawPlayers.length) {
-        await new Promise(r => setTimeout(r, 300));
-      }
+      if (btn) btn.textContent = `Refreshing... ${Math.min(i + 5, total)} of ${total}`;
+      if (i + 5 < total) await new Promise(r => setTimeout(r, 500));
       if (!dfsState.injuryRefreshActive) {
         dfsState.uploadedPlayers = cachedPlayers;
         return;
@@ -2453,11 +2493,19 @@ function dfsLineupSlots() {
 
 function dfsGetEligiblePlayersForOptimization() {
   const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
-  return dfsState.uploadedPlayers
+  let players = dfsState.uploadedPlayers
     .filter(p => dfsCsvPlayerVisible(p, filter))
     .filter(p => !(p.newlyInjured && dfsIsOutStatus(p.injuryStatus)))
     .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
+
+  if (dfsState.sport === 'mlb') {
+    const anyConfirmedPitcher = dfsState.uploadedPlayers.some(p => dfsIsMlbPitcher(p) && p.probablePitcher);
+    if (anyConfirmedPitcher) {
+      players = players.filter(p => !dfsIsMlbPitcher(p) || p.probablePitcher);
+    }
+  }
+  return players;
 }
 
 function dfsSlotMultiplier(slot) {
@@ -2564,7 +2612,7 @@ function dfsGreedyFallbackLineup(cap, slots, players) {
 
 function dfsPickBestCsvLineup(opts) {
   const relaxFilters = opts && opts.relaxFilters;
-  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const cap = dfsGetCap();
   const slots = dfsLineupSlots();
   const players = relaxFilters
     ? dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0)
@@ -2663,7 +2711,7 @@ function dfsPickBestCsvLineup(opts) {
     const breakdown = isMlbNfl
       ? `P: ${pCount}, INF: ${infCount}, OF: ${ofCount}`
       : Object.entries(posBreakdown).map(([k,v]) => `${k}: ${v}`).join(', ');
-    throw new Error(`No lineup fits. Pool breakdown: ${breakdown}. Check your position mappings.`);
+    throw new Error(`No lineup fits under $${cap.toLocaleString()} cap. Available players: ${players.length}. Minimum salary for ${slots.length}: $${cheapestSum.toLocaleString()}. Increase cap or reduce roster. (${breakdown})`);
   }
 
   const within500 = complete.filter(state => cap - state.salary <= 500);
@@ -2732,7 +2780,7 @@ function dfsBacktrackUpgrade(lineup, cap, eligiblePool) {
 }
 
 function dfsOptimizeUploadedCsv() {
-  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const cap = dfsGetCap();
   const slots = dfsLineupSlots();
   let lineup;
   let usedFallback = false;
@@ -2758,16 +2806,23 @@ function dfsOptimizeUploadedCsv() {
     usedFallback ? dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0) : []
   );
 
-  if (['mlb', 'nfl'].includes(dfsState.sport)) {
-    lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool);
+  // Always backtrack-upgrade to maximize cap usage; apply to all sports
+  lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool);
+
+  // If still <95% cap used, run a second upgrade pass with expanded mid-tier ceiling
+  let totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
+  if (totalSalary < cap * 0.95) {
+    lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool.concat(
+      dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0)
+    ));
+    totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
   }
 
-  const totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0), 0);
   const remainingSalary = cap - totalSalary;
   const totalProjectedPoints = lineup.reduce((sum, p) => sum + (p.projectedFppg || 0), 0);
   const file = dfsState.uploadedFile;
   const salaryAlert = remainingSalary > 500
-    ? 'Salary not optimized — tap REGENERATE to fill remaining cap'
+    ? 'Salary not fully utilized — tap REGENERATE to try a higher-salary build'
     : null;
   return {
     lineup,
@@ -2826,7 +2881,13 @@ async function dfsOptimize() {
     dfsRenderResults(body);
   } catch (err) {
     const errEl = document.getElementById('dfs-error');
-    errEl.textContent = err.message || 'Optimization failed. Please try again.';
+    let msg = err.message || 'Optimization failed. Please try again.';
+    if (/No lineup fits/i.test(msg) && dfsState.uploadedPlayers.length) {
+      const cap = dfsGetCap();
+      const fittable = dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= cap).length;
+      msg = `Only ${fittable} players fit under $${cap.toLocaleString()} cap. Upload larger CSV, lower cap, or exclude fewer injuries. (${msg})`;
+    }
+    errEl.textContent = msg;
     errEl.style.display = 'block';
   } finally {
     document.getElementById('dfs-loading').style.display = 'none';
@@ -2839,7 +2900,7 @@ function dfsRenderResults(data) {
   const sportName = dfsState.sport.toUpperCase();
   const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
   const isGpp = dfsState.contestType === 'gpp';
-  const cap = DFS_CAPS[dfsState.platform][dfsState.sport];
+  const cap = dfsGetCap();
 
   document.getElementById('dfs-result-meta').textContent =
     `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}`;
