@@ -1611,7 +1611,7 @@ const DFS_CAPS = {
 const DFS_SLOT_LABELS = {
   nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
   nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb:  { draftkings: 'P + 8 flex hitters (9 players)', fanduel: 'P + 8 flex hitters (9 players)' },
+  mlb:  { draftkings: 'P + 8 flex hitters (9 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
   golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
 };
 
@@ -1640,10 +1640,11 @@ let dfsLastLineup = null;
 
 const DFS_CSV_COLUMNS = {
   name: ['name', 'player', 'playername', 'player name', 'nickname', 'name + id', 'player name + id'],
-  position: ['pos', 'position', 'pos.', 'roster position', 'rosterposition', 'eligible positions', 'eligiblepositions', 'lineup position', 'lineupposition'],
+  // Prefer roster/eligible position columns (FanDuel) over raw position (DK)
+  position: ['roster position', 'rosterposition', 'eligible positions', 'eligiblepositions', 'lineup position', 'lineupposition', 'pos', 'position', 'pos.'],
   salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$', 'sal', 'fdsalary', 'dksalary'],
   fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints', 'fpts', 'points'],
-  injuryStatus: ['injury', 'status', 'notes', 'injury status', 'injurystatus', 'injury indicator'],
+  injuryStatus: ['injury indicator', 'injuryindicator', 'injury', 'status', 'notes', 'injury status', 'injurystatus'],
   team: ['team', 'team abbrev', 'teamabbrev', 'team abbreviation', 'teamabbr'],
   opponent: ['opponent', 'opp', 'opposing team', 'opposingteam'],
   gameInfo: ['game info', 'gameinfo', 'game', 'matchup', 'event'],
@@ -1651,6 +1652,8 @@ const DFS_CSV_COLUMNS = {
   gameTotal: ['game total', 'gametotal', 'vegas total', 'vegastotal', 'total', 'o/u', 'over under', 'overunder'],
   opposingPitcherEra: ['opposing pitcher era', 'opposingpitcherera', 'opp pitcher era', 'opppitcherera', 'pitcher era', 'pitcherera', 'opp era', 'oppera'],
   probablePitcher: ['probable pitcher', 'probablepitcher', 'probable starter', 'confirmedstarter', 'confirmed starter', 'starter'],
+  battingOrder: ['batting order', 'battingorder', 'bat order', 'batorder', 'batting pos', 'bat pos', 'bat#'],
+  confirmedActive: ['confirmed active', 'confirmedactive'],
 };
 
 const DFS_TEAM_CITY = {
@@ -1846,8 +1849,10 @@ async function dfsHandleCsvUpload(event) {
     dfsState.injuryFilter = 'all';
     dfsState.csvInjuryFilter = 'all';
     dfsState.csvSort = 'value';
+    // FanDuel uses "Nickname" for player name — use as platform signal
+    const isFanDuelCsv = parsed.source === 'fanduel_mlb_malformed' || parsed.columns.name === 'Nickname';
+    if (isFanDuelCsv) dfsSetPlatform('fanduel');
     if (parsed.source === 'fanduel_mlb_malformed') {
-      dfsSetPlatform('fanduel');
       dfsSetSport('mlb');
     } else if (dfsIsGolfPool(parsed.players)) {
       dfsSetSport('golf');
@@ -1859,9 +1864,8 @@ async function dfsHandleCsvUpload(event) {
     document.getElementById('dfs-csv-panel').style.display = 'block';
     document.getElementById('dfs-upload-meta').textContent =
       `${file.name} · ${dfsFormatBytes(file.size)} · ${parsed.players.length} players loaded`;
-    successEl.textContent = parsed.source === 'fanduel_mlb_malformed'
-      ? `FanDuel MLB CSV loaded successfully: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`
-      : `Upload successful: ${parsed.players.length} players loaded from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
+    const fdLabel = isFanDuelCsv ? 'FanDuel CSV' : 'CSV';
+    successEl.textContent = `${fdLabel} loaded: ${parsed.players.length} players from ${file.name} at ${dfsState.uploadedFile.uploadedAt.toLocaleTimeString()}.`;
     successEl.style.display = 'block';
     showToast(`${parsed.players.length} DFS players loaded`, 'success');
     dfsUpdateInjuryRefreshMeta();
@@ -1879,7 +1883,9 @@ async function dfsHandleCsvUpload(event) {
 }
 
 function dfsBuildPlayersFromCsv(text) {
-  const rows = dfsParseCsv(text);
+  // Strip UTF-8 BOM if present (common in FanDuel CSV exports)
+  const cleanText = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const rows = dfsParseCsv(cleanText);
   if (rows.length < 2) throw new Error('CSV is malformed: no player rows found.');
   const fanduelMalformed = dfsTryParseFanDuelMalformedCsv(rows);
   if (fanduelMalformed) return fanduelMalformed;
@@ -1898,8 +1904,10 @@ function dfsBuildPlayersFromCsv(text) {
     gameTotal: dfsFindCsvColumn(headers, 'gameTotal'),
     opposingPitcherEra: dfsFindCsvColumn(headers, 'opposingPitcherEra'),
     probablePitcher: dfsFindCsvColumn(headers, 'probablePitcher'),
+    battingOrder: dfsFindCsvColumn(headers, 'battingOrder'),
+    confirmedActive: dfsFindCsvColumn(headers, 'confirmedActive'),
   };
-  if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Player Name.');
+  if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Nickname.');
   if (!columns.salary) throw new Error('Missing Salary column. Try Salary, Cost, or Avg Cost.');
   if (!columns.fppg) throw new Error('Missing FPPG column. Try FPPG, Avg Points, or Projected Points.');
 
@@ -1908,7 +1916,12 @@ function dfsBuildPlayersFromCsv(text) {
     const salary = dfsParseMoney(row[idx[columns.salary]]);
     const fppg = dfsParsePoints(row[idx[columns.fppg]]);
     const name = dfsCleanPlayerName(row[idx[columns.name]]);
-    const position = columns.position ? dfsNormalizePosition(row[idx[columns.position]]) : '';
+    const rawPos = columns.position ? String(row[idx[columns.position]] || '').trim() : '';
+    // Track relievers before normalization (RP without SP/P -> pure reliever)
+    const isReliever = /\b(RP|RELIEF PITCHER|RELIEVER)\b/i.test(rawPos) &&
+      !/\b(SP|STARTING PITCHER)\b/i.test(rawPos) && !/^P$/i.test(rawPos.trim());
+    const positions = dfsNormalizePositions(rawPos);
+    const position = positions.join('/');
     const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
     const team = columns.team ? dfsNormalizeTeam(row[idx[columns.team]]) : '';
     const opponent = columns.opponent ? dfsNormalizeTeam(row[idx[columns.opponent]]) : '';
@@ -1919,10 +1932,16 @@ function dfsBuildPlayersFromCsv(text) {
     const probablePitcher = columns.probablePitcher
       ? /^(YES|PROBABLE|Y|TRUE|1)$/i.test(String(row[idx[columns.probablePitcher]] || '').trim())
       : false;
+    const battingOrder = columns.battingOrder ? (parseInt(String(row[idx[columns.battingOrder]] || ''), 10) || null) : null;
+    const confirmedActive = columns.confirmedActive
+      ? /^(YES|TRUE|Y|1)$/i.test(String(row[idx[columns.confirmedActive]] || '').trim())
+      : null;
     return {
       id: `${name}-${i}`,
       name,
       position,
+      positions,
+      isReliever,
       salary,
       fppg,
       projectedFppg: fppg,
@@ -1936,20 +1955,21 @@ function dfsBuildPlayersFromCsv(text) {
       gameTotal,
       opposingPitcherEra,
       probablePitcher,
+      battingOrder,
+      confirmedActive,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
   }).filter(p => p.name && p.salary > 0 && p.fppg > 0);
   if (!players.length) throw new Error('No players parsed. Check column names and salary/FPPG values.');
 
-  // Debug: parse stats and position breakdown
   const _rawPosSample = columns.position
     ? [...new Set(rows.slice(1, 21).map(r => String(r[idx[columns.position]] || '').trim()).filter(Boolean))].slice(0, 10).join(', ')
     : '(position column not found)';
   const _posCounts = {};
-  players.forEach(p => String(p.position||'').split('/').filter(Boolean).forEach(pos => { _posCounts[pos] = (_posCounts[pos]||0) + 1; }));
-  console.log(`[DFS CSV] Rows: ${rows.length-1} | Parsed: ${players.length} | With salary: ${players.filter(p=>p.salary>0).length} | With proj: ${players.filter(p=>p.fppg>0).length}`);
-  console.log(`[DFS CSV] Columns detected: name="${columns.name}" pos="${columns.position||'NOT FOUND'}" salary="${columns.salary}" fppg="${columns.fppg}"`);
-  console.log(`[DFS CSV] Raw position sample (pre-normalize):`, _rawPosSample);
+  players.forEach(p => (p.positions || []).forEach(pos => { _posCounts[pos] = (_posCounts[pos]||0) + 1; }));
+  console.log(`[DFS CSV] Rows: ${rows.length-1} | Parsed: ${players.length} | Relievers excluded: ${players.filter(p=>p.isReliever).length}`);
+  console.log(`[DFS CSV] Columns: name="${columns.name}" pos="${columns.position||'NOT FOUND'}" salary="${columns.salary}" fppg="${columns.fppg}" battingOrder="${columns.battingOrder||'none'}" starter="${columns.probablePitcher||'none'}"`);
+  console.log(`[DFS CSV] Raw position sample:`, _rawPosSample);
   console.log(`[DFS CSV] Normalized position counts:`, _posCounts);
 
   return { players, columns, source: 'header' };
@@ -1964,7 +1984,11 @@ function dfsTryParseFanDuelMalformedCsv(rows) {
     const colonName = idName.includes(':') ? idName.split(':').slice(1).join(':').trim() : '';
     const fallbackName = String(row[15] || '').trim();
     const name = dfsCleanPlayerName(colonName || fallbackName);
-    const position = dfsNormalizePosition(row[13]);
+    const rawPos = String(row[13] || '').trim();
+    const isReliever = /\b(RP|RELIEF PITCHER|RELIEVER)\b/i.test(rawPos) &&
+      !/\b(SP|STARTING PITCHER)\b/i.test(rawPos) && !/^P$/i.test(rawPos.trim());
+    const positions = dfsNormalizePositions(rawPos);
+    const position = positions.join('/');
     const fppg = dfsParsePoints(row[17]);
     const salary = dfsParseMoney(row[19]);
     const injuryFields = row.slice(20).map(v => String(v || '').trim().toUpperCase()).filter(Boolean);
@@ -1975,12 +1999,16 @@ function dfsTryParseFanDuelMalformedCsv(rows) {
       id: `${name}-${i}`,
       name,
       position,
+      positions,
+      isReliever,
       salary,
       fppg,
       projectedFppg: fppg,
       floorFppg: fppg * 0.75,
       ceilingFppg: fppg * 1.25,
       injuryStatus,
+      battingOrder: null,
+      confirmedActive: null,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
   }).filter(Boolean);
@@ -2257,7 +2285,10 @@ function dfsRenderPositionCounts() {
   const eligible = dfsGetEligiblePlayersForOptimization();
   let positions;
   if (dfsState.sport === 'mlb') {
-    positions = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF'];
+    // FanDuel MLB shows slot-level eligibility; DK shows individual positions
+    positions = dfsState.platform === 'fanduel'
+      ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF']
+      : ['P', 'C', '1B', '2B', '3B', 'SS', 'OF'];
   } else {
     const slots = dfsLineupSlots();
     const skipSlots = new Set(['FLEX','UTIL','CPT','MVP','STAR','PRO','G']);
@@ -2329,21 +2360,29 @@ function dfsUpdatePlayerCardButtons(name) {
   });
 }
 
-function dfsNormalizePosition(raw) {
-  return String(raw || '').trim().toUpperCase()
-    .split(/[\/,; ]+/)
+function dfsNormalizePositions(raw) {
+  const seen = new Set();
+  const result = [];
+  String(raw || '').trim().toUpperCase()
+    .split(/[\/,;\s]+/)
     .filter(Boolean)
-    .map(part => {
-      if (/^(SP|STARTING PITCHER)$/.test(part)) return 'P';
-      if (/^(RELIEF PITCHER)$/.test(part)) return 'RP'; // keep RP as RP — excluded via dfsHardExcludePlayer
-      if (/^(LF|CF|RF|LEFT FIELD|CENTER FIELD|RIGHT FIELD)$/.test(part)) return 'OF';
-      if (/^(DH|DESIGNATED HITTER)$/.test(part)) return 'UTIL';
-      if (/^(CATCHER)$/.test(part)) return 'C';
-      if (/^(INFIELD|INFIELDER)$/.test(part)) return 'INF';
-      if (/^(GOLF|PGA|PLAYER|GOLFER)$/.test(part)) return 'G';
-      return part;
-    })
-    .join('/');
+    .forEach(part => {
+      let norm;
+      if (/^(SP|STARTING PITCHER)$/.test(part)) norm = 'P';
+      else if (/^(RP|RELIEF PITCHER|RELIEVER)$/.test(part)) norm = 'P'; // RP->P; isReliever flag tracks actual role
+      else if (/^(LF|CF|RF|LEFT FIELD|CENTER FIELD|RIGHT FIELD)$/.test(part)) norm = 'OF';
+      else if (/^(DH|DESIGNATED HITTER)$/.test(part)) norm = 'UTIL';
+      else if (/^(CATCHER)$/.test(part)) norm = 'C';
+      else if (/^(INFIELD|INFIELDER)$/.test(part)) norm = 'INF';
+      else if (/^(GOLF|PGA|PLAYER|GOLFER)$/.test(part)) norm = 'G';
+      else norm = part;
+      if (!seen.has(norm)) { seen.add(norm); result.push(norm); }
+    });
+  return result;
+}
+
+function dfsNormalizePosition(raw) {
+  return dfsNormalizePositions(raw).join('/');
 }
 
 function dfsIsGolfPool(players) {
@@ -2362,9 +2401,13 @@ function dfsIsMlbPool(players) {
   const MLB = new Set(['P', 'SP', 'RP', 'C', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH']);
   const NBA = new Set(['PG', 'SG', 'SF', 'PF']);
   const NFL = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DST']);
+  // FanDuel MLB roster position patterns (multi-position eligibility)
+  const FD_MLB = new Set(['C/1B', '2B/SS', '3B/SS']);
   let mlb = 0, nba = 0, nfl = 0;
   for (const p of players) {
-    const parts = String(p.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
+    const normPos = String(p.position || '').toUpperCase().trim();
+    if (FD_MLB.has(normPos)) { mlb++; continue; }
+    const parts = normPos.split(/[\/,; ]+/).filter(Boolean);
     if (parts.some(pos => NBA.has(pos))) nba++;
     else if (parts.some(pos => NFL.has(pos))) nfl++;
     else if (parts.some(pos => MLB.has(pos))) mlb++;
@@ -2379,11 +2422,16 @@ function dfsPositionMatches(playerPosition, slot) {
   if (slot === 'INF') return parts.some(p => ['C','1B','2B','3B','SS','INF'].includes(p));
   if (slot === 'G') return !parts.length || parts.some(p => ['G','GOLF','PGA','PLAYER','GOLFER'].includes(p));
   if (slot === 'C/1B') return parts.includes('C') || parts.includes('1B');
+  if (slot === '2B') return parts.includes('2B');
+  if (slot === '3B') return parts.includes('3B');
+  if (slot === 'SS') return parts.includes('SS');
+  if (slot === 'OF') return parts.includes('OF');
   if (slot === 'DST') return parts.includes('DST') || parts.includes('DEF') || raw.includes('D/ST');
   return parts.includes(slot);
 }
 
 function dfsIsMlbPitcher(player) {
+  if (player && player.positions && player.positions.length) return player.positions.includes('P');
   const raw = String(player && player.position || '').toUpperCase();
   const parts = raw.split(/[\/,; ]+/).filter(Boolean);
   return parts.includes('P') || parts.includes('SP') || parts.includes('RP');
@@ -2414,10 +2462,9 @@ function dfsHardExcludePlayer(player) {
   const salary = player.salary || 0;
   if (salary > 0 && salary < dfsGetSalaryFloor()) return true;
   if (dfsState.sport === 'mlb') {
-    const parts = String(player.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
-    // Exclude pure relievers (RP with no SP/P designation) — never starters
-    if (parts.includes('RP') && !parts.includes('SP') && !parts.includes('P')) return true;
-    // Exclude non-probable pitchers when CSV has a Probable Pitcher column
+    // Exclude pure relievers (isReliever flag set during CSV parse)
+    if (player.isReliever) return true;
+    // Exclude non-probable pitchers when CSV has a Probable Pitcher / Starter column
     if (dfsIsMlbPitcher(player) && !player.probablePitcher) {
       const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
       if (hasProbableCol) return true;
@@ -2725,8 +2772,10 @@ function dfsLineupSlots() {
   if (sport === 'nfl') return platform === 'draftkings'
     ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
     : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
-  // MLB: 1 confirmed starter + 8 flex hitters (any non-pitcher position)
-  return ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
+  // MLB: FanDuel uses specific positional slots; DraftKings uses loose flex
+  if (sport === 'mlb') return platform === 'fanduel'
+    ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL']
+    : ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
 }
 
 function dfsFlexMlbSlots(count) {
@@ -2805,6 +2854,12 @@ function dfsCsvCandidateScore(player, slot) {
     if (player.salary >= 5000 && player.salary <= 12000) score += 8;
     if (player.salary > 0 && player.salary < 3000) score -= 18;
   }
+  if (dfsState.sport === 'mlb' && !dfsIsMlbPitcher(player)) {
+    const bo = player.battingOrder;
+    if (bo >= 1 && bo <= 3) score += 5;       // leadoff/top order premium
+    else if (bo >= 4 && bo <= 5) score += 2;  // RBI spots
+    else if (bo >= 8 && bo <= 9) score -= 3;  // bottom of order penalty
+  }
   return score;
 }
 
@@ -2837,6 +2892,10 @@ function dfsGreedyFallbackLineup(cap, slots, players) {
     const eligible = players
       .filter(p => dfsPositionMatches(p.position, slot) && !used.has(p.name) && (p.salary || 0) > 0 && (p.salary || 0) * dfsSlotMultiplier(slot) <= remaining && !(dfsState.sport === 'mlb' && slot === 'UTIL' && dfsIsMlbPitcher(p)))
       .sort((a, b) => {
+        if (dfsState.sport === 'mlb') {
+          // MLB: rank by raw projection, not value-per-dollar
+          return (b.ceilingFppg || b.fppg || 0) - (a.ceilingFppg || a.fppg || 0);
+        }
         const aVal = a.salary ? (a.fppg || 0) / a.salary * 1000 : 0;
         const bVal = b.salary ? (b.fppg || 0) / b.salary * 1000 : 0;
         return bVal - aVal;
@@ -2875,11 +2934,21 @@ function dfsPickBestCsvLineup(opts) {
     if (_cheapest) { cheapestSum += _cheapest.salary || 0; _debugUsed.add(_cheapest.name); }
   }
   const _posCounts = {};
-  players.forEach(p => String(p.position||'').split('/').filter(Boolean).forEach(pos => { _posCounts[pos] = (_posCounts[pos]||0) + 1; }));
+  players.forEach(p => (p.positions || String(p.position||'').split('/')).filter(Boolean).forEach(pos => { _posCounts[pos] = (_posCounts[pos]||0) + 1; }));
   console.log(`[DFS Debug] Sport: ${dfsState.sport}, Platform: ${dfsState.platform}, Slots: [${slots.join(', ')}]`);
-  console.log(`[DFS Debug] Loaded: ${dfsState.uploadedPlayers.length}, After injury/exclusion filters: ${players.length}, Cheapest ${slots.length}-combo: $${cheapestSum}`);
+  console.log(`[DFS Debug] Loaded: ${dfsState.uploadedPlayers.length}, After filters: ${players.length}, Cheapest ${slots.length}-combo: $${cheapestSum}`);
   console.log(`[DFS Debug] By normalized position:`, _posCounts);
-  console.log(`[DFS Debug] Salary floor excludes players <$3,500. Min salary in active pool: $${players.length ? Math.min(...players.map(p => p.salary||0).filter(s=>s>0)) : 'N/A'}`);
+  console.log(`[DFS Debug] Salary floor: $${dfsGetSalaryFloor()}, Min salary in pool: $${players.length ? Math.min(...players.map(p => p.salary||0).filter(s=>s>0)) : 'N/A'}`);
+  // Per-slot eligible counts for debugging position mismatches
+  const _slotCounts = {};
+  slots.forEach(slot => {
+    let elig = players.filter(p => dfsPositionMatches(p.position, slot));
+    if (dfsState.sport === 'mlb' && slot === 'UTIL') elig = elig.filter(p => !dfsIsMlbPitcher(p));
+    _slotCounts[slot] = (_slotCounts[slot] || 0) + 1;
+    if (!_slotCounts[`${slot}_eligible`]) _slotCounts[`${slot}_eligible`] = elig.length;
+  });
+  const _slotSummary = [...new Set(slots)].map(s => `${s}:${_slotCounts[`${s}_eligible`]??'?'}`).join(' ');
+  console.log(`[DFS Debug] Eligible per slot: ${_slotSummary}`);
 
   let states = [{
     lineup: [],
@@ -2890,7 +2959,7 @@ function dfsPickBestCsvLineup(opts) {
     cheapCount: 0,
   }];
 
-  const PUNT_SALARY_THRESHOLD = 4500;
+  const PUNT_SALARY_THRESHOLD = 2500; // max 1 player at/below this in any lineup
 
   const isShowdown = slot => slot === 'MVP' || slot === 'CPT';
 
@@ -2955,6 +3024,16 @@ function dfsPickBestCsvLineup(opts) {
     // Run full debug to console before throwing
     const dbg = dfsDebugPool();
 
+    // Per-slot counts from the active filtered pool (exact slot eligibility)
+    const slotCounts = {};
+    slots.forEach(slot => {
+      let elig = players.filter(p => dfsPositionMatches(p.position, slot));
+      if (dfsState.sport === 'mlb' && slot === 'UTIL') elig = elig.filter(p => !dfsIsMlbPitcher(p));
+      if (!slotCounts[slot]) slotCounts[slot] = { count: 0, eligible: elig.length };
+      slotCounts[slot].count++;
+    });
+    const zeroSlots = Object.entries(slotCounts).filter(([,v]) => v.eligible === 0).map(([s]) => s);
+
     // Per-position counts from the active filtered pool
     const posBreakdown = {};
     const diagSlots = [...new Set(slots.filter(s => !['FLEX','UTIL','CPT','MVP','STAR','PRO'].includes(s)))];
@@ -2976,12 +3055,22 @@ function dfsPickBestCsvLineup(opts) {
     const isGolf = dfsState.sport === 'golf';
     const salaryFloor = dfsGetSalaryFloor();
 
+    // Show exact slot shortages first — most actionable error
+    if (zeroSlots.length) {
+      const slotDetails = zeroSlots.map(slot => {
+        const totalInCsv = dfsState.uploadedPlayers.filter(p => dfsPositionMatches(p.position, slot)).length;
+        const hardExcl = dfsState.uploadedPlayers.filter(p => dfsPositionMatches(p.position, slot) && dfsHardExcludePlayer(p)).length;
+        return `No eligible ${slot} found (${totalInCsv} in CSV, ${hardExcl} excluded by filters)`;
+      });
+      throw new Error(slotDetails.join('. ') + '. Check that your CSV has players at these positions with valid salary and projection values.');
+    }
+
     // MLB-specific: if no players match any position at all, the column wasn't parsed
     if (dfsState.sport === 'mlb' && pCount === 0 && infCount === 0 && ofCount === 0) {
       const detectedCols = dfsState.uploadedFile && dfsState.uploadedFile.columns
         ? Object.entries(dfsState.uploadedFile.columns).filter(([,v])=>v).map(([k,v])=>`${k}="${v}"`).join(', ')
         : 'unknown';
-      throw new Error(`MLB position data could not be parsed. Found columns: ${detectedCols}. Ensure your CSV has a Position or Roster Position column with values like SP, RP, C, 1B, 2B, 3B, SS, OF.`);
+      throw new Error(`MLB position data could not be parsed. Found columns: ${detectedCols}. Ensure your CSV has a Roster Position or Position column with values like P, C/1B, 2B/SS, 3B/SS, OF, UTIL.`);
     }
 
     const mlbBreakdown = dfsState.sport === 'mlb' ? (() => {
@@ -3229,16 +3318,104 @@ function dfsOptimizeUploadedCsv() {
   };
 }
 
+function dfsRebuildOpenSlots() {
+  const cap = dfsGetCap();
+  const prevLineup = dfsLastLineup.lineup;
+
+  const kept = prevLineup.filter(p => !dfsState.excludedPlayers.includes(p.name));
+  const openSlots = prevLineup
+    .filter(p => dfsState.excludedPlayers.includes(p.name))
+    .map(p => p.slot);
+
+  if (!openSlots.length) return dfsOptimizeUploadedCsv();
+
+  const usedSalary = kept.reduce((s, p) => s + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
+  let remaining = cap - usedSalary;
+  const usedNames = new Set(kept.map(p => p.name));
+
+  const basePool = dfsGetEligiblePlayersForOptimization().filter(
+    p => !dfsState.excludedPlayers.includes(p.name) && !dfsHardExcludePlayer(p)
+  );
+
+  const filled = [...kept];
+
+  // Fill most-constrained slots first to avoid dead-ends
+  const sortedOpenSlots = [...openSlots].sort((a, b) => {
+    const ca = basePool.filter(p => dfsPositionMatches(p.position, a) && !usedNames.has(p.name)).length;
+    const cb = basePool.filter(p => dfsPositionMatches(p.position, b) && !usedNames.has(p.name)).length;
+    return ca - cb;
+  });
+
+  for (const slot of sortedOpenSlots) {
+    const mult = dfsSlotMultiplier(slot);
+    const candidates = basePool
+      .filter(p =>
+        dfsPositionMatches(p.position, slot) &&
+        !usedNames.has(p.name) &&
+        (p.salary || 0) * mult <= remaining
+      )
+      .sort((a, b) => (b.ceilingFppg || b.fppg || 0) - (a.ceilingFppg || a.fppg || 0));
+
+    if (!candidates.length) {
+      throw new Error(`No eligible player for ${slot} slot under $${remaining.toLocaleString()} remaining cap. Try excluding different players or run a full rebuild.`);
+    }
+
+    const pick = dfsProjectCsvPlayerForSlot(candidates[0], slot);
+    filled.push(pick);
+    usedNames.add(pick.name);
+    remaining -= (pick.salary || 0) * mult;
+  }
+
+  const expandedPool = basePool.concat(
+    dfsState.uploadedPlayers.filter(p =>
+      (p.salary || 0) > 0 && (p.fppg || 0) > 0 &&
+      !dfsHardExcludePlayer(p) &&
+      !dfsState.excludedPlayers.includes(p.name)
+    )
+  );
+  const lineup = dfsBacktrackUpgrade(filled, cap, expandedPool);
+  const totalSalary = lineup.reduce((s, p) => s + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
+  const remainingSalary = cap - totalSalary;
+  const file = dfsState.uploadedFile;
+
+  return {
+    lineup,
+    totalSalary,
+    remainingSalary,
+    totalProjectedPoints: lineup.reduce((s, p) => s + (p.projectedFppg || 0), 0),
+    totalFloorPoints: lineup.reduce((s, p) => s + (p.floorFppg || 0), 0),
+    totalCeilingPoints: lineup.reduce((s, p) => s + (p.ceilingFppg || 0), 0),
+    correlationScore: null,
+    lateNewsItems: [],
+    confirmedActivePlayers: [],
+    salaryAlert: remainingSalary > 500 ? 'Salary not fully utilized — tap REGENERATE to try a higher-salary build' : null,
+    positionInfo: dfsLastLineup.positionInfo,
+    mlbFlexMode: dfsLastLineup.mlbFlexMode,
+    mlb6PlayerMode: dfsLastLineup.mlb6PlayerMode,
+    relaxedQMode: dfsLastLineup.relaxedQMode,
+    salaryOnlyMode: dfsLastLineup.salaryOnlyMode,
+    summary: `Partial rebuild from ${file ? file.name : 'uploaded CSV'} — kept ${kept.length} player(s), filled ${openSlots.length} open slot(s). Salary: $${totalSalary.toLocaleString()} of $${cap.toLocaleString()}.`,
+  };
+}
+
 async function dfsOptimize() {
   document.getElementById('dfs-results').style.display = 'none';
   document.getElementById('dfs-error').style.display = 'none';
   document.getElementById('dfs-loading').style.display = 'flex';
   document.getElementById('dfs-optimize-btn').disabled = true;
   const loadingTxt = document.querySelector('#dfs-loading .loading-txt');
-  const isRegen = !!(dfsLastLineup && (dfsState.excludedPlayers.length || dfsState.lockedPlayers.length));
-  if (isRegen && dfsState.uploadedPlayers.length) {
+  const isPartialRegen = !!(
+    dfsLastLineup && dfsLastLineup.lineup &&
+    dfsState.excludedPlayers.length > 0 &&
+    dfsLastLineup.lineup.some(p => dfsState.excludedPlayers.includes(p.name))
+  );
+  if (isPartialRegen && dfsState.uploadedPlayers.length) {
+    const openCount = dfsLastLineup.lineup.filter(p => dfsState.excludedPlayers.includes(p.name)).length;
+    const available = dfsGetEligiblePlayersForOptimization().filter(p => !dfsState.excludedPlayers.includes(p.name)).length;
+    if (loadingTxt) loadingTxt.textContent = `REGENERATING — FILLING ${openCount} OPEN SLOT${openCount !== 1 ? 'S' : ''} FROM ${available} AVAILABLE`;
+  } else if (dfsLastLineup && dfsState.uploadedPlayers.length) {
     const available = dfsGetEligiblePlayersForOptimization().length;
-    if (loadingTxt) loadingTxt.textContent = `REGENERATING WITH ${available} PLAYERS AVAILABLE`;
+    if (loadingTxt) loadingTxt.textContent = `REBUILDING FROM ${available} PLAYERS`;
   } else {
     if (loadingTxt) loadingTxt.textContent = 'BUILDING LINEUP...';
   }
@@ -3250,10 +3427,27 @@ async function dfsOptimize() {
           await dfsRefreshWeather(false);
         }
       }
-      const data = dfsOptimizeUploadedCsv();
+      const openCount = isPartialRegen
+        ? dfsLastLineup.lineup.filter(p => dfsState.excludedPlayers.includes(p.name)).length
+        : 0;
+      let data;
+      if (isPartialRegen) {
+        try {
+          data = dfsRebuildOpenSlots();
+        } catch (partialErr) {
+          data = dfsOptimizeUploadedCsv();
+        }
+      } else {
+        data = dfsOptimizeUploadedCsv();
+      }
       dfsLastLineup = data;
       dfsRenderResults(data);
-      showToast('Lineup optimized from CSV', 'success');
+      showToast(
+        isPartialRegen
+          ? `Swapped ${openCount} player${openCount !== 1 ? 's' : ''} — lineup updated`
+          : 'Lineup optimized from CSV',
+        'success'
+      );
       return;
     }
     const res = await fetch('/api/dfs/optimize', {
