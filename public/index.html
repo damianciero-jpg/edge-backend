@@ -1611,7 +1611,7 @@ const DFS_CAPS = {
 const DFS_SLOT_LABELS = {
   nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
   nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb:  { draftkings: 'P + 5 flex hitters (6 players)', fanduel: 'P + 5 flex hitters (6 players)' },
+  mlb:  { draftkings: 'P + 8 flex hitters (9 players)', fanduel: 'P + 8 flex hitters (9 players)' },
   golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
 };
 
@@ -1915,7 +1915,7 @@ function dfsBuildPlayersFromCsv(text) {
     const gameTotal = columns.gameTotal ? dfsParsePoints(row[idx[columns.gameTotal]]) : null;
     const opposingPitcherEra = columns.opposingPitcherEra ? dfsParsePoints(row[idx[columns.opposingPitcherEra]]) : null;
     const probablePitcher = columns.probablePitcher
-      ? String(row[idx[columns.probablePitcher]] || '').trim().toUpperCase() === 'YES'
+      ? /^(YES|PROBABLE|Y|TRUE|1)$/i.test(String(row[idx[columns.probablePitcher]] || '').trim())
       : false;
     return {
       id: `${name}-${i}`,
@@ -2380,6 +2380,11 @@ function dfsHardExcludePlayer(player) {
     const parts = String(player.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
     // Exclude pure relievers (RP with no SP/P designation) — never starters
     if (parts.includes('RP') && !parts.includes('SP') && !parts.includes('P')) return true;
+    // Exclude non-probable pitchers when CSV has a Probable Pitcher column
+    if (dfsIsMlbPitcher(player) && !player.probablePitcher) {
+      const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
+      if (hasProbableCol) return true;
+    }
   }
   return false;
 }
@@ -2683,8 +2688,8 @@ function dfsLineupSlots() {
   if (sport === 'nfl') return platform === 'draftkings'
     ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
     : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
-  // MLB: 1 confirmed starter + 5 flex hitters (any position)
-  return ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
+  // MLB: 1 confirmed starter + 8 flex hitters (any non-pitcher position)
+  return ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
 }
 
 function dfsFlexMlbSlots(count) {
@@ -2703,13 +2708,6 @@ function dfsGetEligiblePlayersForOptimization(filterOverride) {
     .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
 
-  if (dfsState.sport === 'mlb') {
-    // Only filter by probable starter when CSV has the column; otherwise keep all SP
-    const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
-    if (hasProbableCol) {
-      players = players.filter(p => !dfsIsMlbPitcher(p) || p.probablePitcher);
-    }
-  }
   return players;
 }
 
@@ -3118,22 +3116,18 @@ function dfsOptimizeUploadedCsv() {
     }
   };
 
-  if (dfsState.sport !== 'mlb') {
-    attemptStrict();
-  } else {
-    try {
-      attemptStrict();
-    } catch (strictErr) {
-      // Fallback: best 6 players regardless of position (no pitcher requirement)
-      try {
-        lineup = dfsPickBestCsvLineup({ slotsOverride: Array(6).fill('FLEX'), relaxFilters: true });
-      } catch (e6) {
-        dfsDebugPool();
-        throw strictErr;
+  if (dfsState.sport === 'mlb') {
+    // Pre-validate: ensure at least one probable pitcher is available
+    const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
+    if (hasProbableCol) {
+      const probPitchers = dfsState.uploadedPlayers.filter(p => dfsIsMlbPitcher(p) && p.probablePitcher);
+      if (probPitchers.length === 0) {
+        throw new Error('No probable pitchers found in pool. Ensure your CSV has at least one pitcher with Probable Pitcher = "Yes" or "Probable".');
       }
-      mlb6PlayerMode = true;
     }
   }
+
+  attemptStrict();
 
   // MLB position availability breakdown
   let positionInfo = null;
