@@ -3017,7 +3017,7 @@ function dfsPickBestCsvLineup(opts) {
 }
 
 function dfsGetMinSalaryThreshold() {
-  if (dfsState.platform === 'fanduel' && dfsState.sport === 'mlb') return 2100;
+  if (dfsState.sport === 'mlb') return 2100;
   return 2500;
 }
 
@@ -3192,9 +3192,14 @@ function dfsOptimizeUploadedCsv() {
   // If still <95% cap used, run a second upgrade pass with expanded mid-tier ceiling
   let totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
   if (totalSalary < cap * 0.95) {
-    lineup = dfsBacktrackUpgrade(lineup, cap, eligiblePool.concat(
-      dfsState.uploadedPlayers.filter(p => (p.salary || 0) > 0 && (p.fppg || 0) > 0)
-    ));
+    const expandedPool = eligiblePool.concat(
+      dfsState.uploadedPlayers.filter(p =>
+        (p.salary || 0) > 0 && (p.fppg || 0) > 0 &&
+        !dfsHardExcludePlayer(p) &&
+        !dfsState.excludedPlayers.includes(p.name)
+      )
+    );
+    lineup = dfsBacktrackUpgrade(lineup, cap, expandedPool);
     totalSalary = lineup.reduce((sum, p) => sum + (p.salary || 0) * dfsSlotMultiplier(p.slot || ''), 0);
   }
 
@@ -3229,6 +3234,14 @@ async function dfsOptimize() {
   document.getElementById('dfs-error').style.display = 'none';
   document.getElementById('dfs-loading').style.display = 'flex';
   document.getElementById('dfs-optimize-btn').disabled = true;
+  const loadingTxt = document.querySelector('#dfs-loading .loading-txt');
+  const isRegen = !!(dfsLastLineup && (dfsState.excludedPlayers.length || dfsState.lockedPlayers.length));
+  if (isRegen && dfsState.uploadedPlayers.length) {
+    const available = dfsGetEligiblePlayersForOptimization().length;
+    if (loadingTxt) loadingTxt.textContent = `REGENERATING WITH ${available} PLAYERS AVAILABLE`;
+  } else {
+    if (loadingTxt) loadingTxt.textContent = 'BUILDING LINEUP...';
+  }
   try {
     if (dfsState.uploadedPlayers.length) {
       if (['mlb', 'nfl'].includes(dfsState.sport)) {
@@ -3276,6 +3289,7 @@ async function dfsOptimize() {
     errEl.style.display = 'block';
   } finally {
     document.getElementById('dfs-loading').style.display = 'none';
+    if (loadingTxt) loadingTxt.textContent = 'BUILDING LINEUP...';
     document.getElementById('dfs-optimize-btn').disabled = false;
   }
 }
@@ -3339,7 +3353,10 @@ function dfsRenderResults(data) {
   const minSalCount = lineup.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= _minSalThreshold).length;
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
   const newlyInjuredPlayers = lineup.filter(p => p.newlyInjured).map(p => p.name).filter(Boolean);
-  if (minSalCount >= 2) alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} players at or under $${_minSalThreshold.toLocaleString()}. Replace 1+ with a proven mid-tier producer ($5k–$7k).` });
+  if (minSalCount >= 2) {
+    const cheapNames = lineup.filter(p => (p.salary||0) > 0 && (p.salary||0) <= _minSalThreshold).map(p => p.name).join(', ');
+    alerts.push({ cls: 'warn', msg: `⚠ VALUE OVERLOAD — ${minSalCount} minimum-salary players ($${_minSalThreshold.toLocaleString()} or under): ${cheapNames}. Exclude them via ✕ on their cards and tap REGENERATE to auto-swap for best available.` });
+  }
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
   if (newlyInjuredPlayers.length) alerts.push({ cls: 'warn', msg: `NEW INJURY WARNING — ${newlyInjuredPlayers.join(', ')} updated after refresh.` });
   if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
