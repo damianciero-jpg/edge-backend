@@ -1586,13 +1586,14 @@ function closeDetail() {
 
 // ─── DFS OPTIMIZER ────────────────────────────────────────────────────────────
 const DFS_CAPS = {
-  draftkings: { nba: 50000, nfl: 50000, mlb: 50000 },
-  fanduel:    { nba: 60000, nfl: 60000, mlb: 35000 },
+  draftkings: { nba: 50000, nfl: 50000, mlb: 50000, golf: 50000 },
+  fanduel:    { nba: 60000, nfl: 60000, mlb: 35000, golf: 60000 },
 };
 const DFS_SLOT_LABELS = {
-  nba: { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
-  nfl: { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb: { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9)' },
+  nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
+  nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
+  mlb:  { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9)' },
+  golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
 };
 
 let dfsState = {
@@ -1827,6 +1828,8 @@ async function dfsHandleCsvUpload(event) {
     if (parsed.source === 'fanduel_mlb_malformed') {
       dfsSetPlatform('fanduel');
       dfsSetSport('mlb');
+    } else if (dfsIsGolfPool(parsed.players)) {
+      dfsSetSport('golf');
     }
     dfsSetCsvInjuryFilter('all');
     dfsSetCsvSort('value');
@@ -1873,7 +1876,6 @@ function dfsBuildPlayersFromCsv(text) {
     probablePitcher: dfsFindCsvColumn(headers, 'probablePitcher'),
   };
   if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Player Name.');
-  if (!columns.position) throw new Error('Missing Position column. Try Pos, Position, or Pos.');
   if (!columns.salary) throw new Error('Missing Salary column. Try Salary, Cost, or Avg Cost.');
   if (!columns.fppg) throw new Error('Missing FPPG column. Try FPPG, Avg Points, or Projected Points.');
 
@@ -1882,7 +1884,7 @@ function dfsBuildPlayersFromCsv(text) {
     const salary = dfsParseMoney(row[idx[columns.salary]]);
     const fppg = dfsParsePoints(row[idx[columns.fppg]]);
     const name = dfsCleanPlayerName(row[idx[columns.name]]);
-    const position = dfsNormalizePosition(row[idx[columns.position]]);
+    const position = columns.position ? (dfsNormalizePosition(row[idx[columns.position]]) || 'G') : 'G';
     const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
     const team = columns.team ? dfsNormalizeTeam(row[idx[columns.team]]) : '';
     const opponent = columns.opponent ? dfsNormalizeTeam(row[idx[columns.opponent]]) : '';
@@ -1912,7 +1914,7 @@ function dfsBuildPlayersFromCsv(text) {
       probablePitcher,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
-  }).filter(p => p.name && p.position && p.salary > 0 && p.fppg > 0);
+  }).filter(p => p.name && p.salary > 0 && p.fppg > 0);
   if (!players.length) throw new Error('No players parsed. Check column names and salary/FPPG values.');
   return { players, columns, source: 'header' };
 }
@@ -1983,6 +1985,67 @@ function dfsIsIlPlayer(player) {
   return /\b(IL|INJURED LIST)\b/.test(status) || /\b(IL|INJURED LIST)\b/.test(note);
 }
 
+function dfsDebugPool() {
+  if (!dfsState.uploadedPlayers.length) return null;
+  const all = dfsState.uploadedPlayers;
+  const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
+
+  const hardExcludeDetails = all.filter(p => dfsHardExcludePlayer(p));
+  const removedByStatus  = hardExcludeDetails.filter(p => { const s = String(p.injuryStatus||'').trim().toUpperCase(); return s==='O'||s==='IL'||s==='OUT'; });
+  const removedBySalary  = all.filter(p => p.salary > 0 && p.fppg > 0 && p.name && p.position && (p.salary||0) < 3500);
+  const removedByInjury  = all.filter(p => !dfsHardExcludePlayer(p) && !dfsCsvPlayerVisible(p, filter));
+  const removedMissing   = all.filter(p => !p.name || !p.position || !(p.salary > 0) || !(p.fppg > 0));
+  const removedManual    = all.filter(p => (dfsState.excludedPlayers || []).includes(p.name));
+
+  const eligible = dfsGetEligiblePlayersForOptimization();
+  const byPos = {};
+  eligible.forEach(p => String(p.position||'').split('/').filter(Boolean).forEach(pos => { byPos[pos] = (byPos[pos]||0) + 1; }));
+
+  // Full pipeline for OF specifically
+  const ofAll = all.filter(p => dfsPositionMatches(p.position, 'OF'));
+  const ofEligible = eligible.filter(p => dfsPositionMatches(p.position, 'OF'));
+  const ofMissing  = ofAll.filter(p => !p.name || !(p.salary > 0) || !(p.fppg > 0));
+  const ofSalFloor = ofAll.filter(p => p.salary > 0 && p.salary < 3500);
+  const ofHardStat = ofAll.filter(p => { const s = String(p.injuryStatus||'').trim().toUpperCase(); return s==='O'||s==='IL'||s==='OUT'; });
+  const ofInjFilt  = ofAll.filter(p => !dfsHardExcludePlayer(p) && !dfsCsvPlayerVisible(p, filter));
+  const ofManual   = ofAll.filter(p => (dfsState.excludedPlayers||[]).includes(p.name));
+
+  const salaries = eligible.map(p => p.salary||0).filter(s => s > 0);
+  const minSal   = salaries.length ? Math.min(...salaries) : 0;
+  const maxSal   = salaries.length ? Math.max(...salaries) : 0;
+
+  const isMlb = dfsState.sport === 'mlb';
+  const pitcherFilter = isMlb && all.some(p => dfsIsMlbPitcher(p) && p.probablePitcher)
+    ? all.filter(p => dfsIsMlbPitcher(p) && !p.probablePitcher).length
+    : 0;
+
+  const recommendations = [];
+  if (removedBySalary.length > 5)        recommendations.push(`Salary floor $3,500 removed ${removedBySalary.length} players — consider lowering for MLB (min salary ~$2,200).`);
+  if (removedByInjury.length > ofEligible.length) recommendations.push(`Injury filter "${filter}" removed ${removedByInjury.length} players — try relaxing to "out only".`);
+  if (pitcherFilter > 0)                 recommendations.push(`Probable-pitcher filter removed ${pitcherFilter} pitchers — check CSV "Probable Pitcher" column.`);
+  if (ofEligible.length < 3)             recommendations.push(`Only ${ofEligible.length} OF eligible (${ofAll.length} in CSV). Breakdown: missing fields ${ofMissing.length}, salary<$3500 ${ofSalFloor.length}, hard-status ${ofHardStat.length}, injury-filter ${ofInjFilt.length}, manually excluded ${ofManual.length}.`);
+
+  const debug = {
+    sport: dfsState.sport, platform: dfsState.platform, injuryFilter: filter,
+    totalInCsv: all.length,
+    removedMissingFields: removedMissing.length,
+    removedByHardStatus: removedByStatus.length,
+    removedBySalaryFloor3500: removedBySalary.length,
+    removedByInjuryFilter: removedByInjury.length,
+    removedManuallyExcluded: removedManual.length,
+    removedByProbablePitcherFilter: pitcherFilter,
+    eligibleAfterAllFilters: eligible.length,
+    byPosition: byPos,
+    salaryRange: `$${minSal.toLocaleString()} – $${maxSal.toLocaleString()}`,
+    ofPipeline: { inCsv: ofAll.length, removedMissingFields: ofMissing.length, removedSalaryFloor: ofSalFloor.length, removedHardStatus: ofHardStat.length, removedInjuryFilter: ofInjFilt.length, removedManual: ofManual.length, eligible: ofEligible.length },
+    recommendations,
+  };
+  console.table ? console.table(debug) : console.log('[DFS Debug Pool]', JSON.stringify(debug, null, 2));
+  console.log('[DFS Debug] OF pipeline:', debug.ofPipeline);
+  console.log('[DFS Debug] Recommendations:', recommendations.join(' | ') || 'none');
+  return debug;
+}
+
 function dfsFindKnownPlayer(name) {
   const all = []
     .concat(dfsState.uploadedPlayers || [])
@@ -2027,7 +2090,8 @@ function dfsSetSport(s) {
   dfsState.sport = s;
   dfsState.customCap = null;
   document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
-  document.getElementById('dfs-sport-' + s).classList.add('active');
+  const sportBtn = document.getElementById('dfs-sport-' + s);
+  if (sportBtn) sportBtn.classList.add('active');
   dfsState.weather = null;
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
@@ -2162,15 +2226,24 @@ function dfsNormalizePosition(raw) {
       if (/^(LF|CF|RF|LEFT FIELD|CENTER FIELD|RIGHT FIELD)$/.test(part)) return 'OF';
       if (/^(DH|DESIGNATED HITTER)$/.test(part)) return 'UTIL';
       if (/^(CATCHER)$/.test(part)) return 'C';
+      if (/^(GOLF|PGA|PLAYER|GOLFER)$/.test(part)) return 'G';
       return part;
     })
     .join('/');
+}
+
+function dfsIsGolfPool(players) {
+  if (!players || !players.length) return false;
+  const golfPos = new Set(['G', 'GOLF', 'PGA', 'PLAYER', 'GOLFER', '']);
+  const golfCount = players.filter(p => golfPos.has(String(p.position || '').toUpperCase())).length;
+  return golfCount === players.length; // every player must have a golf-only position
 }
 
 function dfsPositionMatches(playerPosition, slot) {
   const raw = String(playerPosition || '').toUpperCase();
   const parts = raw.split(/[\/, ]+/).filter(Boolean);
   if (slot === 'FLEX' || slot === 'UTIL' || slot === 'CPT' || slot === 'MVP' || slot === 'STAR' || slot === 'PRO') return true;
+  if (slot === 'G') return !parts.length || parts.some(p => ['G','GOLF','PGA','PLAYER','GOLFER'].includes(p));
   if (slot === 'C/1B') return parts.includes('C') || parts.includes('1B');
   if (slot === 'DST') return parts.includes('DST') || parts.includes('DEF') || raw.includes('D/ST');
   return parts.includes(slot);
@@ -2488,6 +2561,7 @@ function dfsWeatherImpactForPlayer(player) {
 
 function dfsLineupSlots() {
   const { sport, platform } = dfsState;
+  if (sport === 'golf') return ['G', 'G', 'G', 'G', 'G', 'G'];
   if (sport === 'nba') return platform === 'draftkings'
     ? ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX']
     : ['MVP', 'STAR', 'STAR', 'PRO', 'PRO', 'UTIL'];
@@ -2506,8 +2580,8 @@ function dfsFlexMlbSlots(count) {
   return [...Array(pCount).fill('P'), ...Array(hCount).fill('UTIL')];
 }
 
-function dfsGetEligiblePlayersForOptimization() {
-  const filter = dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
+function dfsGetEligiblePlayersForOptimization(filterOverride) {
+  const filter = filterOverride || dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
   let players = dfsState.uploadedPlayers
     .filter(p => !dfsHardExcludePlayer(p))
     .filter(p => dfsCsvPlayerVisible(p, filter))
@@ -2628,11 +2702,12 @@ function dfsGreedyFallbackLineup(cap, slots, players) {
 
 function dfsPickBestCsvLineup(opts) {
   const relaxFilters = opts && opts.relaxFilters;
+  const filterOverride = opts && opts.filterOverride;
   const cap = dfsGetCap();
   const slots = (opts && opts.slotsOverride) ? opts.slotsOverride : dfsLineupSlots();
   const players = relaxFilters
     ? dfsState.uploadedPlayers.filter(p => !dfsHardExcludePlayer(p) && (p.salary || 0) > 0 && (p.fppg || 0) > 0)
-    : dfsGetEligiblePlayersForOptimization();
+    : dfsGetEligiblePlayersForOptimization(filterOverride);
   const locked = new Set(dfsState.lockedPlayers.filter(Boolean));
   const eligibleLocked = [...locked].filter(name => players.some(p => p.name === name));
   const lockedMissing = [...locked].filter(name => !players.some(p => p.name === name));
@@ -2649,7 +2724,12 @@ function dfsPickBestCsvLineup(opts) {
       .sort((a, b) => (a.salary || 0) - (b.salary || 0))[0];
     if (_cheapest) { cheapestSum += _cheapest.salary || 0; _debugUsed.add(_cheapest.name); }
   }
-  console.log(`[DFS Debug] Loaded: ${dfsState.uploadedPlayers.length}, Active After Filters: ${players.length}, Cheapest ${slots.length}-Player Combo Cost: $${cheapestSum}`);
+  const _posCounts = {};
+  players.forEach(p => String(p.position||'').split('/').filter(Boolean).forEach(pos => { _posCounts[pos] = (_posCounts[pos]||0) + 1; }));
+  console.log(`[DFS Debug] Sport: ${dfsState.sport}, Platform: ${dfsState.platform}, Slots: [${slots.join(', ')}]`);
+  console.log(`[DFS Debug] Loaded: ${dfsState.uploadedPlayers.length}, After injury/exclusion filters: ${players.length}, Cheapest ${slots.length}-combo: $${cheapestSum}`);
+  console.log(`[DFS Debug] By normalized position:`, _posCounts);
+  console.log(`[DFS Debug] Salary floor excludes players <$3,500. Min salary in active pool: $${players.length ? Math.min(...players.map(p => p.salary||0).filter(s=>s>0)) : 'N/A'}`);
 
   let states = [{
     lineup: [],
@@ -2722,20 +2802,47 @@ function dfsPickBestCsvLineup(opts) {
   );
 
   if (!complete.length) {
+    // Run full debug to console before throwing
+    const dbg = dfsDebugPool();
+
+    // Per-position counts from the active filtered pool
     const posBreakdown = {};
     const diagSlots = [...new Set(slots.filter(s => !['FLEX','UTIL','CPT','MVP','STAR','PRO'].includes(s)))];
-    diagSlots.forEach(s => {
-      posBreakdown[s] = players.filter(p => dfsPositionMatches(p.position, s)).length;
-    });
+    diagSlots.forEach(s => { posBreakdown[s] = players.filter(p => dfsPositionMatches(p.position, s)).length; });
     const infSlots = ['C','1B','2B','3B','SS'];
-    const infCount = players.filter(p => infSlots.some(s => dfsPositionMatches(p.position, s))).length;
-    const ofCount = players.filter(p => dfsPositionMatches(p.position, 'OF')).length;
-    const pCount = players.filter(p => dfsPositionMatches(p.position, 'P')).length;
+    const infCount  = players.filter(p => infSlots.some(s => dfsPositionMatches(p.position, s))).length;
+    const ofCount   = players.filter(p => dfsPositionMatches(p.position, 'OF')).length;
+    const pCount    = players.filter(p => dfsPositionMatches(p.position, 'P')).length;
+
+    // Explain the OF shortage specifically
+    const all = dfsState.uploadedPlayers;
+    const currentFilter = filterOverride || dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out';
+    const ofTotal       = all.filter(p => dfsPositionMatches(p.position, 'OF')).length;
+    const ofSalFloor    = all.filter(p => dfsPositionMatches(p.position, 'OF') && p.salary > 0 && p.salary < 3500).length;
+    const ofInjOut      = all.filter(p => dfsPositionMatches(p.position, 'OF') && !dfsHardExcludePlayer(p) && !dfsCsvPlayerVisible(p, currentFilter)).length;
+    const ofHardStatus  = all.filter(p => dfsPositionMatches(p.position, 'OF') && (String(p.injuryStatus||'').trim().toUpperCase()==='O'||String(p.injuryStatus||'').trim().toUpperCase()==='OUT'||String(p.injuryStatus||'').trim().toUpperCase()==='IL')).length;
+
     const isMlbNfl = ['mlb','nfl'].includes(dfsState.sport);
+    const isGolf = dfsState.sport === 'golf';
     const breakdown = isMlbNfl
-      ? `P: ${pCount}, INF: ${infCount}, OF: ${ofCount}`
-      : Object.entries(posBreakdown).map(([k,v]) => `${k}: ${v}`).join(', ');
-    throw new Error(`No lineup fits under $${cap.toLocaleString()} cap. Available players: ${players.length}. Minimum salary for ${slots.length}: $${cheapestSum.toLocaleString()}. Increase cap or reduce roster. (${breakdown})`);
+      ? `P:${pCount} INF:${infCount} OF:${ofCount}`
+      : (isGolf
+        ? `Golf/salary-only mode — ${players.length} eligible players`
+        : (diagSlots.length
+          ? Object.entries(posBreakdown).map(([k,v]) => `${k}:${v}`).join(' ')
+          : `Position data missing or all-flex format — ${players.length} eligible players`));
+
+    let ofWhy = '';
+    if (isMlbNfl && ofTotal > ofCount) {
+      const parts = [];
+      if (ofSalFloor)   parts.push(`${ofSalFloor} removed by $3,500 salary floor`);
+      if (ofHardStatus) parts.push(`${ofHardStatus} removed by OUT/IL status`);
+      if (ofInjOut)     parts.push(`${ofInjOut} removed by injury filter "${currentFilter}"`);
+      ofWhy = ` | OF in CSV: ${ofTotal}${parts.length ? '; removed — ' + parts.join(', ') : ''}`;
+    }
+
+    const recStr = dbg && dbg.recommendations.length ? ` | FIX: ${dbg.recommendations[0]}` : '';
+    throw new Error(`No lineup fits under $${cap.toLocaleString()} cap. Active pool: ${players.length}/${dfsState.uploadedPlayers.length} players, min-combo $${cheapestSum.toLocaleString()} for ${slots.length} slots. (${breakdown}${ofWhy}${recStr})`);
   }
 
   const within500 = complete.filter(state => cap - state.salary <= 500);
@@ -2843,16 +2950,39 @@ function dfsOptimizeUploadedCsv() {
   let mlbFlexMode = false;
   let mlb6PlayerMode = false;
 
+  let relaxedQMode = false;
+  let salaryOnlyMode = false;
+
   const attemptStrict = () => {
     try {
       lineup = dfsPickBestCsvLineup();
     } catch (e1) {
+      // Attempt 1b: relax questionable-player exclusion (filter='out' instead of 'q_and_out')
+      const isOverStrict = (dfsState.injuryFilter || dfsState.csvInjuryFilter || 'out') === 'q_and_out';
+      if (isOverStrict) {
+        try {
+          lineup = dfsPickBestCsvLineup({ filterOverride: 'out' });
+          relaxedQMode = true;
+          return;
+        } catch (_) { /* fall through */ }
+      }
       try {
         lineup = dfsPickBestCsvLineup({ relaxFilters: true });
       } catch (e2) {
         const allPlayers = dfsState.uploadedPlayers.filter(p => !dfsHardExcludePlayer(p) && (p.salary || 0) > 0 && (p.fppg || 0) > 0);
         const greedy = dfsGreedyFallbackLineup(cap, slots, allPlayers);
-        if (!greedy) throw e2;
+        if (!greedy) {
+          // Last resort: salary-only mode (all-UTIL) for 6-slot contests
+          if (slots.length === 6) {
+            try {
+              lineup = dfsPickBestCsvLineup({ slotsOverride: Array(6).fill('UTIL'), relaxFilters: true });
+              salaryOnlyMode = true;
+              return;
+            } catch (_) { /* fall through */ }
+          }
+          dfsDebugPool(); // dump to console when every path fails
+          throw new Error(`Position data is missing or this appears to be a golf/salary-only contest. ${e2.message}`);
+        }
         lineup = greedy;
         usedFallback = true;
       }
@@ -2938,6 +3068,8 @@ function dfsOptimizeUploadedCsv() {
     positionInfo,
     mlbFlexMode,
     mlb6PlayerMode,
+    relaxedQMode,
+    salaryOnlyMode,
     summary: `Optimized locally from ${file ? file.name : 'uploaded CSV'} by maximizing total projected ceiling under the salary cap while filling all ${lineup.length} roster spots. Salary used: $${totalSalary.toLocaleString()} of $${cap.toLocaleString()}.`,
   };
 }
@@ -3068,6 +3200,8 @@ function dfsRenderResults(data) {
   if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ cls: '', msg: '⚠ ' + data.ownershipWarning });
   if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ cls: 'info', msg: '🔗 ' + data.stackInfo });
   if (data.runBackPlayer && data.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${data.runBackPlayer}${data.runBackGame && data.runBackGame !== 'null' ? ' — ' + data.runBackGame : ''}` });
+  if (data.salaryOnlyMode) alerts.push({ cls: 'warn', msg: '⚠ SALARY-ONLY MODE — position data missing or golf contest detected. Lineup built using salary cap only (no positional requirements).' });
+  if (data.relaxedQMode) alerts.push({ cls: 'warn', msg: '⚠ QUESTIONABLE PLAYERS INCLUDED — pool was too small under "Q+Out" filter; relaxed to "Out only". Review questionable players in the lineup.' });
   if (data.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ 6-PLAYER LINEUP — not enough eligible players for a full 9/10-man roster. Upload more players or relax injury filters.' });
   else if (data.mlbFlexMode) alerts.push({ cls: 'info', msg: '⚡ FLEX POSITIONS — strict slots unavailable; using P + any-hitter fill.' });
   if (data.positionInfo) alerts.push({ cls: 'info', msg: `AVAILABLE: ${data.positionInfo}` });
