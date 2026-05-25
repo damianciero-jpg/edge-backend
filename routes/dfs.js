@@ -327,7 +327,7 @@ async function fetchOddsData(apiKey, sport) {
   } catch { return []; }
 }
 
-function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers }) {
+function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers, requireProbablePitcher = true }) {
   const today = new Date().toISOString().slice(0, 10);
   const isGpp = contestType === 'gpp';
   const isNba = sport === 'nba';
@@ -588,7 +588,7 @@ MATCHUP: prioritize players vs teams ranked 25th-30th in yards allowed at their 
 MLB ${isGpp ? 'GPP TOURNAMENT' : 'CASH GAME'} ALGORITHM:
 ${factorChain}
 
-STARTING PITCHERS: Rank by K/9 (×2 weight) + ERA inverse + opposing OPS. CONFIRMED starts only.
+STARTING PITCHERS: Rank by K/9 (×2 weight) + ERA inverse + opposing OPS.${requireProbablePitcher ? ' CONFIRMED PROBABLE STARTERS ONLY — do not use relief pitchers or any pitcher not confirmed to start. Blank/unknown start status = exclude.' : ' Include all active pitchers.'}
   High O/U (>${cfg.impliedTotalThreshold + 0.5}): avoid that game's SP. Low O/U (<7.5): prioritize pitcher's duel SPs.
   Keep pitcher scoring unchanged when CSV/FPPG projections are provided.
 
@@ -761,6 +761,7 @@ router.post('/optimize', async (req, res) => {
     excludeIlPlayers: !!excludeIlPlayers,
     lockedPlayers: Array.isArray(lockedPlayers) ? lockedPlayers : [],
     excludedPlayers: Array.isArray(excludedPlayers) ? excludedPlayers : [],
+    requireProbablePitcher: !!requireProbablePitcher,
   });
 
   try {
@@ -817,6 +818,264 @@ router.post('/optimize', async (req, res) => {
     if (status === 401 || status === 403) return fail(res, status, { error: 'AI API key issue.' });
     return fail(res, 500, { error: err.message || 'DFS optimization failed. Try again.' });
   }
+});
+
+// ─── CSV pitcher-aware optimizer ─────────────────────────────────────────────
+
+function csvIsMlbPitcher(player) {
+  const pos = String(player.position || '').toUpperCase().replace(/\s+/g, '');
+  return /^(P|SP|RP|P\/SP|SP\/P)$/.test(pos);
+}
+
+function csvPositionMatches(playerPos, slot) {
+  const pos = String(playerPos || '').toUpperCase().replace(/\s+/g, '');
+  if (slot === 'P')    return /^(P|SP|RP|P\/SP|SP\/P)$/.test(pos);
+  if (slot === 'C/1B') return /^(C|1B|C\/1B|1B\/C)$/.test(pos);
+  if (slot === 'C')    return pos === 'C' || pos === 'C/1B';
+  if (slot === '1B')   return pos === '1B' || pos === 'C/1B';
+  if (slot === '2B')   return pos === '2B';
+  if (slot === '3B')   return pos === '3B';
+  if (slot === 'SS')   return pos === 'SS';
+  if (slot === 'OF')   return /^(OF|LF|CF|RF|OF\/LF|LF\/CF)$/.test(pos);
+  if (slot === 'UTIL') return !/^(P|SP|RP|DST|K|G)$/.test(pos) && pos !== '';
+  return false;
+}
+
+function csvBeamSearch(players, slots, cap, opts = {}) {
+  const { maxPunts = 1, puntThreshold = 2500, lockedNames = new Set(), excludedNames = new Set() } = opts;
+  const BEAM_WIDTH = 24;
+
+  // seed beam: each locked player first, then empty
+  const initialState = { picked: [], salarySoFar: 0, fppgSoFar: 0, cheapCount: 0 };
+  let beam = [initialState];
+
+  for (let si = 0; si < slots.length; si++) {
+    const slot = slots[si];
+    const nextBeam = [];
+
+    for (const state of beam) {
+      const usedNames = new Set(state.picked.map(p => p.name));
+      const remaining = cap - state.salarySoFar;
+      const slotsLeft = slots.length - si;
+
+      const eligible = players.filter(p => {
+        if (usedNames.has(p.name)) return false;
+        if (excludedNames.has(p.name)) return false;
+        if (!csvPositionMatches(p.position, slot)) return false;
+        // check salary fits with minimum 1 $ per remaining slot after this
+        if (p.salary > remaining - (slotsLeft - 1)) return false;
+        return true;
+      });
+
+      // prefer locked players first
+      const locked = eligible.filter(p => lockedNames.has(p.name));
+      const candidates = locked.length ? locked : eligible;
+
+      // sort by fppg desc, then try top N
+      candidates.sort((a, b) => (b.fppg || 0) - (a.fppg || 0));
+      const top = candidates.slice(0, BEAM_WIDTH * 2);
+
+      for (const player of top) {
+        const isPunt = player.salary > 0 && player.salary <= puntThreshold;
+        const nextCheap = state.cheapCount + (isPunt ? 1 : 0);
+        if (nextCheap > maxPunts && !lockedNames.has(player.name)) continue;
+
+        nextBeam.push({
+          picked: [...state.picked, player],
+          salarySoFar: state.salarySoFar + player.salary,
+          fppgSoFar: state.fppgSoFar + (player.fppg || 0),
+          cheapCount: nextCheap,
+        });
+      }
+    }
+
+    if (!nextBeam.length) return null;
+    nextBeam.sort((a, b) => b.fppgSoFar - a.fppgSoFar);
+    beam = nextBeam.slice(0, BEAM_WIDTH);
+  }
+
+  // return best complete state
+  const valid = beam.filter(s => s.picked.length === slots.length && s.salarySoFar <= cap);
+  if (!valid.length) return null;
+  valid.sort((a, b) => b.fppgSoFar - a.fppgSoFar);
+  return valid[0];
+}
+
+router.post('/optimize-csv', async (req, res) => {
+  const session = requireDfsSession(req, res);
+  if (!session) return;
+
+  const {
+    players: rawPlayers = [],
+    platform = 'fanduel',
+    salaryCap,
+    requireProbablePitcher = true,
+    allowValuePunts = true,
+    maxPuntPlayers = 1,
+    lockedPlayers = [],
+    excludedPlayers = [],
+  } = req.body || {};
+
+  const cap = salaryCap || (platform === 'fanduel' ? 35000 : 50000);
+
+  // sanitize player list
+  const players = (Array.isArray(rawPlayers) ? rawPlayers : [])
+    .filter(p => p && p.name && p.salary >= 0)
+    .map(p => ({
+      name:             String(p.name || '').slice(0, 80),
+      team:             String(p.team || '').slice(0, 20),
+      position:         String(p.position || '').slice(0, 20),
+      salary:           Number(p.salary) || 0,
+      fppg:             Number(p.fppg) || 0,
+      probablePitcher:  Boolean(p.probablePitcher),
+      injuryStatus:     String(p.injuryStatus || ''),
+    }));
+
+  if (!players.length) return fail(res, 400, { error: 'No players provided.' });
+
+  const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
+  const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
+
+  // lineup slots for FD MLB: P, C/1B, 2B, 3B, SS, OF, OF, OF, UTIL
+  // DK MLB: P, P, C, 1B, 2B, 3B, SS, OF, OF, OF
+  const allSlots = platform === 'fanduel'
+    ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL']
+    : ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF'];
+
+  const pitcherSlots = allSlots.filter(s => s === 'P');
+  const hitterSlots  = allSlots.filter(s => s !== 'P');
+
+  // separate pools
+  const allPitchers = players.filter(p => csvIsMlbPitcher(p) && !excludedSet.has(p.name));
+  const allHitters  = players.filter(p => !csvIsMlbPitcher(p) && !excludedSet.has(p.name));
+
+  // pitcher filter with critical fallback
+  let eligiblePitchers = allPitchers;
+  if (requireProbablePitcher) {
+    const probables = allPitchers.filter(p => p.probablePitcher);
+    if (probables.length > 0) eligiblePitchers = probables;
+    // else: fallback — column blank/unrecognized, keep all pitchers
+  }
+
+  const verifiedActivePitchers = eligiblePitchers.map(p => ({
+    name: p.name, salary: p.salary, fppg: p.fppg, probablePitcher: p.probablePitcher,
+  }));
+
+  if (!eligiblePitchers.length) {
+    const minHitterSal = allHitters.length
+      ? Math.min(...allHitters.map(p => p.salary).filter(s => s > 0))
+      : 0;
+    return fail(res, 400, {
+      error: 'No eligible pitchers found after filtering.',
+      debug: {
+        totalHitterSalary: allHitters.reduce((s, p) => s + p.salary, 0),
+        minimumAvailablePitcherSalary: 0,
+        verifiedActivePitchers: [],
+        hitterCount: allHitters.length,
+      },
+    });
+  }
+
+  const beamOpts = {
+    maxPunts: allowValuePunts ? maxPuntPlayers : 0,
+    puntThreshold: 2500,
+    lockedNames: lockedSet,
+    excludedNames: excludedSet,
+  };
+
+  // pitcher-for-each: try each eligible pitcher combo, find best hitter fill
+  eligiblePitchers.sort((a, b) => (b.fppg || 0) - (a.fppg || 0));
+
+  let bestResult = null;
+
+  if (pitcherSlots.length === 1) {
+    // FanDuel: single pitcher slot
+    for (const pitcher of eligiblePitchers) {
+      const hitterCap = cap - pitcher.salary;
+      if (hitterCap < 0) continue;
+      const hitterPool = allHitters.filter(p => !excludedSet.has(p.name));
+      const result = csvBeamSearch(hitterPool, hitterSlots, hitterCap, beamOpts);
+      if (!result) continue;
+      const totalFppg = (pitcher.fppg || 0) + result.fppgSoFar;
+      if (!bestResult || totalFppg > bestResult.totalFppg) {
+        bestResult = {
+          pitcher: [pitcher],
+          hitters: result.picked,
+          totalSalary: pitcher.salary + result.salarySoFar,
+          totalFppg,
+        };
+      }
+    }
+  } else {
+    // DraftKings: two pitcher slots — try each pair
+    for (let i = 0; i < eligiblePitchers.length; i++) {
+      for (let j = i + 1; j < eligiblePitchers.length; j++) {
+        const p1 = eligiblePitchers[i];
+        const p2 = eligiblePitchers[j];
+        const hitterCap = cap - p1.salary - p2.salary;
+        if (hitterCap < 0) continue;
+        const hitterPool = allHitters.filter(p => !excludedSet.has(p.name));
+        const result = csvBeamSearch(hitterPool, hitterSlots, hitterCap, beamOpts);
+        if (!result) continue;
+        const totalFppg = (p1.fppg || 0) + (p2.fppg || 0) + result.fppgSoFar;
+        if (!bestResult || totalFppg > bestResult.totalFppg) {
+          bestResult = {
+            pitcher: [p1, p2],
+            hitters: result.picked,
+            totalSalary: p1.salary + p2.salary + result.salarySoFar,
+            totalFppg,
+          };
+        }
+      }
+    }
+  }
+
+  if (!bestResult) {
+    const minPitcherSal = eligiblePitchers.length
+      ? Math.min(...eligiblePitchers.map(p => p.salary).filter(s => s > 0))
+      : 0;
+    const totalHitterSal = allHitters.reduce((s, p) => s + p.salary, 0);
+    return fail(res, 400, {
+      error: `No valid lineup found under $${cap.toLocaleString()} cap. Try relaxing constraints or check salary data.`,
+      debug: {
+        totalHitterSalary: totalHitterSal,
+        minimumAvailablePitcherSalary: minPitcherSal,
+        verifiedActivePitchers,
+        eligiblePitcherCount: eligiblePitchers.length,
+        hitterCount: allHitters.length,
+        cap,
+      },
+    });
+  }
+
+  // assemble lineup in slot order
+  const lineup = [];
+  let pitcherIdx = 0;
+  let hitterIdx  = 0;
+  for (const slot of allSlots) {
+    if (slot === 'P') {
+      const p = bestResult.pitcher[pitcherIdx++];
+      lineup.push({ ...p, slot });
+    } else {
+      const h = bestResult.hitters[hitterIdx++];
+      lineup.push({ ...h, slot });
+    }
+  }
+
+  return ok(res, {
+    data: {
+      lineup,
+      totalSalary: bestResult.totalSalary,
+      totalFppg:   bestResult.totalFppg,
+      salaryCap:   cap,
+    },
+    debug: {
+      verifiedActivePitchers,
+      eligiblePitcherCount: eligiblePitchers.length,
+      cap,
+      platform,
+    },
+  });
 });
 
 router.post('/refresh-injuries', async (req, res) => {
