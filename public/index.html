@@ -921,6 +921,14 @@ button,
 .dfs-active-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
 .dfs-chip{font-family:var(--mono);font-size:8px;padding:3px 8px;border-radius:12px;background:rgba(0,211,100,0.1);border:1px solid rgba(0,211,100,0.25);color:var(--green);}
 .dfs-locked-bar{background:rgba(0,122,255,0.06);border:1px solid rgba(0,122,255,0.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-family:var(--mono);font-size:9px;color:var(--accent);}
+.dfs-roster-input{font-family:var(--mono);font-size:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:8px;width:260px;max-width:100%;outline:none;letter-spacing:0.5px;}
+.dfs-roster-input:focus{border-color:var(--accent);}
+.dfs-pos-counts{display:none;flex-wrap:wrap;align-items:center;gap:6px;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;}
+.dfs-pos-tag{display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;}
+.dfs-pos-tag-lbl{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;}
+.dfs-pos-tag-num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);}
+.dfs-pos-tag-num.low{color:var(--red);}
+.dfs-pos-tag-num.warn{color:var(--yellow);}
 .dfs-perf-section{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);}
 .dfs-perf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
 .dfs-perf-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;}
@@ -1400,7 +1408,18 @@ button,
           <button class="dfs-sel-btn" onclick="dfsToggleConfirmed()" id="dfs-confirmed-toggle">⚡ Highlight Confirmed Active Q</button>
         </div>
       </div>
+      <div class="dfs-selector-group">
+        <div class="form-label">ROSTER SLOTS <span style="color:var(--muted);font-weight:400;">(optional — overrides auto)</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input id="dfs-roster-input" class="dfs-roster-input" type="text" placeholder="P, C, 1B, 2B, SS, OF, OF, UTIL" oninput="dfsSetCustomRoster(this.value)">
+          <button class="dfs-sel-btn" id="dfs-mvp-toggle" onclick="dfsToggleMvpMode()">MVP/CPT Mode OFF</button>
+        </div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;">Comma-separated slots override auto-detect. MVP mode makes first slot CPT/MVP (1.5×).</div>
+      </div>
     </div>
+
+    <!-- Position filter counts -->
+    <div id="dfs-pos-counts" class="dfs-pos-counts"></div>
 
     <!-- Locked/Excluded players bar -->
     <div id="dfs-locked-bar" style="display:none;" class="dfs-locked-bar">
@@ -1614,6 +1633,8 @@ let dfsState = {
   injuryRefreshActive: false,
   injuryAbortController: null,
   customCap: null,
+  customRoster: null,
+  mvpMode: false,
 };
 let dfsLastLineup = null;
 
@@ -1843,6 +1864,7 @@ async function dfsHandleCsvUpload(event) {
     showToast(`${parsed.players.length} DFS players loaded`, 'success');
     dfsUpdateInjuryRefreshMeta();
     dfsRenderWeatherBanner();
+    dfsRenderPositionCounts();
   } catch (err) {
     dfsState.uploadedPlayers = [];
     dfsState.uploadedFile = null;
@@ -2108,6 +2130,7 @@ function dfsSetSport(s) {
   dfsState.weather = null;
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
+  dfsRenderPositionCounts();
 }
 function dfsSetPlatform(p) {
   dfsState.platform = p;
@@ -2115,6 +2138,7 @@ function dfsSetPlatform(p) {
   document.querySelectorAll('[id^="dfs-plat-"]').forEach(el => el.classList.remove('active'));
   document.getElementById('dfs-plat-' + p).classList.add('active');
   dfsUpdateCapDisplay();
+  dfsRenderPositionCounts();
 }
 function dfsSetContest(c) {
   dfsState.contestType = c;
@@ -2131,6 +2155,7 @@ function dfsSetInjuryFilter(f) {
     const csvBtn = document.getElementById('dfs-csv-inj-' + f);
     if (csvBtn) csvBtn.classList.add('active');
     dfsRenderCsvPlayers();
+    dfsRenderPositionCounts();
   }
 }
 function dfsToggleConfirmed() {
@@ -2147,6 +2172,7 @@ function dfsToggleExcludeIl() {
     btn.textContent = dfsState.excludeIlPlayers ? '✓ Excluding IL Players' : 'Exclude IL Players';
   }
   dfsRenderCsvPlayers();
+  dfsRenderPositionCounts();
   if (dfsState.uploadedPlayers.length && document.getElementById('dfs-results').style.display !== 'none') {
     dfsOptimize();
   }
@@ -2167,13 +2193,60 @@ function dfsUpdateCapDisplay() {
   const capEl = document.getElementById('dfs-cap-display');
   if (capEl) capEl.textContent = '$' + cap.toLocaleString();
   const slotsEl = document.getElementById('dfs-slots-display');
-  if (slotsEl) slotsEl.textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+  if (slotsEl) {
+    const { customRoster, mvpMode, platform } = dfsState;
+    if (customRoster && customRoster.length) {
+      const slots = [...customRoster];
+      if (mvpMode) slots[0] = platform === 'fanduel' ? 'MVP' : 'CPT';
+      slotsEl.textContent = slots.join(' + ') + ` (${slots.length} players)`;
+    } else {
+      slotsEl.textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+    }
+  }
   const sel = document.getElementById('dfs-cap-select');
   if (sel) {
     sel.options[0].text = `Auto ($${autoCap.toLocaleString()})`;
     if (!dfsState.customCap) sel.value = '';
   }
 }
+function dfsParseRosterInput(value) {
+  if (!value || !value.trim()) return null;
+  const slots = value.split(/[,\s]+/).map(s => s.toUpperCase().trim()).filter(Boolean);
+  return slots.length ? slots : null;
+}
+function dfsSetCustomRoster(value) {
+  dfsState.customRoster = dfsParseRosterInput(value);
+  dfsUpdateCapDisplay();
+  dfsRenderPositionCounts();
+}
+function dfsToggleMvpMode() {
+  dfsState.mvpMode = !dfsState.mvpMode;
+  const btn = document.getElementById('dfs-mvp-toggle');
+  if (btn) {
+    btn.classList.toggle('active', dfsState.mvpMode);
+    btn.textContent = dfsState.mvpMode ? '✓ MVP/CPT Mode ON' : 'MVP/CPT Mode OFF';
+  }
+  dfsUpdateCapDisplay();
+  dfsRenderPositionCounts();
+}
+function dfsRenderPositionCounts() {
+  const el = document.getElementById('dfs-pos-counts');
+  if (!el) return;
+  if (!dfsState.uploadedPlayers.length) { el.style.display = 'none'; return; }
+  const eligible = dfsGetEligiblePlayersForOptimization();
+  const slots = dfsLineupSlots();
+  const skipSlots = new Set(['FLEX','UTIL','CPT','MVP','STAR','PRO','G']);
+  const uniqueSlots = [...new Set(slots.filter(s => !skipSlots.has(s)))];
+  if (!uniqueSlots.length) { el.style.display = 'none'; return; }
+  const tags = uniqueSlots.map(slot => {
+    const n = eligible.filter(p => dfsPositionMatches(p.position, slot)).length;
+    const cls = n === 0 ? 'low' : n <= 2 ? 'warn' : '';
+    return `<span class="dfs-pos-tag"><span class="dfs-pos-tag-lbl">${slot}</span><span class="dfs-pos-tag-num${cls ? ' ' + cls : ''}">${n}</span></span>`;
+  }).join('');
+  el.innerHTML = `<span style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">ELIGIBLE BY POS:</span>${tags}<span style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-left:4px;">${eligible.length} total</span>`;
+  el.style.display = 'flex';
+}
+
 function dfsLockPlayer(name) {
   if (dfsState.lockedPlayers.includes(name)) {
     dfsState.lockedPlayers = dfsState.lockedPlayers.filter(n => n !== name);
@@ -2444,6 +2517,7 @@ async function dfsRefreshInjuries() {
       lateNewsItems: data.lateNewsItems || [],
     };
     dfsRenderCsvPlayers();
+    dfsRenderPositionCounts();
     dfsUpdateInjuryRefreshMeta();
     if (dfsLastLineup && Array.isArray(dfsLastLineup.lineup)) {
       dfsLastLineup.lineup = dfsLastLineup.lineup.map(p => {
@@ -2586,7 +2660,12 @@ function dfsWeatherImpactForPlayer(player) {
 }
 
 function dfsLineupSlots() {
-  const { sport, platform } = dfsState;
+  const { sport, platform, customRoster, mvpMode } = dfsState;
+  if (customRoster && customRoster.length) {
+    const slots = [...customRoster];
+    if (mvpMode && slots.length > 0) slots[0] = platform === 'fanduel' ? 'MVP' : 'CPT';
+    return slots;
+  }
   if (sport === 'golf') return ['G', 'G', 'G', 'G', 'G', 'G'];
   if (sport === 'nba') return platform === 'draftkings'
     ? ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX']
