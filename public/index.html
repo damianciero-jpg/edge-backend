@@ -1416,6 +1416,17 @@ button,
         </div>
         <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;">Comma-separated slots override auto-detect. MVP mode makes first slot CPT/MVP (1.5×).</div>
       </div>
+      <div class="dfs-selector-group" id="dfs-mlb-options" style="display:none;">
+        <div class="form-label">MLB OPTIONS</div>
+        <div class="dfs-btn-group">
+          <button class="dfs-sel-btn active" id="dfs-prob-pitcher-toggle" onclick="dfsToggleProbablePitcher()">✓ Probable Pitchers Only</button>
+          <button class="dfs-sel-btn active" id="dfs-allow-punts-toggle" onclick="dfsToggleAllowPunts()">✓ Allow Value Punts</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX PUNTS:</span>
+          <input type="number" id="dfs-max-punts-input" min="0" max="5" value="1" oninput="dfsSetMaxPunts(+this.value)" style="width:50px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;">
+        </div>
+      </div>
     </div>
 
     <!-- Position filter counts -->
@@ -1611,7 +1622,7 @@ const DFS_CAPS = {
 const DFS_SLOT_LABELS = {
   nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
   nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb:  { draftkings: 'P + 8 flex hitters (9 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
+  mlb:  { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
   golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
 };
 
@@ -1635,6 +1646,9 @@ let dfsState = {
   customCap: null,
   customRoster: null,
   mvpMode: false,
+  requireProbablePitcher: true,
+  allowValuePunts: true,
+  maxPuntPlayers: 1,
 };
 let dfsLastLineup = null;
 
@@ -1930,7 +1944,7 @@ function dfsBuildPlayersFromCsv(text) {
     const gameTotal = columns.gameTotal ? dfsParsePoints(row[idx[columns.gameTotal]]) : null;
     const opposingPitcherEra = columns.opposingPitcherEra ? dfsParsePoints(row[idx[columns.opposingPitcherEra]]) : null;
     const probablePitcher = columns.probablePitcher
-      ? /^(YES|PROBABLE|Y|TRUE|1)$/i.test(String(row[idx[columns.probablePitcher]] || '').trim())
+      ? /^(YES|PROBABLE|Y|TRUE|1|P)$/i.test(String(row[idx[columns.probablePitcher]] || '').trim())
       : false;
     const battingOrder = columns.battingOrder ? (parseInt(String(row[idx[columns.battingOrder]] || ''), 10) || null) : null;
     const confirmedActive = columns.confirmedActive
@@ -2158,6 +2172,8 @@ function dfsSetSport(s) {
   const sportBtn = document.getElementById('dfs-sport-' + s);
   if (sportBtn) sportBtn.classList.add('active');
   dfsState.weather = null;
+  const mlbOpts = document.getElementById('dfs-mlb-options');
+  if (mlbOpts) mlbOpts.style.display = s === 'mlb' ? '' : 'none';
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
   dfsRenderPositionCounts();
@@ -2277,6 +2293,26 @@ function dfsToggleMvpMode() {
   }
   dfsUpdateCapDisplay();
   dfsRenderPositionCounts();
+}
+function dfsToggleProbablePitcher() {
+  dfsState.requireProbablePitcher = !dfsState.requireProbablePitcher;
+  const btn = document.getElementById('dfs-prob-pitcher-toggle');
+  if (btn) {
+    btn.classList.toggle('active', dfsState.requireProbablePitcher);
+    btn.textContent = dfsState.requireProbablePitcher ? '✓ Probable Pitchers Only' : 'All Pitchers';
+  }
+  if (dfsLastLineup && dfsState.uploadedPlayers.length) dfsOptimize();
+}
+function dfsToggleAllowPunts() {
+  dfsState.allowValuePunts = !dfsState.allowValuePunts;
+  const btn = document.getElementById('dfs-allow-punts-toggle');
+  if (btn) {
+    btn.classList.toggle('active', dfsState.allowValuePunts);
+    btn.textContent = dfsState.allowValuePunts ? '✓ Allow Value Punts' : 'No Punts';
+  }
+}
+function dfsSetMaxPunts(n) {
+  dfsState.maxPuntPlayers = Math.max(0, Math.min(5, isNaN(n) ? 1 : n));
 }
 function dfsRenderPositionCounts() {
   const el = document.getElementById('dfs-pos-counts');
@@ -2462,12 +2498,17 @@ function dfsHardExcludePlayer(player) {
   const salary = player.salary || 0;
   if (salary > 0 && salary < dfsGetSalaryFloor()) return true;
   if (dfsState.sport === 'mlb') {
-    // Exclude pure relievers (isReliever flag set during CSV parse)
     if (player.isReliever) return true;
-    // Exclude non-probable pitchers when CSV has a Probable Pitcher / Starter column
     if (dfsIsMlbPitcher(player) && !player.probablePitcher) {
+      if (!dfsState.requireProbablePitcher) return false;
       const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
-      if (hasProbableCol) return true;
+      if (hasProbableCol) {
+        // CRITICAL FALLBACK: if column exists but no pitcher has probablePitcher=true,
+        // the column data is blank/unrecognized — keep all pitchers available.
+        const anyProbable = dfsState.uploadedPlayers.some(p => dfsIsMlbPitcher(p) && p.probablePitcher);
+        if (!anyProbable) return false;
+        return true;
+      }
     }
   }
   return false;
@@ -2772,10 +2813,9 @@ function dfsLineupSlots() {
   if (sport === 'nfl') return platform === 'draftkings'
     ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
     : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
-  // MLB: FanDuel uses specific positional slots; DraftKings uses loose flex
   if (sport === 'mlb') return platform === 'fanduel'
     ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL']
-    : ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
+    : ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF'];
 }
 
 function dfsFlexMlbSlots(count) {
@@ -2995,7 +3035,8 @@ function dfsPickBestCsvLineup(opts) {
         const projFppg = Number.isFinite(projected.projectedFppg) ? projected.projectedFppg : 0;
         const ceilFppg = Number.isFinite(projected.ceilingFppg) ? projected.ceilingFppg : 0;
         const nextCheapCount = state.cheapCount + (player.salary > 0 && player.salary < PUNT_SALARY_THRESHOLD ? 1 : 0);
-        if (nextCheapCount > 1 && !locked.has(player.name)) return;
+        const maxPunts = dfsState.allowValuePunts ? (dfsState.maxPuntPlayers || 1) : 0;
+        if (nextCheapCount > maxPunts && !locked.has(player.name)) return;
         const used = new Set(state.used);
         used.add(player.name);
         next.push({
@@ -3461,6 +3502,11 @@ async function dfsOptimize() {
         excludeIlPlayers: dfsState.excludeIlPlayers,
         lockedPlayers: dfsState.lockedPlayers,
         excludedPlayers: dfsState.excludedPlayers,
+        salaryCap: dfsGetCap(),
+        rosterSize: dfsLineupSlots().length,
+        requireProbablePitcher: dfsState.requireProbablePitcher,
+        allowValuePunts: dfsState.allowValuePunts,
+        maxPuntPlayers: dfsState.maxPuntPlayers,
       }),
     });
     const body = await res.json();

@@ -715,6 +715,11 @@ router.post('/optimize', async (req, res) => {
     excludeIlPlayers = false,
     lockedPlayers = [],
     excludedPlayers = [],
+    salaryCap: customSalaryCap,
+    rosterSize: customRosterSize,
+    requireProbablePitcher = true,
+    allowValuePunts = true,
+    maxPuntPlayers = 1,
   } = req.body || {};
 
   if (!['nba', 'nfl', 'mlb'].includes(sport))       return fail(res, 400, { error: 'Invalid sport. Use nba, nfl, or mlb.' });
@@ -737,8 +742,12 @@ router.post('/optimize', async (req, res) => {
     return fail(res, 402, { error: 'No credits remaining', data: { paywall: true, upgrade: true } });
   }
 
-  const salaryCap = SALARY_CAPS[platform][sport];
-  const slots     = LINEUP_SLOTS[sport][platform];
+  const defaultCap = SALARY_CAPS[platform] && SALARY_CAPS[platform][sport];
+  const salaryCap = (customSalaryCap > 0) ? customSalaryCap : defaultCap;
+  const defaultSlots = LINEUP_SLOTS[sport] && LINEUP_SLOTS[sport][platform];
+  const slots = (customRosterSize > 0 && defaultSlots)
+    ? (customRosterSize <= defaultSlots.length ? defaultSlots.slice(0, customRosterSize) : [...defaultSlots, ...Array(customRosterSize - defaultSlots.length).fill('UTIL')])
+    : defaultSlots;
 
   const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
   let liveData = [];
@@ -790,7 +799,17 @@ router.post('/optimize', async (req, res) => {
       withTimeout(addCredits(userId, -1), 3000, 'credit deduct').catch(() => {});
     }
 
-    return ok(res, { data: lineupData });
+    return ok(res, {
+      data: lineupData,
+      debug: {
+        salaryCapUsed: salaryCap,
+        rosterSizeUsed: slots ? slots.length : null,
+        platformUsed: platform,
+        requireProbablePitcher,
+        pitchersBeforeFilter: null,
+        pitchersAfterFilter: null,
+      },
+    });
   } catch (err) {
     const status = err.status || err.statusCode;
     console.error('DFS optimize error:', err.message);
