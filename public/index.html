@@ -2655,7 +2655,9 @@ function dfsPickBestCsvLineup(opts) {
 
   const PUNT_SALARY_THRESHOLD = 4500;
 
-  slots.forEach(slot => {
+  const isShowdown = slot => slot === 'MVP' || slot === 'CPT';
+
+  slots.forEach((slot, slotIdx) => {
     const slotEligible = players.filter(p => dfsPositionMatches(p.position, slot));
     const slotCandidates = slotEligible
       .slice()
@@ -2700,7 +2702,9 @@ function dfsPickBestCsvLineup(opts) {
     });
 
     next.sort((a, b) => dfsRankCsvLineupState(b, cap) - dfsRankCsvLineupState(a, cap));
-    states = next.slice(0, 500);
+    // For the first slot in showdown formats, keep all MVP/CPT states so every
+    // candidate competes for the remaining slots — don't let FPPM alone decide MVP.
+    states = (slotIdx === 0 && isShowdown(slot)) ? next : next.slice(0, 500);
   });
 
   const complete = states.filter(state =>
