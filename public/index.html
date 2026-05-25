@@ -1851,6 +1851,8 @@ async function dfsHandleCsvUpload(event) {
       dfsSetSport('mlb');
     } else if (dfsIsGolfPool(parsed.players)) {
       dfsSetSport('golf');
+    } else if (dfsIsMlbPool(parsed.players)) {
+      dfsSetSport('mlb');
     }
     dfsSetCsvInjuryFilter('all');
     dfsSetCsvSort('value');
@@ -2211,7 +2213,26 @@ function dfsUpdateCapDisplay() {
 }
 function dfsParseRosterInput(value) {
   if (!value || !value.trim()) return null;
-  const slots = value.split(/[,\s]+/).map(s => s.toUpperCase().trim()).filter(Boolean);
+  const SLOT_ALIASES = {
+    '2ND': '2B', 'SECOND': '2B', 'SECONDBASE': '2B',
+    '3RD': '3B', 'THIRD': '3B', 'THIRDBASE': '3B',
+    'FIRST': '1B', 'FIRSTBASE': '1B',
+    'SHORT': 'SS', 'SHORTSTOP': 'SS',
+    'CATCHER': 'C',
+    'OUTFIELD': 'OF',
+    'PITCHER': 'P', 'STARTER': 'P',
+    'INFIELD': 'INF', 'INFIELDER': 'INF',
+    'DEFENSE': 'DST', 'DEF': 'DST',
+    'KICKER': 'K',
+    'QUARTERBACK': 'QB',
+    'RUNNINGBACK': 'RB', 'RUNNING': 'RB',
+    'RECEIVER': 'WR', 'WIDE': 'WR',
+    'TIGHT': 'TE', 'TIGHTEND': 'TE',
+  };
+  const slots = value.split(/[,\s]+/).map(s => {
+    const up = s.toUpperCase().trim();
+    return SLOT_ALIASES[up] || up;
+  }).filter(Boolean);
   return slots.length ? slots : null;
 }
 function dfsSetCustomRoster(value) {
@@ -2313,7 +2334,8 @@ function dfsNormalizePosition(raw) {
     .split(/[\/,; ]+/)
     .filter(Boolean)
     .map(part => {
-      if (/^(SP|RP|STARTING PITCHER|RELIEF PITCHER)$/.test(part)) return 'P';
+      if (/^(SP|STARTING PITCHER)$/.test(part)) return 'P';
+      if (/^(RELIEF PITCHER)$/.test(part)) return 'RP'; // keep RP as RP — excluded via dfsHardExcludePlayer
       if (/^(LF|CF|RF|LEFT FIELD|CENTER FIELD|RIGHT FIELD)$/.test(part)) return 'OF';
       if (/^(DH|DESIGNATED HITTER)$/.test(part)) return 'UTIL';
       if (/^(CATCHER)$/.test(part)) return 'C';
@@ -2333,6 +2355,21 @@ function dfsIsGolfPool(players) {
   const explicitGolf = new Set(['G', 'GOLF', 'PGA', 'PLAYER', 'GOLFER']);
   const golfCount = players.filter(p => explicitGolf.has(String(p.position || '').toUpperCase())).length;
   return golfCount / players.length >= 0.8;
+}
+
+function dfsIsMlbPool(players) {
+  if (!players || players.length < 5) return false;
+  const MLB = new Set(['P', 'SP', 'RP', 'C', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH']);
+  const NBA = new Set(['PG', 'SG', 'SF', 'PF']);
+  const NFL = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DST']);
+  let mlb = 0, nba = 0, nfl = 0;
+  for (const p of players) {
+    const parts = String(p.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
+    if (parts.some(pos => NBA.has(pos))) nba++;
+    else if (parts.some(pos => NFL.has(pos))) nfl++;
+    else if (parts.some(pos => MLB.has(pos))) mlb++;
+  }
+  return mlb > nba && mlb > nfl && mlb >= 5;
 }
 
 function dfsPositionMatches(playerPosition, slot) {
