@@ -1611,7 +1611,7 @@ const DFS_CAPS = {
 const DFS_SLOT_LABELS = {
   nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
   nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb:  { draftkings: 'P + INF×2 + OF×2 + UTIL (6 players)', fanduel: 'P + INF×2 + OF×2 + UTIL (6 players)' },
+  mlb:  { draftkings: 'P + 5 flex hitters (6 players)', fanduel: 'P + 5 flex hitters (6 players)' },
   golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
 };
 
@@ -2234,14 +2234,19 @@ function dfsRenderPositionCounts() {
   if (!el) return;
   if (!dfsState.uploadedPlayers.length) { el.style.display = 'none'; return; }
   const eligible = dfsGetEligiblePlayersForOptimization();
-  const slots = dfsLineupSlots();
-  const skipSlots = new Set(['FLEX','UTIL','CPT','MVP','STAR','PRO','G']);
-  const uniqueSlots = [...new Set(slots.filter(s => !skipSlots.has(s)))];
-  if (!uniqueSlots.length) { el.style.display = 'none'; return; }
-  const tags = uniqueSlots.map(slot => {
-    const n = eligible.filter(p => dfsPositionMatches(p.position, slot)).length;
+  let positions;
+  if (dfsState.sport === 'mlb') {
+    positions = ['P', 'C', '1B', '2B', '3B', 'SS', 'OF'];
+  } else {
+    const slots = dfsLineupSlots();
+    const skipSlots = new Set(['FLEX','UTIL','CPT','MVP','STAR','PRO','G']);
+    positions = [...new Set(slots.filter(s => !skipSlots.has(s)))];
+    if (!positions.length) { el.style.display = 'none'; return; }
+  }
+  const tags = positions.map(pos => {
+    const n = eligible.filter(p => dfsPositionMatches(p.position, pos)).length;
     const cls = n === 0 ? 'low' : n <= 2 ? 'warn' : '';
-    return `<span class="dfs-pos-tag"><span class="dfs-pos-tag-lbl">${slot}</span><span class="dfs-pos-tag-num${cls ? ' ' + cls : ''}">${n}</span></span>`;
+    return `<span class="dfs-pos-tag"><span class="dfs-pos-tag-lbl">${pos}</span><span class="dfs-pos-tag-num${cls ? ' ' + cls : ''}">${n}</span></span>`;
   }).join('');
   el.innerHTML = `<span style="font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:1px;">ELIGIBLE BY POS:</span>${tags}<span style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-left:4px;">${eligible.length} total</span>`;
   el.style.display = 'flex';
@@ -2371,6 +2376,11 @@ function dfsHardExcludePlayer(player) {
   if (s === 'O' || s === 'IL' || s === 'OUT') return true;
   const salary = player.salary || 0;
   if (salary > 0 && salary < dfsGetSalaryFloor()) return true;
+  if (dfsState.sport === 'mlb') {
+    const parts = String(player.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
+    // Exclude pure relievers (RP with no SP/P designation) — never starters
+    if (parts.includes('RP') && !parts.includes('SP') && !parts.includes('P')) return true;
+  }
   return false;
 }
 
@@ -2673,8 +2683,8 @@ function dfsLineupSlots() {
   if (sport === 'nfl') return platform === 'draftkings'
     ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
     : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
-  // MLB: 6-slot roster — 1 P, 2 INF (any C/1B/2B/3B/SS), 2 OF, 1 UTIL hitter
-  return ['P', 'INF', 'INF', 'OF', 'OF', 'UTIL'];
+  // MLB: 1 confirmed starter + 5 flex hitters (any position)
+  return ['P', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
 }
 
 function dfsFlexMlbSlots(count) {
@@ -2694,8 +2704,9 @@ function dfsGetEligiblePlayersForOptimization(filterOverride) {
     .filter(p => !dfsState.excludedPlayers.includes(p.name));
 
   if (dfsState.sport === 'mlb') {
-    const anyConfirmedPitcher = dfsState.uploadedPlayers.some(p => dfsIsMlbPitcher(p) && p.probablePitcher);
-    if (anyConfirmedPitcher) {
+    // Only filter by probable starter when CSV has the column; otherwise keep all SP
+    const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
+    if (hasProbableCol) {
       players = players.filter(p => !dfsIsMlbPitcher(p) || p.probablePitcher);
     }
   }
@@ -2938,8 +2949,12 @@ function dfsPickBestCsvLineup(opts) {
       throw new Error(`MLB position data could not be parsed. Found columns: ${detectedCols}. Ensure your CSV has a Position or Roster Position column with values like SP, RP, C, 1B, 2B, 3B, SS, OF.`);
     }
 
+    const mlbBreakdown = dfsState.sport === 'mlb' ? (() => {
+      const pos = ['C','1B','2B','3B','SS','OF'];
+      return `P:${pCount} ` + pos.map(p => `${p}:${players.filter(pl => dfsPositionMatches(pl.position, p) && !dfsIsMlbPitcher(pl)).length}`).join(' ');
+    })() : `P:${pCount} INF:${infCount} OF:${ofCount}`;
     const breakdown = isMlbNfl
-      ? `P:${pCount} INF:${infCount} OF:${ofCount}`
+      ? mlbBreakdown
       : (isGolf
         ? `Golf/salary-only mode — ${players.length} eligible players`
         : (diagSlots.length
@@ -3109,24 +3124,14 @@ function dfsOptimizeUploadedCsv() {
     try {
       attemptStrict();
     } catch (strictErr) {
-      // Attempt 4: relax positional slots → P + UTIL hitters
+      // Fallback: best 6 players regardless of position (no pitcher requirement)
       try {
-        lineup = dfsPickBestCsvLineup({ slotsOverride: dfsFlexMlbSlots() });
-        mlbFlexMode = true;
-      } catch (e4) {
-        try {
-          lineup = dfsPickBestCsvLineup({ relaxFilters: true, slotsOverride: dfsFlexMlbSlots() });
-          mlbFlexMode = true;
-        } catch (e5) {
-          // Attempt 5: 6-player flex fallback
-          try {
-            lineup = dfsPickBestCsvLineup({ slotsOverride: dfsFlexMlbSlots(6) });
-          } catch (e6) {
-            lineup = dfsPickBestCsvLineup({ relaxFilters: true, slotsOverride: dfsFlexMlbSlots(6) });
-          }
-          mlb6PlayerMode = true;
-        }
+        lineup = dfsPickBestCsvLineup({ slotsOverride: Array(6).fill('FLEX'), relaxFilters: true });
+      } catch (e6) {
+        dfsDebugPool();
+        throw strictErr;
       }
+      mlb6PlayerMode = true;
     }
   }
 
@@ -3136,9 +3141,12 @@ function dfsOptimizeUploadedCsv() {
     const ep = dfsGetEligiblePlayersForOptimization();
     const pd = {
       P:   ep.filter(p => dfsIsMlbPitcher(p)).length,
-      INF: ep.filter(p => dfsPositionMatches(p.position, 'INF') && !dfsIsMlbPitcher(p)).length,
-      OF:  ep.filter(p => dfsPositionMatches(p.position, 'OF')).length,
-      UTIL: ep.filter(p => !dfsIsMlbPitcher(p)).length,
+      C:   ep.filter(p => dfsPositionMatches(p.position, 'C') && !dfsIsMlbPitcher(p)).length,
+      '1B': ep.filter(p => dfsPositionMatches(p.position, '1B') && !dfsIsMlbPitcher(p)).length,
+      '2B': ep.filter(p => dfsPositionMatches(p.position, '2B') && !dfsIsMlbPitcher(p)).length,
+      '3B': ep.filter(p => dfsPositionMatches(p.position, '3B') && !dfsIsMlbPitcher(p)).length,
+      SS:  ep.filter(p => dfsPositionMatches(p.position, 'SS') && !dfsIsMlbPitcher(p)).length,
+      OF:  ep.filter(p => dfsPositionMatches(p.position, 'OF') && !dfsIsMlbPitcher(p)).length,
     };
     positionInfo = Object.entries(pd).map(([k, v]) => `${k}:${v}`).join(' · ');
   }
@@ -3313,8 +3321,7 @@ function dfsRenderResults(data) {
   if (data.runBackPlayer && data.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${data.runBackPlayer}${data.runBackGame && data.runBackGame !== 'null' ? ' — ' + data.runBackGame : ''}` });
   if (data.salaryOnlyMode) alerts.push({ cls: 'warn', msg: '⚠ SALARY-ONLY MODE — position data missing or golf contest detected. Lineup built using salary cap only (no positional requirements).' });
   if (data.relaxedQMode) alerts.push({ cls: 'warn', msg: '⚠ QUESTIONABLE PLAYERS INCLUDED — pool was too small under "Q+Out" filter; relaxed to "Out only". Review questionable players in the lineup.' });
-  if (data.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ 6-PLAYER LINEUP — not enough eligible players for a full 9/10-man roster. Upload more players or relax injury filters.' });
-  else if (data.mlbFlexMode) alerts.push({ cls: 'info', msg: '⚡ FLEX POSITIONS — strict slots unavailable; using P + any-hitter fill.' });
+  if (data.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ NO CONFIRMED STARTER FOUND — no probable pitchers in pool; best 6 players by value used (no positional requirements). Upload a CSV with a Probable Starter column or relax injury filters.' });
   if (data.positionInfo) alerts.push({ cls: 'info', msg: `AVAILABLE: ${data.positionInfo}` });
   document.getElementById('dfs-alerts').innerHTML = alerts.map(a => `<div class="dfs-alert ${a.cls}">${a.msg}</div>`).join('');
 
