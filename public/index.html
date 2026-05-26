@@ -2169,14 +2169,21 @@ function dfsDebugPool() {
   const maxSal   = salaries.length ? Math.max(...salaries) : 0;
 
   const isMlb = dfsState.sport === 'mlb';
-  const pitcherFilter = isMlb && all.some(p => dfsIsMlbPitcher(p) && p.probablePitcher)
-    ? all.filter(p => dfsIsMlbPitcher(p) && !p.probablePitcher).length
+  // Only count pitchers that are ACTUALLY hard-excluded by the probable check:
+  // pitchers with zero salary or zero fppg that aren't confirmed probable.
+  // Scheduled starters with valid salary+fppg are kept regardless of the column.
+  const pitcherFilter = isMlb && dfsState.requireProbablePitcher
+    && all.some(p => dfsIsMlbPitcher(p) && p.probablePitcher)
+    ? all.filter(p => dfsIsMlbPitcher(p) && !p.probablePitcher && !(p.salary > 0 && p.fppg > 0)).length
     : 0;
+  const eligiblePitcherCount = isMlb ? eligible.filter(p => dfsIsMlbPitcher(p)).length : 0;
+  const probableCount = isMlb ? all.filter(p => dfsIsMlbPitcher(p) && p.probablePitcher).length : 0;
 
   const recommendations = [];
+  if (isMlb && eligiblePitcherCount === 0) recommendations.push(`0 eligible pitchers in active pool — check injury status, salary floor, or manual exclusions. (${probableCount} probable starters in CSV)`);
   if (removedBySalary.length > 5)        recommendations.push(`Salary floor $${salaryFloor.toLocaleString()} removed ${removedBySalary.length} players.${dfsState.sport !== 'mlb' ? ' Lower floor for MLB (min ~$2,200).' : ''}`);
   if (removedByInjury.length > ofEligible.length) recommendations.push(`Injury filter "${filter}" removed ${removedByInjury.length} players — try relaxing to "out only".`);
-  if (pitcherFilter > 0)                 recommendations.push(`Probable-pitcher filter removed ${pitcherFilter} pitchers — check CSV "Probable Pitcher" column.`);
+  if (pitcherFilter > 0)                 recommendations.push(`${pitcherFilter} zero-salary/zero-projection pitchers skipped (${probableCount} probable starters active).`);
   if (ofEligible.length < 3)             recommendations.push(`Only ${ofEligible.length} OF eligible (${ofAll.length} in CSV). Breakdown: missing fields ${ofMissing.length}, salary<$3500 ${ofSalFloor.length}, hard-status ${ofHardStat.length}, injury-filter ${ofInjFilt.length}, manually excluded ${ofManual.length}.`);
 
   const debug = {
@@ -2628,14 +2635,17 @@ function dfsHardExcludePlayer(player) {
   if (dfsState.sport === 'mlb') {
     if (player.isReliever) return true;
     if (dfsIsMlbPitcher(player) && !player.probablePitcher) {
+      // A pitcher present in the DFS pool with a valid salary AND projection is a
+      // scheduled starter — include them regardless of the probable column.
+      // Only zero-salary / zero-fppg rows are true non-starters worth filtering out.
+      if (player.salary > 0 && player.fppg > 0) return false;
       if (!dfsState.requireProbablePitcher) return false;
       const hasProbableCol = dfsState.uploadedFile && dfsState.uploadedFile.columns && dfsState.uploadedFile.columns.probablePitcher;
       if (hasProbableCol) {
-        // CRITICAL FALLBACK: if column exists but no pitcher has probablePitcher=true,
-        // the column data is blank/unrecognized — keep all pitchers available.
+        // CRITICAL FALLBACK: blank/unrecognised column → keep everyone
         const anyProbable = dfsState.uploadedPlayers.some(p => dfsIsMlbPitcher(p) && p.probablePitcher);
         if (!anyProbable) return false;
-        return true;
+        return true; // only reaches here for zero-salary/zero-fppg non-probable pitchers
       }
     }
   }
@@ -3646,13 +3656,23 @@ async function dfsOptimize() {
             data = dfsOptimizeUploadedCsv(); // fall back to client-side if not logged in
           } else {
             const dbg = csvBody.debug || {};
+            let errMsg = csvBody.error || 'Server optimizer failed.';
+
+            // Surface position-specific bottleneck when available
+            if (dbg.bottleneck === 'pitcher_pool_empty') {
+              errMsg = `0 eligible pitchers — toggle "Probable Pitchers Only" off in MLB OPTIONS, or check your CSV's "Probable Pitcher" column values.`;
+            } else if (typeof dbg.bottleneck === 'string' && dbg.bottleneck.startsWith('slot_') && dbg.bottleneck.endsWith('_empty')) {
+              const slot = dbg.bottleneck.replace(/^slot_/, '').replace(/_empty$/, '');
+              errMsg = `0 eligible ${slot} players after filters. Check injury exclusions or the CSV. (${errMsg})`;
+            } else if (Array.isArray(dbg.slotCoverage)) {
+              const empty = dbg.slotCoverage.filter(s => s.count === 0);
+              if (empty.length) errMsg = `0 eligible players for: ${empty.map(s => s.slot).join(', ')}. Check injury filters or excluded players. (${errMsg})`;
+            }
+
             const pitcherList = (dbg.verifiedActivePitchers || [])
               .map(p => `${p.name} ($${(p.salary||0).toLocaleString()})`)
               .join(', ');
-            throw new Error(
-              (csvBody.error || 'Server optimizer failed.') +
-              (pitcherList ? `\nEligible pitchers: ${pitcherList}` : '')
-            );
+            throw new Error(errMsg + (pitcherList ? `\nEligible pitchers: ${pitcherList}` : ''));
           }
         } else {
           // ok() spreads data fields at top-level (not nested under .data)
