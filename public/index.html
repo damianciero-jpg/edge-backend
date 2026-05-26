@@ -1456,6 +1456,28 @@ button,
               style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
           </div>
         </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);"># LINEUPS</span>
+            <input type="number" id="dfs-lineup-count-input" min="1" max="20" value="1"
+              oninput="dfsSetLineupCount(+this.value)"
+              style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
+          <div id="dfs-multi-lineup-controls" style="display:none;gap:12px;align-items:center;">
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX EXPOSURE %</span>
+              <input type="number" id="dfs-max-exposure-input" min="10" max="100" value="60"
+                oninput="dfsSetMaxExposure(+this.value)"
+                style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MIN UNIQUE</span>
+              <input type="number" id="dfs-min-unique-input" min="0" max="9" value="3"
+                oninput="dfsSetMinUniquePlayers(+this.value)"
+                style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1511,6 +1533,9 @@ button,
 
     <!-- Results -->
     <div id="dfs-results" style="display:none;">
+      <!-- Multi-lineup selector -->
+      <div id="dfs-lineup-selector" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px;"></div>
+
       <!-- Late news banner -->
       <div id="dfs-late-banner" style="display:none;" class="dfs-late-banner">
         <div class="dfs-late-banner-hdr"><span class="dfs-late-dot"></span>LATE NEWS</div>
@@ -1682,7 +1707,11 @@ let dfsState = {
   secondaryStackSize: 2,
   maxOwnershipPct: 120,
   minWrStack: 1,
+  lineupCount: 1,
+  maxExposure: 60,
+  minUniquePlayers: 3,
 };
+let dfsCurrentLineupIdx = 0;
 let dfsLastLineup = null;
 
 const DFS_CSV_COLUMNS = {
@@ -2380,6 +2409,21 @@ function dfsSetMaxOwnershipPct(n) {
 }
 function dfsSetMinWrStack(n) {
   dfsState.minWrStack = Math.max(0, Math.min(2, isNaN(n) ? 1 : n));
+}
+function dfsSetLineupCount(n) {
+  dfsState.lineupCount = Math.max(1, Math.min(20, isNaN(n) ? 1 : n));
+  const multi = document.getElementById('dfs-multi-lineup-controls');
+  if (multi) multi.style.display = dfsState.lineupCount > 1 ? 'flex' : 'none';
+}
+function dfsSetMaxExposure(n) {
+  dfsState.maxExposure = Math.max(10, Math.min(100, isNaN(n) ? 60 : n));
+}
+function dfsSetMinUniquePlayers(n) {
+  dfsState.minUniquePlayers = Math.max(0, Math.min(9, isNaN(n) ? 3 : n));
+}
+function dfsSelectLineup(idx) {
+  dfsCurrentLineupIdx = idx;
+  if (dfsLastLineup) dfsRenderResults(dfsLastLineup);
 }
 function dfsRenderPositionCounts() {
   const el = document.getElementById('dfs-pos-counts');
@@ -3503,6 +3547,7 @@ function dfsRebuildOpenSlots() {
 }
 
 async function dfsOptimize() {
+  dfsCurrentLineupIdx = 0;
   document.getElementById('dfs-results').style.display = 'none';
   document.getElementById('dfs-error').style.display = 'none';
   document.getElementById('dfs-loading').style.display = 'flex';
@@ -3570,6 +3615,9 @@ async function dfsOptimize() {
             secondaryStackSize:     dfsState.secondaryStackSize,
             maxOwnershipPct:        dfsState.maxOwnershipPct,
             minWrStack:             dfsState.minWrStack,
+            lineupCount:            dfsState.lineupCount,
+            maxExposure:            dfsState.maxExposure / 100,
+            minUniquePlayers:       dfsState.minUniquePlayers,
             lockedPlayers:          dfsState.lockedPlayers,
             excludedPlayers:        dfsState.excludedPlayers,
           }),
@@ -3648,6 +3696,25 @@ async function dfsOptimize() {
 
 function dfsRenderResults(data) {
   if (!data) return;
+
+  // ── Multi-lineup selector ─────────────────────────────────────────────────
+  const allLineups = Array.isArray(data.lineups) && data.lineups.length > 1 ? data.lineups : null;
+  const selectorEl = document.getElementById('dfs-lineup-selector');
+  if (allLineups) {
+    if (dfsCurrentLineupIdx >= allLineups.length) dfsCurrentLineupIdx = 0;
+    selectorEl.style.display = 'flex';
+    selectorEl.innerHTML = allLineups.map((lu, i) => {
+      const active = i === dfsCurrentLineupIdx;
+      return `<button onclick="dfsSelectLineup(${i})" style="font-family:var(--mono);font-size:8px;padding:5px 10px;background:${active ? 'var(--accent)' : 'var(--surface2)'};color:${active ? '#000' : 'var(--text)'};border:1px solid ${active ? 'var(--accent)' : 'var(--border2)'};cursor:pointer;border-radius:3px;line-height:1.4;text-align:center;">LINEUP ${i + 1}<br><span style="color:${active ? '#000' : 'var(--muted)'}">${(lu.totalFppg || 0).toFixed(1)} pts</span></button>`;
+    }).join('');
+  } else {
+    dfsCurrentLineupIdx = 0;
+    selectorEl.style.display = 'none';
+  }
+
+  // Use the active lineup's data merged with shared top-level data
+  const current = allLineups ? { ...data, ...allLineups[dfsCurrentLineupIdx] } : data;
+
   const platformName = dfsState.platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
   const sportName = dfsState.sport.toUpperCase();
   const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
@@ -3655,13 +3722,13 @@ function dfsRenderResults(data) {
   const cap = dfsGetCap();
 
   document.getElementById('dfs-result-meta').textContent =
-    `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}`;
+    `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}${allLineups ? ` · ${allLineups.length} LINEUPS` : ''}`;
 
   // Late news banner: merge lineup result items + any from the last injury refresh
   const refreshNews = (dfsState.injuryRefresh && Array.isArray(dfsState.injuryRefresh.lateNewsItems))
     ? dfsState.injuryRefresh.lateNewsItems : [];
   const lateItems = [
-    ...(Array.isArray(data.lateNewsItems) ? data.lateNewsItems : []),
+    ...(Array.isArray(current.lateNewsItems) ? current.lateNewsItems : []),
     ...refreshNews,
   ].filter(Boolean);
   const lateBanner = document.getElementById('dfs-late-banner');
@@ -3674,7 +3741,7 @@ function dfsRenderResults(data) {
 
   // Confirmed active banner
   const confirmedBanner = document.getElementById('dfs-confirmed-banner');
-  const confirmedPlayers = Array.isArray(data.confirmedActivePlayers) ? data.confirmedActivePlayers.filter(Boolean) : [];
+  const confirmedPlayers = Array.isArray(current.confirmedActivePlayers) ? current.confirmedActivePlayers.filter(Boolean) : [];
   if (confirmedPlayers.length) {
     document.getElementById('dfs-confirmed-names').textContent = confirmedPlayers.join(', ');
     confirmedBanner.style.display = 'block';
@@ -3683,18 +3750,18 @@ function dfsRenderResults(data) {
   }
 
   // Totals row — 5 stats
-  const totalSal = data.totalSalary || 0;
-  const remaining = data.remainingSalary != null ? data.remainingSalary : (cap - totalSal);
+  const totalSal = current.totalSalary || 0;
+  const remaining = current.remainingSalary != null ? current.remainingSalary : (cap - totalSal);
   document.getElementById('dfs-totals-row').innerHTML = `
-    <div class="dfs-total-card"><div class="dfs-total-label">FLOOR</div><div class="dfs-total-val warm">${(data.totalFloorPoints || 0).toFixed(1)}</div></div>
-    <div class="dfs-total-card"><div class="dfs-total-label">PROJ</div><div class="dfs-total-val accent">${(data.totalProjectedPoints || 0).toFixed(1)}</div></div>
-    <div class="dfs-total-card"><div class="dfs-total-label">CEILING</div><div class="dfs-total-val good">${(data.totalCeilingPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">FLOOR</div><div class="dfs-total-val warm">${(current.totalFloorPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">PROJ</div><div class="dfs-total-val accent">${(current.totalProjectedPoints || 0).toFixed(1)}</div></div>
+    <div class="dfs-total-card"><div class="dfs-total-label">CEILING</div><div class="dfs-total-val good">${(current.totalCeilingPoints || 0).toFixed(1)}</div></div>
     <div class="dfs-total-card"><div class="dfs-total-label">SALARY</div><div class="dfs-total-val">$${totalSal.toLocaleString()}</div></div>
     <div class="dfs-total-card"><div class="dfs-total-label">LEFT</div><div class="dfs-total-val">$${remaining.toLocaleString()}</div></div>
   `;
 
   // Correlation score bar
-  const corrScore = data.correlationScore != null ? Math.max(0, Math.min(100, +data.correlationScore)) : null;
+  const corrScore = current.correlationScore != null ? Math.max(0, Math.min(100, +current.correlationScore)) : null;
   const corrEl = document.getElementById('dfs-corr-bar');
   if (corrScore != null) {
     const corrColor = corrScore >= 70 ? 'var(--green)' : corrScore >= 45 ? 'var(--yellow)' : 'var(--red)';
@@ -3706,7 +3773,7 @@ function dfsRenderResults(data) {
 
   // Alerts (including salary allocation check)
   const alerts = [];
-  const lineup = Array.isArray(data.lineup) ? data.lineup : [];
+  const lineup = Array.isArray(current.lineup) ? current.lineup : [];
   const _minSalThreshold = dfsGetMinSalaryThreshold();
   const minSalCount = lineup.filter(p => (p.salary || 0) > 0 && (p.salary || 0) <= _minSalThreshold).length;
   const ilPlayers = lineup.filter(dfsIsIlPlayer).map(p => p.name).filter(Boolean);
@@ -3717,18 +3784,25 @@ function dfsRenderResults(data) {
   }
   if (ilPlayers.length) alerts.push({ cls: 'warn', msg: `INJURY WARNING — ${ilPlayers.join(', ')} ${ilPlayers.length === 1 ? 'is' : 'are'} tagged IL in this lineup.` });
   if (newlyInjuredPlayers.length) alerts.push({ cls: 'warn', msg: `NEW INJURY WARNING — ${newlyInjuredPlayers.join(', ')} updated after refresh.` });
-  if (remaining > 500 && (!data.salaryAlert || data.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
-  if (data.salaryAlert && data.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + data.salaryAlert });
-  if (data.antiCorrelationWarning && data.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + data.antiCorrelationWarning });
-  if (data.sameGameBonus) alerts.push({ cls: 'info', msg: '🔗 SAME-GAME BONUS — 3+ players from one game: +5% ceiling applied to lineup total.' });
-  if (data.weatherAlert && data.weatherAlert !== 'null') alerts.push({ cls: '', msg: '🌤 ' + data.weatherAlert });
-  if (data.ownershipWarning && data.ownershipWarning !== 'null') alerts.push({ cls: '', msg: '⚠ ' + data.ownershipWarning });
-  if (data.stackInfo && data.stackInfo !== 'null') alerts.push({ cls: 'info', msg: '🔗 ' + data.stackInfo });
-  if (data.runBackPlayer && data.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${data.runBackPlayer}${data.runBackGame && data.runBackGame !== 'null' ? ' — ' + data.runBackGame : ''}` });
-  if (data.salaryOnlyMode) alerts.push({ cls: 'warn', msg: '⚠ SALARY-ONLY MODE — position data missing or golf contest detected. Lineup built using salary cap only (no positional requirements).' });
-  if (data.relaxedQMode) alerts.push({ cls: 'warn', msg: '⚠ QUESTIONABLE PLAYERS INCLUDED — pool was too small under "Q+Out" filter; relaxed to "Out only". Review questionable players in the lineup.' });
-  if (data.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ NO CONFIRMED STARTER FOUND — no probable pitchers in pool; best 6 players by value used (no positional requirements). Upload a CSV with a Probable Starter column or relax injury filters.' });
-  if (data.positionInfo) alerts.push({ cls: 'info', msg: `AVAILABLE: ${data.positionInfo}` });
+  if (remaining > 500 && (!current.salaryAlert || current.salaryAlert === 'null')) alerts.push({ cls: 'warn', msg: '⚠ Salary not optimized — tap REGENERATE to fill remaining cap' });
+  if (current.salaryAlert && current.salaryAlert !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ' + current.salaryAlert });
+  if (current.antiCorrelationWarning && current.antiCorrelationWarning !== 'null') alerts.push({ cls: 'warn', msg: '⚠ ANTI-CORR: ' + current.antiCorrelationWarning });
+  if (current.sameGameBonus) alerts.push({ cls: 'info', msg: '🔗 SAME-GAME BONUS — 3+ players from one game: +5% ceiling applied to lineup total.' });
+  if (current.weatherAlert && current.weatherAlert !== 'null') alerts.push({ cls: '', msg: '🌤 ' + current.weatherAlert });
+  if (current.ownershipWarning && current.ownershipWarning !== 'null') alerts.push({ cls: '', msg: '⚠ ' + current.ownershipWarning });
+  if (current.stackInfo && current.stackInfo !== 'null') alerts.push({ cls: 'info', msg: '🔗 ' + current.stackInfo });
+  if (current.runBackPlayer && current.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${current.runBackPlayer}${current.runBackGame && current.runBackGame !== 'null' ? ' — ' + current.runBackGame : ''}` });
+  if (current.salaryOnlyMode) alerts.push({ cls: 'warn', msg: '⚠ SALARY-ONLY MODE — position data missing or golf contest detected. Lineup built using salary cap only (no positional requirements).' });
+  if (current.relaxedQMode) alerts.push({ cls: 'warn', msg: '⚠ QUESTIONABLE PLAYERS INCLUDED — pool was too small under "Q+Out" filter; relaxed to "Out only". Review questionable players in the lineup.' });
+  if (current.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ NO CONFIRMED STARTER FOUND — no probable pitchers in pool; best 6 players by value used (no positional requirements). Upload a CSV with a Probable Starter column or relax injury filters.' });
+  if (current.positionInfo) alerts.push({ cls: 'info', msg: `AVAILABLE: ${current.positionInfo}` });
+  // Exposure summary (multi-lineup only)
+  if (allLineups && data.exposure) {
+    const topExposed = Object.entries(data.exposure)
+      .sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([name, cnt]) => `${name} (${cnt}/${allLineups.length})`).join(', ');
+    if (topExposed) alerts.push({ cls: 'info', msg: `TOP EXPOSURE: ${topExposed}` });
+  }
   document.getElementById('dfs-alerts').innerHTML = alerts.map(a => `<div class="dfs-alert ${a.cls}">${a.msg}</div>`).join('');
 
   // Player cards
