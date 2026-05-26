@@ -1377,6 +1377,7 @@ button,
           <button class="dfs-sel-btn active" onclick="dfsSetSport('nba')" id="dfs-sport-nba">🏀 NBA</button>
           <button class="dfs-sel-btn" onclick="dfsSetSport('nfl')" id="dfs-sport-nfl">🏈 NFL</button>
           <button class="dfs-sel-btn" onclick="dfsSetSport('mlb')" id="dfs-sport-mlb">⚾ MLB</button>
+          <button class="dfs-sel-btn" onclick="dfsSetSport('golf')" id="dfs-sport-golf">⛳ PGA</button>
         </div>
       </div>
       <div class="dfs-selector-group">
@@ -1425,6 +1426,29 @@ button,
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
           <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX PUNTS:</span>
           <input type="number" id="dfs-max-punts-input" min="0" max="5" value="1" oninput="dfsSetMaxPunts(+this.value)" style="width:50px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;">
+        </div>
+      </div>
+      <div class="dfs-selector-group" id="dfs-tournament-options">
+        <div class="form-label">TOURNAMENT LEVERAGE</div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX HITTERS/TEAM</span>
+            <input type="number" id="dfs-max-hitters-input" min="1" max="8" value="4"
+              oninput="dfsSetMaxHittersPerTeam(+this.value)"
+              style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">2ND STACK MIN</span>
+            <input type="number" id="dfs-secondary-stack-input" min="0" max="5" value="2"
+              oninput="dfsSetSecondaryStackSize(+this.value)"
+              style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX OWN%</span>
+            <input type="number" id="dfs-max-ownership-input" min="0" max="600" value="120"
+              oninput="dfsSetMaxOwnershipPct(+this.value)"
+              style="width:56px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
         </div>
       </div>
     </div>
@@ -1618,10 +1642,10 @@ const DFS_CAPS = {
   fanduel:    { nba: 60000, nfl: 60000, mlb: 35000, golf: 60000 },
 };
 const DFS_SLOT_LABELS = {
-  nba:  { draftkings: 'CPT + 5 FLEX (6 players)', fanduel: 'MVP + STAR×2 + PRO×2 + UTIL (6 players)' },
+  nba:  { draftkings: 'PG + SG + SF + PF + C + G + F + UTIL (8 players)', fanduel: 'PG×2 + SG×2 + SF×2 + PF×2 + C (9 players)' },
   nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
   mlb:  { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
-  golf: { draftkings: '6 Players (salary only)', fanduel: '6 Players (salary only)' },
+  golf: { draftkings: 'G×6 (All-Flex, 6 players)', fanduel: 'G×6 (All-Flex, 6 players)' },
 };
 
 let dfsState = {
@@ -1648,6 +1672,9 @@ let dfsState = {
   requireProbablePitcher: true,
   allowValuePunts: true,
   maxPuntPlayers: 1,
+  maxHittersPerTeam: 4,
+  secondaryStackSize: 2,
+  maxOwnershipPct: 120,
 };
 let dfsLastLineup = null;
 
@@ -1667,6 +1694,7 @@ const DFS_CSV_COLUMNS = {
   probablePitcher: ['probable pitcher', 'probablepitcher', 'probable pitching', 'probablepitching', 'probable starter', 'confirmedstarter', 'confirmed starter', 'starter'],
   battingOrder: ['batting order', 'battingorder', 'bat order', 'batorder', 'batting pos', 'bat pos', 'bat#'],
   confirmedActive: ['confirmed active', 'confirmedactive'],
+  ownershipPct: ['ownership', 'ownership %', 'own%', 'own pct', 'pct owned', 'pctowned', 'projected ownership', 'projectedownership', 'proj own', 'projown'],
 };
 
 const DFS_TEAM_CITY = {
@@ -1919,6 +1947,7 @@ function dfsBuildPlayersFromCsv(text) {
     probablePitcher: dfsFindCsvColumn(headers, 'probablePitcher'),
     battingOrder: dfsFindCsvColumn(headers, 'battingOrder'),
     confirmedActive: dfsFindCsvColumn(headers, 'confirmedActive'),
+    ownershipPct: dfsFindCsvColumn(headers, 'ownershipPct'),
   };
   if (!columns.name) throw new Error('Missing Player Name column. Try Name, Player, or Nickname.');
   if (!columns.salary) throw new Error('Missing Salary column. Try Salary, Cost, or Avg Cost.');
@@ -1949,6 +1978,9 @@ function dfsBuildPlayersFromCsv(text) {
     const confirmedActive = columns.confirmedActive
       ? /^(YES|TRUE|Y|1)$/i.test(String(row[idx[columns.confirmedActive]] || '').trim())
       : null;
+    const ownershipPct = columns.ownershipPct
+      ? parseFloat(String(row[idx[columns.ownershipPct]] || '').replace('%', '')) || 0
+      : 0;
     return {
       id: `${name}-${i}`,
       name,
@@ -1970,6 +2002,7 @@ function dfsBuildPlayersFromCsv(text) {
       probablePitcher,
       battingOrder,
       confirmedActive,
+      ownershipPct,
       valueScore: salary ? (fppg / salary) * 1000 : 0,
     };
   }).filter(p => p.name && p.salary > 0 && p.fppg > 0);
@@ -2174,6 +2207,9 @@ function dfsSetSport(s) {
   dfsState.weather = null;
   const mlbOpts = document.getElementById('dfs-mlb-options');
   if (mlbOpts) mlbOpts.style.display = s === 'mlb' ? '' : 'none';
+  // Tournament leverage: hide for PGA (golf is all-flex, no stacking)
+  const tournOpts = document.getElementById('dfs-tournament-options');
+  if (tournOpts) tournOpts.style.display = s === 'golf' ? 'none' : '';
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
   dfsRenderPositionCounts();
@@ -2322,6 +2358,15 @@ function dfsToggleAllowPunts() {
 }
 function dfsSetMaxPunts(n) {
   dfsState.maxPuntPlayers = Math.max(0, Math.min(5, isNaN(n) ? 1 : n));
+}
+function dfsSetMaxHittersPerTeam(n) {
+  dfsState.maxHittersPerTeam = Math.max(1, Math.min(8, isNaN(n) ? 4 : n));
+}
+function dfsSetSecondaryStackSize(n) {
+  dfsState.secondaryStackSize = Math.max(0, Math.min(5, isNaN(n) ? 2 : n));
+}
+function dfsSetMaxOwnershipPct(n) {
+  dfsState.maxOwnershipPct = Math.max(0, Math.min(600, isNaN(n) ? 120 : n));
 }
 function dfsRenderPositionCounts() {
   const el = document.getElementById('dfs-pos-counts');
@@ -2818,8 +2863,8 @@ function dfsLineupSlots() {
   let slots;
   if (sport === 'golf')      slots = ['G', 'G', 'G', 'G', 'G', 'G'];
   else if (sport === 'nba')  slots = platform === 'draftkings'
-    ? ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX']
-    : ['MVP', 'STAR', 'STAR', 'PRO', 'PRO', 'UTIL'];
+    ? ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UTIL']
+    : ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C'];
   else if (sport === 'nfl')  slots = platform === 'draftkings'
     ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
     : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
@@ -3483,53 +3528,55 @@ async function dfsOptimize() {
         } catch (partialErr) {
           data = dfsOptimizeUploadedCsv();
         }
-      } else if (dfsState.sport === 'mlb') {
-        // MLB: use server-side pitcher-for-each optimizer
+      } else {
+        // Server-side LP optimizer for all sports
         const playerPayload = dfsGetEligiblePlayersForOptimization()
-          .filter(p => !dfsHardExcludePlayer(p))
           .map(p => ({
             name:            p.name,
             team:            p.team,
+            opponent:        p.opponent || '',
             position:        p.position,
             salary:          p.salary,
             fppg:            p.fppg,
             probablePitcher: p.probablePitcher || false,
             injuryStatus:    p.injuryStatus || '',
+            ownershipPct:    p.ownershipPct || 0,
           }));
         const csvRes = await fetch('/api/dfs/optimize-csv', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            players:               playerPayload,
-            platform:              dfsState.platform,
-            salaryCap:             dfsGetCap(),
+            players:                playerPayload,
+            sport:                  dfsState.sport,
+            platform:               dfsState.platform,
+            salaryCap:              dfsGetCap(),
             requireProbablePitcher: dfsState.requireProbablePitcher,
-            allowValuePunts:       dfsState.allowValuePunts,
-            maxPuntPlayers:        dfsState.maxPuntPlayers,
-            lockedPlayers:         dfsState.lockedPlayers,
-            excludedPlayers:       dfsState.excludedPlayers,
+            allowValuePunts:        dfsState.allowValuePunts,
+            maxPuntPlayers:         dfsState.maxPuntPlayers,
+            maxHittersPerTeam:      dfsState.maxHittersPerTeam,
+            secondaryStackSize:     dfsState.secondaryStackSize,
+            maxOwnershipPct:        dfsState.maxOwnershipPct,
+            lockedPlayers:          dfsState.lockedPlayers,
+            excludedPlayers:        dfsState.excludedPlayers,
           }),
         });
         const csvBody = await csvRes.json();
         if (!csvRes.ok) {
           if (csvBody.data && csvBody.data.authRequired) {
-            // not logged in — fall back to client-side
-            data = dfsOptimizeUploadedCsv();
+            data = dfsOptimizeUploadedCsv(); // fall back to client-side if not logged in
           } else {
             const dbg = csvBody.debug || {};
             const pitcherList = (dbg.verifiedActivePitchers || [])
               .map(p => `${p.name} ($${(p.salary||0).toLocaleString()})`)
-              .join(', ') || 'none';
+              .join(', ');
             throw new Error(
               (csvBody.error || 'Server optimizer failed.') +
-              (pitcherList !== 'none' ? `\nEligible pitchers: ${pitcherList}` : '')
+              (pitcherList ? `\nEligible pitchers: ${pitcherList}` : '')
             );
           }
         } else {
           data = csvBody.data;
         }
-      } else {
-        data = dfsOptimizeUploadedCsv();
       }
       dfsLastLineup = data;
       dfsRenderResults(data);
