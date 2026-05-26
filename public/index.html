@@ -1449,6 +1449,12 @@ button,
               oninput="dfsSetMaxOwnershipPct(+this.value)"
               style="width:56px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
           </div>
+          <div id="dfs-nfl-stack-control" style="display:none;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MIN WR WITH QB</span>
+            <input type="number" id="dfs-min-wr-stack-input" min="0" max="2" value="1"
+              oninput="dfsSetMinWrStack(+this.value)"
+              style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
         </div>
       </div>
     </div>
@@ -1675,6 +1681,7 @@ let dfsState = {
   maxHittersPerTeam: 4,
   secondaryStackSize: 2,
   maxOwnershipPct: 120,
+  minWrStack: 1,
 };
 let dfsLastLineup = null;
 
@@ -2210,6 +2217,9 @@ function dfsSetSport(s) {
   // Tournament leverage: hide for PGA (golf is all-flex, no stacking)
   const tournOpts = document.getElementById('dfs-tournament-options');
   if (tournOpts) tournOpts.style.display = s === 'golf' ? 'none' : '';
+  // NFL WR-stack control: only relevant for NFL
+  const nflStackCtrl = document.getElementById('dfs-nfl-stack-control');
+  if (nflStackCtrl) nflStackCtrl.style.display = s === 'nfl' ? 'flex' : 'none';
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
   dfsRenderPositionCounts();
@@ -2367,6 +2377,9 @@ function dfsSetSecondaryStackSize(n) {
 }
 function dfsSetMaxOwnershipPct(n) {
   dfsState.maxOwnershipPct = Math.max(0, Math.min(600, isNaN(n) ? 120 : n));
+}
+function dfsSetMinWrStack(n) {
+  dfsState.minWrStack = Math.max(0, Math.min(2, isNaN(n) ? 1 : n));
 }
 function dfsRenderPositionCounts() {
   const el = document.getElementById('dfs-pos-counts');
@@ -3556,6 +3569,7 @@ async function dfsOptimize() {
             maxHittersPerTeam:      dfsState.maxHittersPerTeam,
             secondaryStackSize:     dfsState.secondaryStackSize,
             maxOwnershipPct:        dfsState.maxOwnershipPct,
+            minWrStack:             dfsState.minWrStack,
             lockedPlayers:          dfsState.lockedPlayers,
             excludedPlayers:        dfsState.excludedPlayers,
           }),

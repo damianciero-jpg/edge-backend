@@ -892,34 +892,41 @@ function isMlbPitcherPos(pos) {
 }
 
 // LP-style beam search with suffix-min-salary feasibility pruning.
-// Simultaneously evaluates all roster slots as co-equal variables — infeasible
-// salary states are pruned before they're expanded, preventing pitcher/hitter
-// deadlocks.
+// All roster slots are evaluated simultaneously as co-equal variables.
+// Infeasible salary states are pruned at O(1) per candidate via the pre-computed
+// suffix-minimum array, preventing pitcher/hitter deadlocks.
 function lpBeamSearch(players, slots, cap, opts = {}) {
   const {
-    maxPunts = 1,
-    puntThreshold = 2500,
-    lockedNames = new Set(),
-    excludedNames = new Set(),
-    sport = 'nba',
-    maxTeamCount = 99,
+    maxPunts       = 1,
+    puntThreshold  = 2500,
+    lockedNames    = new Set(),
+    excludedNames  = new Set(),
+    sport          = 'nba',
+    maxTeamCount   = 99,
     antiCorrelationTeams = new Set(),
     maxOwnershipPct = 600,
-    nflStackQbTeam = null,
+    // NFL-specific
+    nflStackQbTeam  = null,  // team to prefer for WR/TE sorting
+    nflMinWrStack   = 0,     // minimum WR/TE from QB's team required
+    // NBA-specific
+    nbaInjuryFloor  = 4500,  // salary at or below which NBA team-cap is waived
   } = opts;
   const BEAM_WIDTH = 32;
 
   const filtered = players.filter(p => !excludedNames.has(p.name));
 
-  // Pre-sort candidates per slot
+  // Sorted candidate lists per slot.
+  // NBA gets a +15% value-efficiency weight in the sort score so the solver
+  // prioritises point-per-dollar alongside raw projection.
   const slotCandidates = slots.map(slot =>
     filtered
       .filter(p => sportPositionMatches(p.position, slot, sport))
       .sort((a, b) => {
-        // For NFL, boost WR/TE same-team-as-QB in sorting (stack bonus)
-        const aBonus = (nflStackQbTeam && (a.position === 'WR' || a.position === 'TE') && a.team === nflStackQbTeam) ? 1.5 : 0;
-        const bBonus = (nflStackQbTeam && (b.position === 'WR' || b.position === 'TE') && b.team === nflStackQbTeam) ? 1.5 : 0;
-        return ((b.fppg || 0) + bBonus) - ((a.fppg || 0) + aBonus);
+        const aStack = (nflStackQbTeam && ['WR', 'TE'].includes(a.position) && a.team === nflStackQbTeam) ? 1.5 : 0;
+        const bStack = (nflStackQbTeam && ['WR', 'TE'].includes(b.position) && b.team === nflStackQbTeam) ? 1.5 : 0;
+        const aVal   = (sport === 'nba' && a.salary > 0) ? (a.fppg / a.salary) * 1000 * 0.15 : 0;
+        const bVal   = (sport === 'nba' && b.salary > 0) ? (b.fppg / b.salary) * 1000 * 0.15 : 0;
+        return ((b.fppg || 0) + bStack + bVal) - ((a.fppg || 0) + aStack + aVal);
       })
   );
 
@@ -935,31 +942,64 @@ function lpBeamSearch(players, slots, cap, opts = {}) {
     suffixMin[i] = suffixMin[i + 1] + slotMinSal[i];
   }
 
-  if (suffixMin[0] > cap) return null; // globally infeasible
+  if (suffixMin[0] > cap) return null; // globally infeasible before any selection
 
-  const initial = { picked: [], salarySoFar: 0, fppgSoFar: 0, cheapCount: 0, teamCounts: {}, ownerSum: 0 };
+  const SKILL_SLOTS = new Set(['WR', 'TE', 'FLEX']); // NFL stacking slots
+
+  const initial = {
+    picked: [], salarySoFar: 0, fppgSoFar: 0, cheapCount: 0,
+    teamCounts: {}, ownerSum: 0,
+    qbTeam: null, qbTeamStack: 0,   // NFL QB-stack tracking
+  };
   let beam = [initial];
 
   for (let si = 0; si < slots.length; si++) {
     const slot = slots[si];
     const nextBeam = [];
 
+    // Pre-compute remaining skill slots (including current) for NFL stack enforcement
+    const remainingSkillSlots = sport === 'nfl'
+      ? slots.slice(si).filter(s => SKILL_SLOTS.has(s)).length
+      : 0;
+
     for (const state of beam) {
       const budgetLeft = cap - state.salarySoFar;
-      // LP feasibility prune: not enough budget for remaining slots at minimum cost
-      if (budgetLeft < suffixMin[si]) continue;
+      if (budgetLeft < suffixMin[si]) continue; // LP feasibility prune
 
       const usedNames = new Set(state.picked.map(p => p.name));
 
       const eligible = slotCandidates[si].filter(p => {
         if (usedNames.has(p.name)) return false;
         if (antiCorrelationTeams.has(p.team)) return false;
-        // LP prune: this player's salary + min cost of all subsequent slots must fit cap
+        // LP prune: player salary + minimum cost of all remaining slots must fit
         if (p.salary + suffixMin[si + 1] > budgetLeft) return false;
-        // MLB hitter stacking cap (pitchers excluded from count)
+
+        // MLB: hitter team-stacking cap (pitchers exempt)
         if (sport === 'mlb' && !isMlbPitcherPos(p.position)) {
           if ((state.teamCounts[p.team] || 0) >= maxTeamCount) return false;
         }
+
+        // NBA: team cap = 2, but waived for injury-value floor players
+        if (sport === 'nba') {
+          const isInjuryVal = p.salary > 0 && p.salary <= nbaInjuryFloor;
+          if (!isInjuryVal && (state.teamCounts[p.team] || 0) >= maxTeamCount) return false;
+        }
+
+        // NFL: D/ST anti-correlation — block any defense facing our offensive teams
+        if (sport === 'nfl' && (slot === 'DST' || slot === 'D/ST')) {
+          const ourTeams = new Set(state.picked.map(q => q.team).filter(Boolean));
+          if (p.opponent && ourTeams.has(p.opponent)) return false;
+        }
+
+        // NFL: enforce minimum QB-WR/TE stack
+        // When remaining skill slots == still-needed stack players, force QB-team picks
+        if (sport === 'nfl' && nflMinWrStack > 0 && state.qbTeam && SKILL_SLOTS.has(slot)) {
+          const stackStillNeeded = nflMinWrStack - state.qbTeamStack;
+          if (stackStillNeeded > 0 && remainingSkillSlots <= stackStillNeeded) {
+            if (!(p.team === state.qbTeam && (p.position === 'WR' || p.position === 'TE'))) return false;
+          }
+        }
+
         return true;
       });
 
@@ -971,27 +1011,35 @@ function lpBeamSearch(players, slots, cap, opts = {}) {
         const nextSal  = state.salarySoFar + player.salary;
         const nextFppg = state.fppgSoFar + (player.fppg || 0);
 
-        // Punt cap applies to hitters only (not pitchers) to avoid deadlocks
-        const isPunt   = player.salary > 0 && player.salary <= puntThreshold && !isMlbPitcherPos(player.position);
+        // Punt cap: apply to non-pitcher positions only (avoids pitcher deadlocks)
+        const isPunt   = player.salary > 0 && player.salary <= puntThreshold
+                         && !isMlbPitcherPos(player.position);
         const nextPunt = state.cheapCount + (isPunt ? 1 : 0);
         if (nextPunt > maxPunts && !lockedNames.has(player.name)) continue;
 
         const nextOwn = state.ownerSum + (player.ownershipPct || 0);
         if (nextOwn > maxOwnershipPct && !lockedNames.has(player.name)) continue;
 
-        // Track team counts (MLB: hitters only; other sports: all players)
+        // Team count — MLB: hitters only; all other sports: all players
         const nextTeam = { ...state.teamCounts };
         if (!(sport === 'mlb' && isMlbPitcherPos(player.position))) {
           nextTeam[player.team] = (nextTeam[player.team] || 0) + 1;
         }
 
+        // NFL QB-stack tracking
+        const nextQbTeam    = state.qbTeam || (player.position === 'QB' ? player.team : null);
+        const nextQbStack   = state.qbTeamStack +
+          (state.qbTeam && ['WR', 'TE'].includes(player.position) && player.team === state.qbTeam ? 1 : 0);
+
         nextBeam.push({
-          picked: [...state.picked, player],
-          salarySoFar: nextSal,
-          fppgSoFar:   nextFppg,
-          cheapCount:  nextPunt,
-          teamCounts:  nextTeam,
-          ownerSum:    nextOwn,
+          picked:       [...state.picked, player],
+          salarySoFar:  nextSal,
+          fppgSoFar:    nextFppg,
+          cheapCount:   nextPunt,
+          teamCounts:   nextTeam,
+          ownerSum:     nextOwn,
+          qbTeam:       nextQbTeam,
+          qbTeamStack:  nextQbStack,
         });
       }
     }
@@ -1022,6 +1070,7 @@ router.post('/optimize-csv', async (req, res) => {
     maxHittersPerTeam = 4,
     secondaryStackSize = 2,
     maxOwnershipPct = 120,
+    minWrStack = 1,
     lockedPlayers = [],
     excludedPlayers = [],
   } = req.body || {};
@@ -1032,28 +1081,35 @@ router.post('/optimize-csv', async (req, res) => {
 
   const players = (Array.isArray(rawPlayers) ? rawPlayers : [])
     .filter(p => p && p.name && p.salary >= 0)
-    .map(p => ({
-      name:            String(p.name || '').slice(0, 80),
-      team:            String(p.team || '').slice(0, 20),
-      opponent:        String(p.opponent || '').slice(0, 20),
-      position:        String(p.position || '').slice(0, 20),
-      salary:          Number(p.salary) || 0,
-      fppg:            Number(p.fppg) || 0,
-      probablePitcher: Boolean(p.probablePitcher),
-      injuryStatus:    String(p.injuryStatus || ''),
-      ownershipPct:    Number(p.ownershipPct) || 0,
-    }));
+    .map(p => {
+      let pos = String(p.position || '').slice(0, 20);
+      // Normalize NFL defensive position variants → DST
+      if (rawSport === 'nfl') pos = pos.replace(/^(DEF|D)$/i, 'DST');
+      return {
+        name:            String(p.name || '').slice(0, 80),
+        team:            String(p.team || '').slice(0, 20),
+        opponent:        String(p.opponent || '').slice(0, 20),
+        position:        pos,
+        salary:          Number(p.salary) || 0,
+        fppg:            Number(p.fppg) || 0,
+        probablePitcher: Boolean(p.probablePitcher),
+        injuryStatus:    String(p.injuryStatus || ''),
+        ownershipPct:    Number(p.ownershipPct) || 0,
+      };
+    });
 
   if (!players.length) return fail(res, 400, { error: 'No players provided.' });
 
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
 
+  const puntThreshold = sport === 'mlb' ? 2500 : 4500;
+
   const baseOpts = {
-    maxPunts:         allowValuePunts ? maxPuntPlayers : 0,
-    puntThreshold:    2500,
-    lockedNames:      lockedSet,
-    excludedNames:    excludedSet,
+    maxPunts:      allowValuePunts ? maxPuntPlayers : 0,
+    puntThreshold,
+    lockedNames:   lockedSet,
+    excludedNames: excludedSet,
     sport,
     maxOwnershipPct,
   };
@@ -1167,23 +1223,37 @@ router.post('/optimize-csv', async (req, res) => {
   // ── NFL / NBA / PGA: unified LP beam search ───────────────────────────────
   const searchOpts = {
     ...baseOpts,
-    maxTeamCount: sport === 'nba' ? 99 : 8, // NBA: no stacking limit
+    ...(sport === 'nba' ? { maxTeamCount: 2, nbaInjuryFloor: 4500 } : {}),
+    ...(sport === 'nfl' ? { maxTeamCount: 8, nflMinWrStack: Math.max(0, Number(minWrStack) || 1) } : {}),
+    ...(sport === 'golf' ? { maxTeamCount: 99 } : {}),
   };
 
   let searchResult = lpBeamSearch(players, allSlots, cap, searchOpts);
 
-  // NFL: if no QB-WR/TE stack found, re-run with QB's team preferred in sorting
+  // NFL: if stack requirement not met, re-run with QB's team boosted in sorting
   if (sport === 'nfl' && searchResult) {
     const qb = searchResult.picked.find(p => p.position === 'QB');
-    const hasStack = qb && searchResult.picked.some(
+    const actualStack = qb ? searchResult.picked.filter(
       p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')
-    );
-    if (!hasStack && qb) {
+    ).length : 0;
+    const minStack = Math.max(0, Number(minWrStack) || 1);
+    if (qb && actualStack < minStack) {
       const retryResult = lpBeamSearch(players, allSlots, cap, {
         ...searchOpts, nflStackQbTeam: qb.team,
       });
       if (retryResult) searchResult = retryResult;
     }
+  }
+
+  // Fallback escalation: relax ownership cap, then team cap
+  if (!searchResult && (sport === 'nfl' || sport === 'nba')) {
+    searchResult = lpBeamSearch(players, allSlots, cap, { ...searchOpts, maxOwnershipPct: 600 });
+  }
+  if (!searchResult && sport === 'nba') {
+    searchResult = lpBeamSearch(players, allSlots, cap, { ...searchOpts, maxOwnershipPct: 600, maxTeamCount: 99 });
+  }
+  if (!searchResult && sport === 'nfl') {
+    searchResult = lpBeamSearch(players, allSlots, cap, { ...searchOpts, maxOwnershipPct: 600, maxTeamCount: 99, nflMinWrStack: 0 });
   }
 
   if (!searchResult) {
@@ -1214,9 +1284,9 @@ router.post('/optimize-csv', async (req, res) => {
   let stackInfo = null;
   if (sport === 'nfl') {
     const qb = lineup.find(p => p.position === 'QB');
-    const stackPartner = qb && lineup.find(p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE'));
-    stackInfo = stackPartner
-      ? `QB-${stackPartner.position} stack: ${qb.team} (${qb.name} + ${stackPartner.name})`
+    const stackPartners = qb ? lineup.filter(p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')) : [];
+    stackInfo = stackPartners.length
+      ? `QB stack: ${qb.team} (${qb.name} + ${stackPartners.map(p => p.name).join(', ')})`
       : 'No QB-WR/TE stack — consider locking a WR/TE from QB\'s team';
   }
 
