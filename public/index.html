@@ -3576,7 +3576,7 @@ async function dfsOptimize() {
         });
         const csvBody = await csvRes.json();
         if (!csvRes.ok) {
-          if (csvBody.data && csvBody.data.authRequired) {
+          if (csvBody.authRequired) {
             data = dfsOptimizeUploadedCsv(); // fall back to client-side if not logged in
           } else {
             const dbg = csvBody.debug || {};
@@ -3589,7 +3589,8 @@ async function dfsOptimize() {
             );
           }
         } else {
-          data = csvBody.data;
+          // ok() spreads data fields at top-level (not nested under .data)
+          data = csvBody;
         }
       }
       dfsLastLineup = data;
@@ -3646,6 +3647,7 @@ async function dfsOptimize() {
 }
 
 function dfsRenderResults(data) {
+  if (!data) return;
   const platformName = dfsState.platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
   const sportName = dfsState.sport.toUpperCase();
   const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
@@ -3655,8 +3657,13 @@ function dfsRenderResults(data) {
   document.getElementById('dfs-result-meta').textContent =
     `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}`;
 
-  // Late news banner
-  const lateItems = Array.isArray(data.lateNewsItems) ? data.lateNewsItems.filter(Boolean) : [];
+  // Late news banner: merge lineup result items + any from the last injury refresh
+  const refreshNews = (dfsState.injuryRefresh && Array.isArray(dfsState.injuryRefresh.lateNewsItems))
+    ? dfsState.injuryRefresh.lateNewsItems : [];
+  const lateItems = [
+    ...(Array.isArray(data.lateNewsItems) ? data.lateNewsItems : []),
+    ...refreshNews,
+  ].filter(Boolean);
   const lateBanner = document.getElementById('dfs-late-banner');
   if (lateItems.length) {
     document.getElementById('dfs-late-items').innerHTML = lateItems.map(item => `<div>· ${item}</div>`).join('');
