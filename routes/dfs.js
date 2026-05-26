@@ -1106,6 +1106,7 @@ router.post('/optimize-csv', async (req, res) => {
     secondaryStackSize = 2,
     maxOwnershipPct = 120,
     minWrStack = 1,
+    enableStacking = true,
     lineupCount = 1,
     maxExposure = 0.6,
     minUniquePlayers = 3,
@@ -1205,10 +1206,10 @@ router.post('/optimize-csv', async (req, res) => {
       const iterHitters = allHitters.filter(p => !iterExcluded.has(p.name));
       const hitterOpts  = {
         ...baseOpts,
-        excludedNames:     iterExcluded,
-        maxTeamCount:      maxHittersPerTeam,
-        previousLineups:   prevHitterSets,
-        minUniquePlayers:  li === 0 ? 0 : minUnique,
+        excludedNames:    iterExcluded,
+        maxTeamCount:     enableStacking ? maxHittersPerTeam : 99,
+        previousLineups:  prevHitterSets,
+        minUniquePlayers: li === 0 ? 0 : minUnique,
       };
 
       let best = null;
@@ -1304,8 +1305,8 @@ router.post('/optimize-csv', async (req, res) => {
   // ── NFL / NBA / PGA: unified LP beam search (multi-lineup aware) ─────────
   const sportOpts = {
     ...baseOpts,
-    ...(sport === 'nba'  ? { maxTeamCount: 2, nbaInjuryFloor: 4500 } : {}),
-    ...(sport === 'nfl'  ? { maxTeamCount: 8, nflMinWrStack: Math.max(0, Number(minWrStack) || 1) } : {}),
+    ...(sport === 'nba'  ? { maxTeamCount: enableStacking ? 2 : 99, nbaInjuryFloor: 4500 } : {}),
+    ...(sport === 'nfl'  ? { maxTeamCount: enableStacking ? 8 : 99, nflMinWrStack: enableStacking ? Math.max(0, Number(minWrStack) || 1) : 0 } : {}),
     ...(sport === 'golf' ? { maxTeamCount: 99 } : {}),
   };
 
@@ -1331,8 +1332,8 @@ router.post('/optimize-csv', async (req, res) => {
 
     let result = lpBeamSearch(players, allSlots, cap, iterOpts);
 
-    // NFL: if stack requirement not met, retry with QB's team boosted
-    if (sport === 'nfl' && result) {
+    // NFL: if stack requirement not met, retry with QB's team boosted (only when stacking enabled)
+    if (enableStacking && sport === 'nfl' && result) {
       const qb = result.picked.find(p => p.position === 'QB');
       const actualStack = qb ? result.picked.filter(
         p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')

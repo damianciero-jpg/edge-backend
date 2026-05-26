@@ -1457,6 +1457,12 @@ button,
           </div>
         </div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <button id="dfs-stacking-btn" onclick="dfsToggleStacking()"
+            style="font-family:var(--mono);font-size:8px;padding:4px 10px;background:var(--accent);color:#000;border:none;cursor:pointer;border-radius:3px;letter-spacing:1px;">
+            STACKING ON
+          </button>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <div style="display:flex;gap:6px;align-items:center;">
             <span style="font-family:var(--mono);font-size:9px;color:var(--muted);"># LINEUPS</span>
             <input type="number" id="dfs-lineup-count-input" min="1" max="20" value="1"
@@ -1707,6 +1713,7 @@ let dfsState = {
   secondaryStackSize: 2,
   maxOwnershipPct: 120,
   minWrStack: 1,
+  enableStacking: true,
   lineupCount: 1,
   maxExposure: 60,
   minUniquePlayers: 3,
@@ -2409,6 +2416,16 @@ function dfsSetMaxOwnershipPct(n) {
 }
 function dfsSetMinWrStack(n) {
   dfsState.minWrStack = Math.max(0, Math.min(2, isNaN(n) ? 1 : n));
+}
+function dfsToggleStacking() {
+  dfsState.enableStacking = !dfsState.enableStacking;
+  const btn = document.getElementById('dfs-stacking-btn');
+  if (btn) {
+    btn.textContent = dfsState.enableStacking ? 'STACKING ON' : 'STACKING OFF';
+    btn.style.background = dfsState.enableStacking ? 'var(--accent)' : 'var(--surface2)';
+    btn.style.color = dfsState.enableStacking ? '#000' : 'var(--muted)';
+    btn.style.border = dfsState.enableStacking ? 'none' : '1px solid var(--border2)';
+  }
 }
 function dfsSetLineupCount(n) {
   dfsState.lineupCount = Math.max(1, Math.min(20, isNaN(n) ? 1 : n));
@@ -3615,6 +3632,7 @@ async function dfsOptimize() {
             secondaryStackSize:     dfsState.secondaryStackSize,
             maxOwnershipPct:        dfsState.maxOwnershipPct,
             minWrStack:             dfsState.minWrStack,
+            enableStacking:         dfsState.enableStacking,
             lineupCount:            dfsState.lineupCount,
             maxExposure:            dfsState.maxExposure / 100,
             minUniquePlayers:       dfsState.minUniquePlayers,
