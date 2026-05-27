@@ -7,10 +7,26 @@ const { verifySession } = require('../lib/auth');
 const { ok, fail } = require('../lib/http');
 const { OWNER_EMAILS } = require('../lib/owners');
 const { hasRedisConfig, createRedis } = require('../lib/redis');
+const { getConfig, isShowdownSlots } = require('../src/sports/sportConfigs');
+const { generateOptimalLineup, isMlbPitcher: isMlbPitcherFD } = require('../src/components/dfsSolver');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const memoryWeatherCache = new Map();
 const WEATHER_TTL_SEC = 30 * 60;
+
+// ── Odds API player-prop enrichment constants ─────────────────────────────────
+const PROP_SPORT_KEY = {
+  nba: 'basketball_nba',
+  nfl: 'americanfootball_nfl',
+  mlb: 'baseball_mlb',
+};
+const PROP_MARKETS = {
+  nba: ['player_fantasy_points', 'player_points'],
+  nfl: ['player_fantasy_points', 'player_pass_yds', 'player_rush_yds', 'player_reception_yds'],
+  mlb: ['player_fantasy_points', 'player_strikeouts', 'player_hits_runs_rbis'],
+};
+const PROP_STD_DEV     = { mlb: 0.35, nfl: 0.22, golf: 0.22, nba: 0.15 };
+const PROP_DEFAULT_OWN = 15.0;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -257,23 +273,13 @@ const SPORT_CONFIG = {
 };
 
 const SALARY_CAPS = {
-  draftkings: { nba: 50000, nfl: 50000, mlb: 50000 },
-  fanduel:    { nba: 60000, nfl: 60000, mlb: 35000 },
+  fanduel: { nba: 60000, nfl: 60000, mlb: 35000 },
 };
 
 const LINEUP_SLOTS = {
-  nba: {
-    draftkings: ['CPT', 'FLEX', 'FLEX', 'FLEX', 'FLEX', 'FLEX'],
-    fanduel:    ['MVP', 'STAR', 'STAR', 'PRO', 'PRO', 'UTIL'],
-  },
-  nfl: {
-    draftkings: ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST'],
-    fanduel:    ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'],
-  },
-  mlb: {
-    draftkings: ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF'],
-    fanduel:    ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL'],
-  },
+  nba: { fanduel: ['MVP', 'STAR', 'STAR', 'PRO', 'PRO', 'UTIL'] },
+  nfl: { fanduel: ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'] },
+  mlb: { fanduel: ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL'] },
 };
 
 function mlToProb(ml) {
@@ -327,13 +333,143 @@ async function fetchOddsData(apiKey, sport) {
   } catch { return []; }
 }
 
+// ── Player-prop helper functions ──────────────────────────────────────────────
+
+function normalizeName(raw) {
+  return String(raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+(jr\.?|sr\.?|ii{1,3}|iv|v)$/i, '')
+    .replace(/[\u2018\u2019\u201a\u201b\u0060\u00b4']/g, '')
+    .replace(/\./g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+[a-z]\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function estimateFppgFromProp(line, market, position) {
+  if (market === 'player_fantasy_points') return line;
+  const pos = String(position || '').toUpperCase();
+  if (market === 'player_pass_yds')       return +(line * 0.04 * 1.30).toFixed(1);
+  if (market === 'player_rush_yds')       return +(line * 0.10 * (pos.includes('RB') ? 1.30 : 1.20)).toFixed(1);
+  if (market === 'player_reception_yds')  return +(line * 0.10 * 1.20).toFixed(1);
+  if (market === 'player_strikeouts')     return +(line * 3.0).toFixed(1);
+  if (market === 'player_hits_runs_rbis') return +(line * 2.0).toFixed(1);
+  if (market === 'player_points')         return +(line * 1.40).toFixed(1);
+  return null;
+}
+
+function enrichPlayersWithProps(players, props, sport) {
+  const stdDevMult = PROP_STD_DEV[sport] || 0.20;
+
+  const propMap = new Map();
+  for (const prop of props) {
+    const key  = normalizeName(prop.playerName);
+    const fppg = estimateFppgFromProp(prop.line, prop.market, null);
+    if (fppg == null || fppg <= 0) continue;
+    const prev   = propMap.get(key);
+    const better = !prev
+      || (prop.market === 'player_fantasy_points' && prev.market !== 'player_fantasy_points')
+      || (prop.market === prev.market && fppg > prev.fppg);
+    if (better) propMap.set(key, { fppg, market: prop.market, line: prop.line });
+  }
+
+  return players.map(p => {
+    const key   = normalizeName(p.name);
+    const match = propMap.get(key);
+
+    // fppg stays as the original CSV display value (for UI rendering).
+    // csvBase tries every case variant a CSV header could produce.
+    const csvBase    = Number(p.fppg)        ||
+                       Number(p.FPPG)        ||
+                       Number(p.projection)  ||
+                       Number(p.Projection)  ||
+                       0;
+    // projection = live prop line when matched; hard fallback to CSV baseline.
+    // Never allow projection to be 0 when csvBase is available — that would
+    // zero out stdDev and break tournament math for the whole pool.
+    const projection = match ? match.fppg : csvBase;
+    // stdDev uses whichever baseline is available (prop line or CSV fppg).
+    // If both are 0 (player with genuinely missing data), stdDev stays 0.
+    const baseline   = projection || csvBase;
+    const stdDev     = p.stdDev != null
+                         ? p.stdDev
+                         : +(baseline * stdDevMult).toFixed(2);
+
+    return {
+      ...p,
+      projection,
+      stdDev,
+      ownershipPct: (p.ownershipPct != null && p.ownershipPct > 0)
+                      ? p.ownershipPct
+                      : PROP_DEFAULT_OWN,
+      _propEnriched: !!match,
+      _propMarket:   match ? match.market : null,
+    };
+  });
+}
+
+async function fetchPlayerProps(apiKey, sport) {
+  if (!apiKey || !PROP_SPORT_KEY[sport]) return [];
+  const sportKey  = PROP_SPORT_KEY[sport];
+  const marketStr = (PROP_MARKETS[sport] || []).join(',');
+
+  const today = new Date().toISOString().slice(0, 10);
+  let events;
+  try {
+    const evRes = await withTimeout(
+      fetch(`https://api.the-odds-api.com/v4/sports/${sportKey}/events?apiKey=${apiKey}`),
+      6000, 'odds-events'
+    );
+    if (!evRes.ok) return [];
+    events = await evRes.json();
+  } catch { return []; }
+
+  if (!Array.isArray(events)) return [];
+  const todayEvents = events
+    .filter(e => String(e.commence_time || '').startsWith(today))
+    .slice(0, 8);
+  if (!todayEvents.length) return [];
+
+  const allProps = [];
+  await Promise.all(todayEvents.map(async (event) => {
+    try {
+      const url =
+        `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${event.id}/odds` +
+        `?apiKey=${apiKey}&regions=us&markets=${marketStr}` +
+        `&bookmakers=fanduel,draftkings&oddsFormat=american`;
+      const res = await withTimeout(fetch(url), 6000, `odds-props-${event.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const bk = (data.bookmakers || []).find(b => b.key === 'fanduel')
+              || (data.bookmakers || [])[0];
+      if (!bk) return;
+      for (const mkt of (bk.markets || [])) {
+        for (const outcome of (mkt.outcomes || [])) {
+          if (outcome.name !== 'Over') continue;
+          allProps.push({
+            playerName: outcome.description,
+            market:     mkt.key,
+            line:       outcome.point,
+            bookmaker:  bk.key,
+          });
+        }
+      }
+    } catch { /* individual event failure is non-fatal */ }
+  }));
+
+  return allProps;
+}
+
 function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers, requireProbablePitcher = true }) {
   const today = new Date().toISOString().slice(0, 10);
   const isGpp = contestType === 'gpp';
   const isNba = sport === 'nba';
   const isNfl = sport === 'nfl';
   const isMlb = sport === 'mlb';
-  const platformName = platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
+  const platformName = 'FanDuel';
   const mvpSlot = slots[0];
   const cfg = SPORT_CONFIG[sport.toUpperCase()] || SPORT_CONFIG.NBA;
 
@@ -709,7 +845,7 @@ router.post('/optimize', async (req, res) => {
 
   const {
     sport = 'nba',
-    platform = 'draftkings',
+    platform = 'fanduel',
     contestType = 'gpp',
     injuryFilter = 'out',
     excludeIlPlayers = false,
@@ -722,8 +858,7 @@ router.post('/optimize', async (req, res) => {
     maxPuntPlayers = 1,
   } = req.body || {};
 
-  if (!['nba', 'nfl', 'mlb'].includes(sport))       return fail(res, 400, { error: 'Invalid sport. Use nba, nfl, or mlb.' });
-  if (!['draftkings', 'fanduel'].includes(platform)) return fail(res, 400, { error: 'Invalid platform.' });
+  if (!['nba', 'nfl', 'mlb'].includes(sport)) return fail(res, 400, { error: 'Invalid sport. Use nba, nfl, or mlb.' });
   if (!['gpp', 'cash'].includes(contestType))        return fail(res, 400, { error: 'Invalid contestType. Use gpp or cash.' });
   if (!['all', 'out', 'q_and_out'].includes(injuryFilter)) return fail(res, 400, { error: 'Invalid injuryFilter.' });
 
@@ -820,37 +955,14 @@ router.post('/optimize', async (req, res) => {
   }
 });
 
-// ─── Unified LP-style CSV optimizer ──────────────────────────────────────────
-
-const LP_SLOTS = {
-  mlb:  {
-    fanduel:    ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL'],
-    draftkings: ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF'],
-  },
-  nfl:  {
-    fanduel:    ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'],
-    draftkings: ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST'],
-  },
-  nba:  {
-    fanduel:    ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C'],
-    draftkings: ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UTIL'],
-  },
-  golf: {
-    fanduel:    ['G', 'G', 'G', 'G', 'G', 'G'],
-    draftkings: ['G', 'G', 'G', 'G', 'G', 'G'],
-  },
-};
-
-const LP_CAPS = {
-  mlb:  { fanduel: 35000, draftkings: 50000 },
-  nfl:  { fanduel: 60000, draftkings: 50000 },
-  nba:  { fanduel: 60000, draftkings: 50000 },
-  golf: { fanduel: 60000, draftkings: 50000 },
-};
 
 // Sport-aware position matching used by the LP solver
 function sportPositionMatches(playerPos, slot, sport) {
   if (sport === 'golf') return true; // all-flex: every player can fill any slot
+  // Showdown/captain slots — any player eligible (pitchers excluded for MLB)
+  if (slot === 'CPT' || slot === 'MVP' || slot === 'STAR' || slot === 'PRO') {
+    return sport === 'mlb' ? !isMlbPitcherPos(playerPos) : true;
+  }
   const parts = String(playerPos || '').toUpperCase().split(/[\/\s]+/).filter(Boolean);
   if (!parts.length) return false;
 
@@ -873,6 +985,7 @@ function sportPositionMatches(playerPos, slot, sport) {
     if (slot === 'FLEX') return parts.some(p => ['RB', 'WR', 'TE'].includes(p));
     if (slot === 'DST' || slot === 'D/ST') return parts.some(p => ['DST', 'DEF', 'D'].includes(p));
     if (slot === 'K')    return parts.includes('K');
+    if (slot === 'UTIL') return true;
   }
   if (sport === 'nba') {
     if (slot === 'PG')   return parts.includes('PG');
@@ -1090,6 +1203,12 @@ function lpBeamSearch(players, slots, cap, opts = {}) {
   return valid[0];
 }
 
+// ─── /optimize-csv ───────────────────────────────────────────────────────────
+// Main CSV lineup-generation endpoint.
+// Delegates all optimization to the modular dfsSolver + sportConfigs pipeline.
+// Supports: single lineup, multi-lineup (up to 20), exposure capping,
+//           showdown dual-pricing, MLB stacking, NFL QB stack, tournament upside.
+
 router.post('/optimize-csv', async (req, res) => {
   const session = requireDfsSession(req, res);
   if (!session) return;
@@ -1099,6 +1218,7 @@ router.post('/optimize-csv', async (req, res) => {
     sport: rawSport = 'mlb',
     platform = 'fanduel',
     salaryCap: customCap,
+    customSlots: rawCustomSlots,
     requireProbablePitcher = true,
     allowValuePunts = true,
     maxPuntPlayers = 1,
@@ -1107,214 +1227,154 @@ router.post('/optimize-csv', async (req, res) => {
     maxOwnershipPct = 120,
     minWrStack = 1,
     enableStacking = true,
+    useTournamentUpside = false,
     lineupCount = 1,
     maxExposure = 0.6,
     minUniquePlayers = 3,
     lockedPlayers = [],
     excludedPlayers = [],
+    minCapUsagePct = 95,
   } = req.body || {};
 
-  const lineupN    = Math.max(1, Math.min(20, Number(lineupCount) || 1));
-  const exposurePct = Math.max(0.1, Math.min(1.0, Number(maxExposure) || 0.6));
-  const minUnique  = Math.max(0, Math.min(9, Number(minUniquePlayers) || 3));
+  const lineupN     = Math.max(1, Math.min(20, Number(lineupCount)      || 1));
+  const exposurePct = Math.max(0.1, Math.min(1.0, Number(maxExposure)   || 0.6));
+  const minUnique   = Math.max(0, Math.min(9, Number(minUniquePlayers)   || 3));
 
-  const sport   = LP_SLOTS[rawSport] ? rawSport : 'mlb';
-  const cap     = (customCap > 0 ? customCap : null) || LP_CAPS[sport]?.[platform] || 50000;
-  const allSlots = LP_SLOTS[sport]?.[platform] || LP_SLOTS.mlb.fanduel;
+  // ── Resolve sport and slate type ────────────────────────────────────────────
+  const sport = ['nba', 'nfl', 'mlb', 'golf'].includes(rawSport) ? rawSport : 'mlb';
 
-  const players = (Array.isArray(rawPlayers) ? rawPlayers : [])
+  // customSlots from the frontend (includes MVP/UTIL for showdown, GLFR for PGA)
+  const resolvedSlots = Array.isArray(rawCustomSlots) && rawCustomSlots.length > 0
+    ? rawCustomSlots.map(s => String(s).toUpperCase().slice(0, 10))
+    : null;
+
+  const isShowdown = resolvedSlots
+    ? isShowdownSlots(resolvedSlots)
+    : false;
+
+  // Load FanDuel sport config; fall back to best-match classic on unknown variant
+  let config = getConfig(sport, isShowdown);
+  if (!config) config = getConfig(sport, false);
+  if (!config) return fail(res, 400, { error: `Unsupported sport: ${sport}` });
+
+  // Override cap and slots when the frontend supplies them explicitly
+  const effectiveCap   = (customCap > 0 ? customCap : null) || config.cap;
+  const effectiveSlots = resolvedSlots || config.slots;
+  const effectiveConfig = { ...config, cap: effectiveCap, slots: effectiveSlots };
+
+  // ── Normalise player array ──────────────────────────────────────────────────
+  let players = (Array.isArray(rawPlayers) ? rawPlayers : [])
     .filter(p => p && p.name && p.salary >= 0)
     .map(p => {
-      let pos = String(p.position || '').slice(0, 20);
-      // Normalize NFL defensive position variants → DST
-      if (rawSport === 'nfl') pos = pos.replace(/^(DEF|D)$/i, 'DST');
+      let pos = String(p.position || '').toUpperCase().trim().slice(0, 30);
+      // NFL: normalise defensive unit variants
+      if (sport === 'nfl') pos = pos.replace(/^(DEF|D\/ST)$/i, 'DST');
+      // MLB: normalise C/1B → C1B; dual-tag C and 1B for the unified slot
+      if (sport === 'mlb') {
+        if (pos === 'C/1B' || pos === '1B/C') pos = 'C1B';
+        else if (pos === 'C')  pos = 'C/C1B';
+        else if (pos === '1B') pos = '1B/C1B';
+      }
+      // NFL: dual-tag RB/WR/TE with FLEX eligibility for frontend display
+      if (sport === 'nfl') {
+        if (pos === 'RB' || pos === 'WR' || pos === 'TE') pos = `${pos}/FLEX`;
+      }
+      // Golf: normalise all golf variants → GLFR
+      if (sport === 'golf') {
+        if (/^(G|GOLF|PGA|PLAYER|GOLFER|GLFR)$/.test(pos)) pos = 'GLFR';
+      }
       return {
-        name:            String(p.name || '').slice(0, 80),
-        team:            String(p.team || '').slice(0, 20),
-        opponent:        String(p.opponent || '').slice(0, 20),
-        position:        pos,
-        salary:          Number(p.salary) || 0,
-        fppg:            Number(p.fppg) || 0,
-        probablePitcher: Boolean(p.probablePitcher),
-        injuryStatus:    String(p.injuryStatus || ''),
-        ownershipPct:    Number(p.ownershipPct) || 0,
+        name:               String(p.name || '').slice(0, 80),
+        team:               String(p.team || '').slice(0, 20),
+        opponent:           String(p.opponent || '').slice(0, 20),
+        position:           pos,
+        salary:             Number(p.salary)  || Number(p.Salary)  || 0,
+        fppg:               Number(p.fppg)    || Number(p.FPPG)    || 0,
+        probablePitcher:    Boolean(p.probablePitcher),
+        injuryStatus:       String(p.injuryStatus    || ''),
+        ownershipPct:       Number(p.ownershipPct)   || 0,
+        // Optional upside-engine columns (forwarded from CSV if present)
+        stdDev:             p.stdDev  != null ? Number(p.stdDev)  : null,
+        plateAppearances:   p.plateAppearances  != null ? Number(p.plateAppearances)  : null,
+        projectedMinutes:   p.projectedMinutes  != null ? Number(p.projectedMinutes)  : null,
+        targets:            p.targets != null ? Number(p.targets) : null,
       };
     });
 
   if (!players.length) return fail(res, 400, { error: 'No players provided.' });
 
+  // ── Odds API player-prop enrichment ──────────────────────────────────────────
+  // Injects projection, stdDev, and ownershipPct defaults into every player.
+  // NBA/NFL/MLB: attempts live prop fetch; PGA/golf: skips live props but still
+  // fills stdDev/ownershipPct defaults. Failure at any step is non-fatal.
+  const oddsKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
+  const enrichDebug = { attempted: false, enrichedCount: 0, propSource: null, skippedReason: null };
+
+  if (oddsKey && ['nba', 'nfl', 'mlb'].includes(sport)) {
+    enrichDebug.attempted = true;
+    try {
+      const props = await withTimeout(fetchPlayerProps(oddsKey, sport), 14000, 'player-props');
+      players     = enrichPlayersWithProps(players, props, sport);
+      const n     = players.filter(p => p._propEnriched).length;
+      enrichDebug.enrichedCount = n;
+      enrichDebug.propSource    = n > 0
+        ? (players.find(p => p._propEnriched)?._propMarket ?? null)
+        : null;
+      if (n > 0) console.log(`[DFS] Props: enriched ${n}/${players.length} (${sport}, ${enrichDebug.propSource})`);
+      else        console.log(`[DFS] Props: 0 matches for ${sport} — running on CSV projections`);
+    } catch (err) {
+      console.warn('[DFS] Props enrichment failed (non-fatal):', err.message);
+      enrichDebug.skippedReason = err.message;
+      players = enrichPlayersWithProps(players, [], sport);
+    }
+  } else {
+    enrichDebug.skippedReason = oddsKey ? `sport=${sport} not supported for live props` : 'no API key';
+    players = enrichPlayersWithProps(players, [], sport);
+  }
+
+  // Diagnostic sample — visible in Network tab debug.enrichment.sample
+  enrichDebug.sample = players.slice(0, 3).map(p => ({
+    name: p.name, fppg: p.fppg, projection: p.projection, salary: p.salary,
+  }));
+  const zeroFppg = players.filter(p => !p.fppg && !p.projection).length;
+  if (zeroFppg > 0) console.warn(`[DFS] ${zeroFppg}/${players.length} players have fppg=0 AND projection=0`);
+
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
 
-  const puntThreshold = sport === 'mlb' ? 2500 : 4500;
-
-  const baseOpts = {
-    maxPunts:      allowValuePunts ? maxPuntPlayers : 0,
-    puntThreshold,
-    lockedNames:   lockedSet,
-    excludedNames: excludedSet,
-    sport,
-    maxOwnershipPct,
+  // Feasibility check: cheapest N-player combo from the uploaded pool.
+  const nSlots = effectiveSlots.length;
+  const cheapestN = [...players].sort((a, b) => a.salary - b.salary).slice(0, nSlots);
+  const cheapestComboSalary = cheapestN.reduce((s, p) => s + p.salary, 0);
+  const cheapestComboDebug = {
+    slots:       nSlots,
+    totalSalary: cheapestComboSalary,
+    cap:         effectiveCap,
+    feasible:    cheapestComboSalary <= effectiveCap,
+    players:     cheapestN.map(p => ({ name: p.name, salary: p.salary, position: p.position })),
   };
 
-  // ── MLB: pitcher-for-each outer loop (multi-lineup aware) ────────────────
-  if (sport === 'mlb') {
-    const pitcherSlotCount = allSlots.filter(s => s === 'P').length;
-    const hitterSlots      = allSlots.filter(s => s !== 'P');
-
-    const allPitchers = players.filter(p => isMlbPitcherPos(p.position) && !excludedSet.has(p.name));
-    const allHitters  = players.filter(p => !isMlbPitcherPos(p.position) && !excludedSet.has(p.name));
-
-    let eligiblePitchers = allPitchers;
-    if (requireProbablePitcher) {
-      const probables = allPitchers.filter(p => p.probablePitcher);
-      if (probables.length > 0) eligiblePitchers = probables;
-    }
-
-    if (!eligiblePitchers.length) {
-      return fail(res, 400, {
-        error: 'No eligible pitchers after filtering.',
-        debug: {
-          contestMode: sport, totalPlayers: players.length, activePoolCount: players.length,
-          totalHitterSalary: allHitters.reduce((s, p) => s + p.salary, 0),
-          minimumAvailableRequiredPositionSalary: 0,
-          bottleneck: 'pitcher_pool_empty', verifiedActivePitchers: [],
-        },
-      });
-    }
-
-    eligiblePitchers.sort((a, b) => (b.fppg || 0) - (a.fppg || 0));
-
-    const allLineupResults = [];
-    const appearances      = {};  // name → count across generated lineups
-    const prevHitterSets   = [];  // Set<string> per lineup — for uniqueness tracking
-
-    for (let li = 0; li < lineupN; li++) {
-      // Apply exposure cap: exclude players who've appeared in too many lineups
-      const iterExcluded = new Set(excludedSet);
-      if (li > 0 && exposurePct < 1.0) {
-        const capCount = Math.max(1, Math.ceil(lineupN * exposurePct));
-        for (const [name, cnt] of Object.entries(appearances)) {
-          if (cnt >= capCount && !lockedSet.has(name)) iterExcluded.add(name);
-        }
-      }
-
-      const iterPitchers = eligiblePitchers.filter(p => !iterExcluded.has(p.name));
-      const usePitchers  = iterPitchers.length > 0 ? iterPitchers : (li === 0 ? eligiblePitchers : null);
-      if (!usePitchers) break;
-
-      const iterHitters = allHitters.filter(p => !iterExcluded.has(p.name));
-      const hitterOpts  = {
-        ...baseOpts,
-        excludedNames:    iterExcluded,
-        maxTeamCount:     enableStacking ? maxHittersPerTeam : 99,
-        previousLineups:  prevHitterSets,
-        minUniquePlayers: li === 0 ? 0 : minUnique,
-      };
-
-      let best = null;
-      const tryPitcherCombo = (pitchers) => {
-        const pitcherSal = pitchers.reduce((s, p) => s + p.salary, 0);
-        const hitterCap  = cap - pitcherSal;
-        if (hitterCap < 0) return;
-        const antiTeams = new Set(pitchers.map(p => p.opponent).filter(Boolean));
-        const result = lpBeamSearch(iterHitters, hitterSlots, hitterCap, {
-          ...hitterOpts, antiCorrelationTeams: antiTeams,
-        });
-        if (!result) return;
-        const totalFppg = pitchers.reduce((s, p) => s + (p.fppg || 0), 0) + result.fppgSoFar;
-        if (!best || totalFppg > best.totalFppg) {
-          best = { pitchers, hitters: result.picked, totalSalary: pitcherSal + result.salarySoFar, totalFppg };
-        }
-      };
-
-      if (pitcherSlotCount === 1) {
-        for (const p of usePitchers) tryPitcherCombo([p]);
-      } else {
-        for (let i = 0; i < usePitchers.length; i++) {
-          for (let j = i + 1; j < usePitchers.length; j++) {
-            tryPitcherCombo([usePitchers[i], usePitchers[j]]);
-          }
-        }
-      }
-
-      if (!best) break;
-
-      allLineupResults.push(best);
-      [...best.pitchers, ...best.hitters].forEach(p => {
-        appearances[p.name] = (appearances[p.name] || 0) + 1;
-      });
-      prevHitterSets.push(new Set(best.hitters.map(p => p.name)));
-    }
-
-    if (!allLineupResults.length) {
-      const minPitSal = eligiblePitchers.length
-        ? Math.min(...eligiblePitchers.map(p => p.salary).filter(s => s > 0))
-        : 0;
-      return fail(res, 400, {
-        error: `No valid lineup found under $${cap.toLocaleString()} cap. Try relaxing constraints.`,
-        debug: {
-          contestMode: sport, totalPlayers: players.length,
-          activePoolCount: eligiblePitchers.length + allHitters.length,
-          totalHitterSalary: allHitters.reduce((s, p) => s + p.salary, 0),
-          minimumAvailableRequiredPositionSalary: minPitSal,
-          bottleneck: 'no_valid_hitter_fill_after_pitcher_selection',
-          verifiedActivePitchers: eligiblePitchers.map(p => ({ name: p.name, salary: p.salary, fppg: p.fppg })),
-          cap,
-        },
-      });
-    }
-
-    // Assemble each result into a full slot-ordered lineup
-    const lineups = allLineupResults.map(best => {
-      const lineupArr = [];
-      let pi = 0, hi = 0;
-      for (const slot of allSlots) {
-        if (slot === 'P') lineupArr.push({ ...best.pitchers[pi++], slot });
-        else              lineupArr.push({ ...best.hitters[hi++], slot });
-      }
-      const hitterTeams = {};
-      lineupArr.filter(p => !isMlbPitcherPos(p.position)).forEach(p => {
-        hitterTeams[p.team] = (hitterTeams[p.team] || 0) + 1;
-      });
-      const ts = Object.entries(hitterTeams).sort((a, b) => b[1] - a[1]);
-      return {
-        lineup: lineupArr,
-        totalSalary: best.totalSalary,
-        totalFppg:   best.totalFppg,
-        salaryCap:   cap,
-        stackInfo:   `Primary: ${(ts[0] || ['?'])[0]} ×${(ts[0] || ['?', 0])[1]}, secondary: ${(ts[1] || ['?'])[0]} ×${(ts[1] || ['?', 0])[1]}`,
-      };
-    });
-
-    return ok(res, {
-      data: {
-        ...lineups[0],
-        lineups,
-        exposure: appearances,
-      },
-      debug: {
-        verifiedActivePitchers: eligiblePitchers.map(p => ({ name: p.name, salary: p.salary, fppg: p.fppg })),
-        eligiblePitcherCount: eligiblePitchers.length,
-        secondaryStackTarget: secondaryStackSize,
-        cap, platform, sport, lineupCount: lineups.length,
-      },
-    });
-  }
-
-  // ── NFL / NBA / PGA: unified LP beam search (multi-lineup aware) ─────────
-  const sportOpts = {
-    ...baseOpts,
-    ...(sport === 'nba'  ? { maxTeamCount: enableStacking ? 2 : 99, nbaInjuryFloor: 4500 } : {}),
-    ...(sport === 'nfl'  ? { maxTeamCount: enableStacking ? 8 : 99, nflMinWrStack: enableStacking ? Math.max(0, Number(minWrStack) || 1) : 0 } : {}),
-    ...(sport === 'golf' ? { maxTeamCount: 99 } : {}),
+  // ── Multi-lineup generation loop ────────────────────────────────────────────
+  const solverOpts = {
+    useTournamentUpside,
+    allowValuePunts,
+    maxPunts:            maxPuntPlayers,
+    enableStacking,
+    requireProbablePitcher,
+    lockedNames:         lockedSet,
+    excludedNames:       excludedSet,
+    maxOwnershipPct:     Number(maxOwnershipPct) || 120,
+    nflMinWrStack:       Number(minWrStack)       || 1,
+    maxHittersPerTeam:   Number(maxHittersPerTeam) || effectiveConfig.maxHittersPerTeam || 5,
+    minCapUsagePct:      Number(minCapUsagePct) || 95,
   };
 
-  const allLineupResults = [];
-  const appearances      = {};
-  const previousLineups  = [];
+  const results    = [];
+  const appearances = {};
+  const prevSets   = [];
 
   for (let li = 0; li < lineupN; li++) {
+    // Apply exposure cap: exclude players who've hit their appearance ceiling
     const iterExcluded = new Set(excludedSet);
     if (li > 0 && exposurePct < 1.0) {
       const capCount = Math.max(1, Math.ceil(lineupN * exposurePct));
@@ -1324,82 +1384,45 @@ router.post('/optimize-csv', async (req, res) => {
     }
 
     const iterOpts = {
-      ...sportOpts,
+      ...solverOpts,
       excludedNames:    iterExcluded,
-      previousLineups,
+      previousLineups:  prevSets,
       minUniquePlayers: li === 0 ? 0 : minUnique,
     };
 
-    let result = lpBeamSearch(players, allSlots, cap, iterOpts);
-
-    // NFL: if stack requirement not met, retry with QB's team boosted (only when stacking enabled)
-    if (enableStacking && sport === 'nfl' && result) {
-      const qb = result.picked.find(p => p.position === 'QB');
-      const actualStack = qb ? result.picked.filter(
-        p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')
-      ).length : 0;
-      if (qb && actualStack < Math.max(0, Number(minWrStack) || 1)) {
-        const retry = lpBeamSearch(players, allSlots, cap, { ...iterOpts, nflStackQbTeam: qb.team });
-        if (retry) result = retry;
-      }
-    }
-
-    // Fallback escalation: relax ownership, then team cap, then stack requirement
-    if (!result && (sport === 'nfl' || sport === 'nba')) {
-      result = lpBeamSearch(players, allSlots, cap, { ...iterOpts, maxOwnershipPct: 600 });
-    }
-    if (!result && sport === 'nba') {
-      result = lpBeamSearch(players, allSlots, cap, { ...iterOpts, maxOwnershipPct: 600, maxTeamCount: 99 });
-    }
-    if (!result && sport === 'nfl') {
-      result = lpBeamSearch(players, allSlots, cap, { ...iterOpts, maxOwnershipPct: 600, maxTeamCount: 99, nflMinWrStack: 0 });
-    }
-
+    const result = generateOptimalLineup(players, effectiveConfig, iterOpts);
     if (!result) break;
 
-    allLineupResults.push(result);
-    result.picked.forEach(p => { appearances[p.name] = (appearances[p.name] || 0) + 1; });
-    previousLineups.push(new Set(result.picked.map(p => p.name)));
+    results.push(result);
+    result.lineup.forEach(p => { appearances[p.name] = (appearances[p.name] || 0) + 1; });
+    prevSets.push(new Set(result.lineup.map(p => p.name)));
   }
 
-  if (!allLineupResults.length) {
-    const slotDiag = allSlots.map(slot => ({
-      slot,
-      count: players.filter(p => !excludedSet.has(p.name) && sportPositionMatches(p.position, slot, sport)).length,
-    }));
-    const bottleneck = slotDiag.find(d => d.count === 0);
-    const minSals = allSlots.map(slot =>
-      Math.min(...players.filter(p => sportPositionMatches(p.position, slot, sport)).map(p => p.salary).filter(s => s > 0), Infinity)
-    );
+  if (!results.length) {
     return fail(res, 400, {
-      error: `No valid lineup found under $${cap.toLocaleString()} cap.`,
+      error: `No valid lineup found under $${effectiveCap.toLocaleString()} cap. Try relaxing constraints or uploading more players.`,
       debug: {
-        contestMode: sport, totalPlayers: players.length,
-        activePoolCount: players.filter(p => !excludedSet.has(p.name)).length,
-        totalHitterSalary: players.reduce((s, p) => s + p.salary, 0),
-        minimumAvailableRequiredPositionSalary: Math.min(...minSals.filter(s => s < Infinity), 0),
-        bottleneck: bottleneck ? `slot_${bottleneck.slot}_empty` : 'salary_infeasible',
-        slotCoverage: slotDiag, cap,
+        sport, isShowdown, cap: effectiveCap, slots: effectiveSlots,
+        totalPlayers: players.length,
+        cheapestCombo: cheapestComboDebug,
+        enrichment: enrichDebug,
       },
     });
   }
 
-  const lineups = allLineupResults.map(result => {
-    const lineupArr = result.picked.map((p, i) => ({ ...p, slot: allSlots[i] }));
-    let stackInfo = null;
-    if (sport === 'nfl') {
-      const qb = lineupArr.find(p => p.position === 'QB');
-      const partners = qb ? lineupArr.filter(p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')) : [];
-      stackInfo = partners.length
-        ? `QB stack: ${qb.team} (${qb.name} + ${partners.map(p => p.name).join(', ')})`
-        : null;
-    }
-    return { lineup: lineupArr, totalSalary: result.salarySoFar, totalFppg: result.fppgSoFar, salaryCap: cap, stackInfo };
-  });
-
   return ok(res, {
-    data: { ...lineups[0], lineups, exposure: appearances },
-    debug: { sport, platform, cap, lineupCount: lineups.length },
+    data: {
+      ...results[0],
+      lineups:  results,
+      exposure: appearances,
+    },
+    debug: {
+      sport, isShowdown, platform,
+      cap:         effectiveCap,
+      lineupCount: results.length,
+      cheapestCombo: cheapestComboDebug,
+      enrichment: enrichDebug,
+    },
   });
 });
 

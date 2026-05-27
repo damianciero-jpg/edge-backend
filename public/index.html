@@ -854,6 +854,16 @@ button,
 .dfs-csv-table tr:last-child td{border-bottom:none;}
 .dfs-csv-injury{color:var(--yellow);font-weight:700;}
 .dfs-csv-empty{font-family:var(--mono);font-size:9px;color:var(--muted);padding:14px;}
+.dfs-lock-btn,.dfs-ban-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 3px;opacity:0.35;transition:opacity 0.15s,transform 0.1s;line-height:1;display:block;margin:0 auto;}
+.dfs-lock-btn:hover{opacity:1;transform:scale(1.15);}
+.dfs-ban-btn:hover{opacity:1;transform:scale(1.15);}
+.dfs-lock-btn.active{opacity:1;}
+.dfs-ban-btn.active{opacity:1;}
+tr.dfs-row-locked{background:rgba(10,143,75,0.10)!important;}
+tr.dfs-row-locked td{border-bottom-color:rgba(10,143,75,0.18)!important;}
+tr.dfs-row-banned{background:rgba(217,54,78,0.08)!important;}
+tr.dfs-row-banned td{border-bottom-color:rgba(217,54,78,0.15)!important;}
+tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
 .dfs-cap-info{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:18px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;}
 .dfs-summary-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(16,32,48,0.06);margin-bottom:14px;}
 .dfs-totals-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
@@ -1339,7 +1349,7 @@ button,
         <a class="dfs-sample-btn" href="#" onclick="dfsDownloadSampleCsv(event)">Download Sample CSV</a>
       </div>
       <input id="dfs-csv-input" type="file" accept=".csv,text/csv" style="display:none;" onchange="dfsHandleCsvUpload(event)">
-      <div class="dfs-upload-meta" id="dfs-upload-meta">Upload a DraftKings or FanDuel CSV to optimize offline from contest data.</div>
+      <div class="dfs-upload-meta" id="dfs-upload-meta">Upload a FanDuel CSV to optimize from contest data.</div>
       <div class="dfs-upload-success" id="dfs-upload-success"></div>
       <div class="dfs-upload-error" id="dfs-upload-error"></div>
       <div class="dfs-csv-panel" id="dfs-csv-panel">
@@ -1361,6 +1371,8 @@ button,
                 <th onclick="dfsSetCsvSort('fppg')">FPPG</th>
                 <th onclick="dfsSetCsvSort('value')">VALUE</th>
                 <th onclick="dfsSetCsvSort('injury')">INJURY</th>
+                <th style="width:28px;text-align:center;cursor:default;">🔓</th>
+                <th style="width:28px;text-align:center;cursor:default;">🚫</th>
               </tr>
             </thead>
             <tbody id="dfs-csv-body"></tbody>
@@ -1378,13 +1390,6 @@ button,
           <button class="dfs-sel-btn" onclick="dfsSetSport('nfl')" id="dfs-sport-nfl">🏈 NFL</button>
           <button class="dfs-sel-btn" onclick="dfsSetSport('mlb')" id="dfs-sport-mlb">⚾ MLB</button>
           <button class="dfs-sel-btn" onclick="dfsSetSport('golf')" id="dfs-sport-golf">⛳ PGA</button>
-        </div>
-      </div>
-      <div class="dfs-selector-group">
-        <div class="form-label">PLATFORM</div>
-        <div class="dfs-btn-group">
-          <button class="dfs-sel-btn active" onclick="dfsSetPlatform('draftkings')" id="dfs-plat-draftkings">DraftKings</button>
-          <button class="dfs-sel-btn" onclick="dfsSetPlatform('fanduel')" id="dfs-plat-fanduel">FanDuel</button>
         </div>
       </div>
       <div class="dfs-selector-group">
@@ -1412,10 +1417,10 @@ button,
       <div class="dfs-selector-group">
         <div class="form-label">ROSTER SLOTS <span style="color:var(--muted);font-weight:400;">(optional — overrides auto)</span></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input id="dfs-roster-input" class="dfs-roster-input" type="text" placeholder="P, C, 1B, 2B, SS, OF, OF, UTIL" oninput="dfsSetCustomRoster(this.value)">
-          <button class="dfs-sel-btn" id="dfs-mvp-toggle" onclick="dfsToggleMvpMode()">MVP/CPT Mode OFF</button>
+          <input id="dfs-roster-input" class="dfs-roster-input" type="text" placeholder="P, C/1B, 2B, 3B, SS, OF, OF, OF, UTIL" oninput="dfsSetCustomRoster(this.value)">
+          <button class="dfs-sel-btn" id="dfs-mvp-toggle" onclick="dfsToggleMvpMode()">Showdown Mode OFF</button>
         </div>
-        <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;">Comma-separated slots override auto-detect. MVP mode makes first slot CPT/MVP (1.5×).</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:4px;">Comma-separated slots override auto-detect. Showdown mode switches to MVP + UTIL×5 (1.5× on MVP slot).</div>
       </div>
       <div class="dfs-selector-group" id="dfs-mlb-options" style="display:none;">
         <div class="form-label">MLB OPTIONS</div>
@@ -1453,6 +1458,14 @@ button,
             <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MIN WR WITH QB</span>
             <input type="number" id="dfs-min-wr-stack-input" min="0" max="2" value="1"
               oninput="dfsSetMinWrStack(+this.value)"
+              style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MIN CAP USAGE %</span>
+            <input type="number" id="dfs-min-cap-usage-input" min="0" max="100" value="95"
+              oninput="dfsSetMinCapUsagePct(+this.value)"
               style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
           </div>
         </div>
@@ -1675,19 +1688,31 @@ function closeDetail() {
 
 // ─── DFS OPTIMIZER ────────────────────────────────────────────────────────────
 const DFS_CAPS = {
-  draftkings: { nba: 50000, nfl: 50000, mlb: 50000, golf: 50000 },
-  fanduel:    { nba: 60000, nfl: 60000, mlb: 35000, golf: 60000 },
+  fanduel: { nba: 60000, nfl: 60000, mlb: 35000, golf: 60000 },
 };
+// FanDuel-only slot labels. Keys: classic / showdown per sport.
 const DFS_SLOT_LABELS = {
-  nba:  { draftkings: 'PG + SG + SF + PF + C + G + F + UTIL (8 players)', fanduel: 'PG×2 + SG×2 + SF×2 + PF×2 + C (9 players)' },
-  nfl:  { draftkings: 'QB + RB×2 + WR×3 + TE + FLEX + DST (9)', fanduel: 'QB + RB×2 + WR×3 + TE + FLEX + K (9)' },
-  mlb:  { draftkings: 'P×2 + C + 1B + 2B + 3B + SS + OF×3 (10 players)', fanduel: 'P + C/1B + 2B + 3B + SS + OF×3 + UTIL (9 players)' },
-  golf: { draftkings: 'G×6 (All-Flex, 6 players)', fanduel: 'G×6 (All-Flex, 6 players)' },
+  nba:  {
+    classic:  'PG×2 + SG×2 + SF×2 + PF×2 + C (9 players)',
+    showdown: 'MVP + UTIL×5 (6 players) — MVP scores 1.5×',
+  },
+  nfl:  {
+    classic:  'QB + RB×2 + WR×3 + TE + FLEX + DST (9 players)',
+    showdown: 'MVP + UTIL×5 (6 players) — MVP scores 1.5×',
+  },
+  mlb:  {
+    classic:  'P + C1B + 2B + 3B + SS + OF + OF + OF + UTIL (9 players)',
+    showdown: 'MVP + UTIL×5 (6 players) — MVP scores 1.5×',
+  },
+  golf: {
+    classic:  'GLFR×6 (All-Flex, 6 players)',
+    showdown: 'GLFR×6 (All-Flex, 6 players)',
+  },
 };
 
 let dfsState = {
   sport: 'nba',
-  platform: 'draftkings',
+  platform: 'fanduel',
   contestType: 'gpp',
   injuryFilter: 'out',
   csvInjuryFilter: 'all',
@@ -1704,7 +1729,7 @@ let dfsState = {
   injuryAbortController: null,
   customCap: null,
   customRoster: null,
-  mvpMode: false,
+  isShowdown: false,
   rosterSizeOverride: null,
   requireProbablePitcher: true,
   allowValuePunts: true,
@@ -1717,6 +1742,7 @@ let dfsState = {
   lineupCount: 1,
   maxExposure: 60,
   minUniquePlayers: 3,
+  minCapUsagePct: 95,
 };
 let dfsCurrentLineupIdx = 0;
 let dfsLastLineup = null;
@@ -1725,7 +1751,7 @@ const DFS_CSV_COLUMNS = {
   name: ['name', 'player', 'playername', 'player name', 'nickname', 'name + id', 'player name + id'],
   // Prefer roster/eligible position columns (FanDuel) over raw position (DK)
   position: ['roster position', 'rosterposition', 'eligible positions', 'eligiblepositions', 'lineup position', 'lineupposition', 'pos', 'position', 'pos.'],
-  salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$', 'sal', 'fdsalary', 'dksalary'],
+  salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$', 'sal', 'fdsalary'],
   fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints', 'fpts', 'points'],
   injuryStatus: ['injury indicator', 'injuryindicator', 'injury', 'status', 'notes', 'injury status', 'injurystatus'],
   team: ['team', 'team abbrev', 'teamabbrev', 'team abbreviation', 'teamabbr'],
@@ -1906,6 +1932,18 @@ function dfsSetCsvSort(sort) {
   dfsRenderCsvPlayers();
 }
 
+// A FanDuel showdown CSV sets the "Roster Position" column to "MVP" or "FLEX".
+// After parsing, player.position will be 'MVP' or 'FLEX' for those rows.
+// If >= 50% of players carry those values, the slate is a showdown.
+function dfsIsShowdownPool(players) {
+  if (!players || players.length < 4) return false;
+  const sdCount = players.filter(p => {
+    const pos = String(p.position || '').toUpperCase().trim();
+    return pos === 'FLEX' || pos === 'MVP';
+  }).length;
+  return sdCount / players.length >= 0.5;
+}
+
 async function dfsHandleCsvUpload(event) {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -1935,7 +1973,8 @@ async function dfsHandleCsvUpload(event) {
     dfsState.csvSort = 'value';
     // FanDuel uses "Nickname" for player name — use as platform signal
     const isFanDuelCsv = parsed.source === 'fanduel_mlb_malformed' || parsed.columns.name === 'Nickname';
-    if (isFanDuelCsv) dfsSetPlatform('fanduel');
+    dfsState.platform = 'fanduel';
+    // Auto-detect sport and slate type from position columns
     if (parsed.source === 'fanduel_mlb_malformed') {
       dfsSetSport('mlb');
     } else if (dfsIsGolfPool(parsed.players)) {
@@ -1943,6 +1982,23 @@ async function dfsHandleCsvUpload(event) {
     } else if (dfsIsMlbPool(parsed.players)) {
       dfsSetSport('mlb');
     }
+    // Detect showdown after sport (dfsSetSport resets isShowdown to false first)
+    dfsState.isShowdown = dfsIsShowdownPool(parsed.players);
+    dfsState.customRoster = null; // never inherit a stale custom roster from a prior session
+    // Reset roster input and update its placeholder to match the detected sport's slot layout.
+    // Converts internal C1B → C/1B for readability.
+    const _rosterInput = document.getElementById('dfs-roster-input');
+    if (_rosterInput) {
+      _rosterInput.value = '';
+      _rosterInput.placeholder = dfsLineupSlots().join(', ').replace(/\bC1B\b/g, 'C/1B');
+    }
+    // Sync the showdown toggle button label
+    const sdBtn = document.getElementById('dfs-mvp-toggle');
+    if (sdBtn) {
+      sdBtn.classList.toggle('active', dfsState.isShowdown);
+      sdBtn.textContent = dfsState.isShowdown ? '✓ Showdown Mode ON' : 'Showdown Mode OFF';
+    }
+    dfsUpdateCapDisplay();
     dfsSetCsvInjuryFilter('all');
     dfsSetCsvSort('value');
     document.getElementById('dfs-csv-panel').style.display = 'block';
@@ -2232,25 +2288,66 @@ function dfsRenderCsvPlayers() {
   if (!body) return;
   const players = dfsGetVisibleCsvPlayers();
   if (!players.length) {
-    body.innerHTML = `<tr><td colspan="6"><div class="dfs-csv-empty">No players match the current injury filter.</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="8"><div class="dfs-csv-empty">No players match the current injury filter.</div></td></tr>`;
     return;
   }
-  body.innerHTML = players.map(p => `
-    <tr>
-      <td>${dfsEscapeHtml(p.name)}</td>
+  const lockedSet  = new Set(dfsState.lockedPlayers  || []);
+  const bannedSet  = new Set(dfsState.excludedPlayers || []);
+  body.innerHTML = players.map(p => {
+    const isLocked = lockedSet.has(p.name);
+    const isBanned = bannedSet.has(p.name);
+    const rowClass = isLocked ? ' class="dfs-row-locked"' : isBanned ? ' class="dfs-row-banned"' : '';
+    const esc      = dfsEscapeHtml(p.name);
+    return `
+    <tr${rowClass}>
+      <td class="dfs-player-name">${esc}</td>
       <td>${dfsEscapeHtml(p.position)}</td>
       <td>$${Math.round(p.salary).toLocaleString()}</td>
       <td>${p.fppg.toFixed(1)}</td>
       <td>${p.valueScore.toFixed(2)}x</td>
       <td class="${p.injuryStatus ? 'dfs-csv-injury' : ''}">${dfsEscapeHtml(p.injuryStatus || 'OK')}${p.newlyInjured ? ' - NEW' : ''}</td>
-    </tr>
-  `).join('');
+      <td style="text-align:center;padding:6px 4px;">
+        <button class="dfs-lock-btn${isLocked ? ' active' : ''}" data-name="${esc}" onclick="dfsToggleLockPlayer(this.dataset.name)" title="${isLocked ? 'Unlock player' : 'Lock player into lineup'}">${isLocked ? '🔒' : '🔓'}</button>
+      </td>
+      <td style="text-align:center;padding:6px 4px;">
+        <button class="dfs-ban-btn${isBanned ? ' active' : ''}" data-name="${esc}" onclick="dfsToggleBanPlayer(this.dataset.name)" title="${isBanned ? 'Unban player' : 'Ban player from lineup'}">${isBanned ? '🚫' : '<span style="opacity:0.3">🚫</span>'}</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function dfsToggleLockPlayer(name) {
+  const li = dfsState.lockedPlayers.indexOf(name);
+  if (li >= 0) {
+    dfsState.lockedPlayers.splice(li, 1);
+  } else {
+    dfsState.lockedPlayers.push(name);
+    // Locking a banned player un-bans them
+    const bi = dfsState.excludedPlayers.indexOf(name);
+    if (bi >= 0) dfsState.excludedPlayers.splice(bi, 1);
+  }
+  dfsRenderCsvPlayers();
+}
+
+function dfsToggleBanPlayer(name) {
+  const bi = dfsState.excludedPlayers.indexOf(name);
+  if (bi >= 0) {
+    dfsState.excludedPlayers.splice(bi, 1);
+  } else {
+    dfsState.excludedPlayers.push(name);
+    // Banning a locked player un-locks them
+    const li = dfsState.lockedPlayers.indexOf(name);
+    if (li >= 0) dfsState.lockedPlayers.splice(li, 1);
+  }
+  dfsRenderCsvPlayers();
 }
 
 function dfsSetSport(s) {
   dfsState.sport = s;
   dfsState.customCap = null;
   dfsState.rosterSizeOverride = null;
+  dfsState.isShowdown = false;
+  dfsState.customRoster = null;
   document.querySelectorAll('[id^="dfs-sport-"]').forEach(el => el.classList.remove('active'));
   const sportBtn = document.getElementById('dfs-sport-' + s);
   if (sportBtn) sportBtn.classList.add('active');
@@ -2265,15 +2362,6 @@ function dfsSetSport(s) {
   if (nflStackCtrl) nflStackCtrl.style.display = s === 'nfl' ? 'flex' : 'none';
   dfsUpdateCapDisplay();
   dfsRenderWeatherBanner();
-  dfsRenderPositionCounts();
-}
-function dfsSetPlatform(p) {
-  dfsState.platform = p;
-  dfsState.customCap = null;
-  dfsState.rosterSizeOverride = null;
-  document.querySelectorAll('[id^="dfs-plat-"]').forEach(el => el.classList.remove('active'));
-  document.getElementById('dfs-plat-' + p).classList.add('active');
-  dfsUpdateCapDisplay();
   dfsRenderPositionCounts();
 }
 function dfsSetContest(c) {
@@ -2341,15 +2429,15 @@ function dfsUpdateCapDisplay() {
   if (rosterInput && document.activeElement !== rosterInput) rosterInput.value = slots.length;
   const slotsEl = document.getElementById('dfs-slots-display');
   if (slotsEl) {
-    const { customRoster, mvpMode, platform, rosterSizeOverride } = dfsState;
+    const { customRoster, isShowdown, rosterSizeOverride } = dfsState;
     if (customRoster && customRoster.length) {
-      const s = [...customRoster];
-      if (mvpMode) s[0] = platform === 'fanduel' ? 'MVP' : 'CPT';
-      slotsEl.textContent = s.join(' + ') + ` (${s.length} players)`;
-    } else if (rosterSizeOverride && DFS_SLOT_LABELS[dfsState.sport]) {
-      slotsEl.textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform] + ` [custom: ${rosterSizeOverride}]`;
-    } else if (DFS_SLOT_LABELS[dfsState.sport]) {
-      slotsEl.textContent = DFS_SLOT_LABELS[dfsState.sport][dfsState.platform];
+      slotsEl.textContent = customRoster.join(' + ') + ` (${customRoster.length} players)`;
+    } else {
+      const sportLabels = DFS_SLOT_LABELS[dfsState.sport];
+      const label = sportLabels
+        ? sportLabels[isShowdown ? 'showdown' : 'classic']
+        : dfsLineupSlots().join(' + ');
+      slotsEl.textContent = rosterSizeOverride ? `${label} [custom: ${rosterSizeOverride}]` : label;
     }
   }
 }
@@ -2383,11 +2471,11 @@ function dfsSetCustomRoster(value) {
   dfsRenderPositionCounts();
 }
 function dfsToggleMvpMode() {
-  dfsState.mvpMode = !dfsState.mvpMode;
+  dfsState.isShowdown = !dfsState.isShowdown;
   const btn = document.getElementById('dfs-mvp-toggle');
   if (btn) {
-    btn.classList.toggle('active', dfsState.mvpMode);
-    btn.textContent = dfsState.mvpMode ? '✓ MVP/CPT Mode ON' : 'MVP/CPT Mode OFF';
+    btn.classList.toggle('active', dfsState.isShowdown);
+    btn.textContent = dfsState.isShowdown ? '✓ Showdown Mode ON' : 'Showdown Mode OFF';
   }
   dfsUpdateCapDisplay();
   dfsRenderPositionCounts();
@@ -2424,6 +2512,9 @@ function dfsSetMaxOwnershipPct(n) {
 function dfsSetMinWrStack(n) {
   dfsState.minWrStack = Math.max(0, Math.min(2, isNaN(n) ? 1 : n));
 }
+function dfsSetMinCapUsagePct(n) {
+  dfsState.minCapUsagePct = Math.max(0, Math.min(100, isNaN(n) ? 95 : n));
+}
 function dfsToggleStacking() {
   dfsState.enableStacking = !dfsState.enableStacking;
   const btn = document.getElementById('dfs-stacking-btn');
@@ -2455,14 +2546,16 @@ function dfsRenderPositionCounts() {
   if (!dfsState.uploadedPlayers.length) { el.style.display = 'none'; return; }
   const eligible = dfsGetEligiblePlayersForOptimization();
   let positions;
+  if (dfsState.isShowdown) {
+    // Showdown: all players are UTIL-eligible; no positional breakdown needed
+    el.style.display = 'none';
+    return;
+  }
   if (dfsState.sport === 'mlb') {
-    // FanDuel MLB shows slot-level eligibility; DK shows individual positions
-    positions = dfsState.platform === 'fanduel'
-      ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF']
-      : ['P', 'C', '1B', '2B', '3B', 'SS', 'OF'];
+    positions = ['P', 'C1B', '2B', '3B', 'SS', 'OF'];
   } else {
     const slots = dfsLineupSlots();
-    const skipSlots = new Set(['FLEX','UTIL','CPT','MVP','STAR','PRO','G']);
+    const skipSlots = new Set(['FLEX', 'UTIL', 'CPT', 'MVP', 'STAR', 'PRO', 'G', 'GLFR']);
     positions = [...new Set(slots.filter(s => !skipSlots.has(s)))];
     if (!positions.length) { el.style.display = 'none'; return; }
   }
@@ -2545,7 +2638,8 @@ function dfsNormalizePositions(raw) {
       else if (/^(DH|DESIGNATED HITTER)$/.test(part)) norm = 'UTIL';
       else if (/^(CATCHER)$/.test(part)) norm = 'C';
       else if (/^(INFIELD|INFIELDER)$/.test(part)) norm = 'INF';
-      else if (/^(GOLF|PGA|PLAYER|GOLFER)$/.test(part)) norm = 'G';
+      else if (/^(G|GOLF|PGA|PLAYER|GOLFER|GLFR)$/.test(part)) norm = 'GLFR';
+      else if (part === 'C1B') norm = 'C1B';
       else norm = part;
       if (!seen.has(norm)) { seen.add(norm); result.push(norm); }
     });
@@ -2562,7 +2656,7 @@ function dfsIsGolfPool(players) {
   const sportPos = /^(SP|RP|P|C|1B|2B|3B|SS|OF|QB|RB|WR|TE|K|DST|PG|SG|SF|PF)$/;
   if (players.some(p => sportPos.test(String(p.position || '').toUpperCase().split('/')[0]))) return false;
   // Require explicit golf-specific positions — blank positions alone do NOT indicate golf
-  const explicitGolf = new Set(['G', 'GOLF', 'PGA', 'PLAYER', 'GOLFER']);
+  const explicitGolf = new Set(['G', 'GLFR', 'GOLF', 'PGA', 'PLAYER', 'GOLFER']);
   const golfCount = players.filter(p => explicitGolf.has(String(p.position || '').toUpperCase())).length;
   return golfCount / players.length >= 0.8;
 }
@@ -2591,8 +2685,8 @@ function dfsPositionMatches(playerPosition, slot) {
   const parts = raw.split(/[\/,; ]+/).filter(Boolean);
   if (slot === 'FLEX' || slot === 'UTIL' || slot === 'CPT' || slot === 'MVP' || slot === 'STAR' || slot === 'PRO') return true;
   if (slot === 'INF') return parts.some(p => ['C','1B','2B','3B','SS','INF'].includes(p));
-  if (slot === 'G') return !parts.length || parts.some(p => ['G','GOLF','PGA','PLAYER','GOLFER'].includes(p));
-  if (slot === 'C/1B') return parts.includes('C') || parts.includes('1B');
+  if (slot === 'GLFR' || slot === 'G') return !parts.length || parts.some(p => ['GLFR','G','GOLF','PGA','PLAYER','GOLFER'].includes(p));
+  if (slot === 'C1B' || slot === 'C/1B') return parts.includes('C1B') || parts.includes('C') || parts.includes('1B');
   if (slot === '2B') return parts.includes('2B');
   if (slot === '3B') return parts.includes('3B');
   if (slot === 'SS') return parts.includes('SS');
@@ -2938,23 +3032,18 @@ function dfsWeatherImpactForPlayer(player) {
 }
 
 function dfsLineupSlots() {
-  const { sport, platform, customRoster, mvpMode, rosterSizeOverride } = dfsState;
-  if (customRoster && customRoster.length) {
-    const slots = [...customRoster];
-    if (mvpMode && slots.length > 0) slots[0] = platform === 'fanduel' ? 'MVP' : 'CPT';
-    return slots;
-  }
+  const { sport, customRoster, isShowdown, rosterSizeOverride } = dfsState;
+  // A custom roster typed by the user always wins — but never accept stale state
+  // from a previous sport; callers should null customRoster on sport change.
+  if (customRoster && customRoster.length) return [...customRoster];
+  // Showdown: MVP + 5 UTIL for every sport, with 1.5× multiplier on MVP slot
+  if (isShowdown) return ['MVP', 'UTIL', 'UTIL', 'UTIL', 'UTIL', 'UTIL'];
+  // Classic slot layouts (FanDuel only)
   let slots;
-  if (sport === 'golf')      slots = ['G', 'G', 'G', 'G', 'G', 'G'];
-  else if (sport === 'nba')  slots = platform === 'draftkings'
-    ? ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F', 'UTIL']
-    : ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C'];
-  else if (sport === 'nfl')  slots = platform === 'draftkings'
-    ? ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST']
-    : ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'K'];
-  else /* mlb */             slots = platform === 'fanduel'
-    ? ['P', 'C/1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL']
-    : ['P', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF'];
+  if (sport === 'golf')     slots = ['GLFR', 'GLFR', 'GLFR', 'GLFR', 'GLFR', 'GLFR'];
+  else if (sport === 'nba') slots = ['PG', 'PG', 'SG', 'SG', 'SF', 'SF', 'PF', 'PF', 'C'];
+  else if (sport === 'nfl') slots = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST'];
+  else /* mlb */            slots = ['P', 'C1B', '2B', '3B', 'SS', 'OF', 'OF', 'OF', 'UTIL'];
   if (rosterSizeOverride && rosterSizeOverride !== slots.length) {
     slots = rosterSizeOverride < slots.length
       ? slots.slice(0, rosterSizeOverride)
@@ -2964,10 +3053,8 @@ function dfsLineupSlots() {
 }
 
 function dfsFlexMlbSlots(count) {
-  const pCount = dfsState.platform === 'draftkings' ? 2 : 1;
-  const total = count || (dfsState.platform === 'draftkings' ? 10 : 9);
-  const hCount = Math.max(0, total - pCount);
-  return [...Array(pCount).fill('P'), ...Array(hCount).fill('UTIL')];
+  const total = count || 9;
+  return ['P', ...Array(Math.max(0, total - 1)).fill('UTIL')];
 }
 
 function dfsGetEligiblePlayersForOptimization(filterOverride) {
@@ -3635,6 +3722,7 @@ async function dfsOptimize() {
             sport:                  dfsState.sport,
             platform:               dfsState.platform,
             salaryCap:              dfsGetCap(),
+            customSlots:            dfsLineupSlots(),
             requireProbablePitcher: dfsState.requireProbablePitcher,
             allowValuePunts:        dfsState.allowValuePunts,
             maxPuntPlayers:         dfsState.maxPuntPlayers,
@@ -3648,6 +3736,7 @@ async function dfsOptimize() {
             minUniquePlayers:       dfsState.minUniquePlayers,
             lockedPlayers:          dfsState.lockedPlayers,
             excludedPlayers:        dfsState.excludedPlayers,
+            minCapUsagePct:         dfsState.minCapUsagePct,
           }),
         });
         const csvBody = await csvRes.json();
@@ -3672,7 +3761,11 @@ async function dfsOptimize() {
             const pitcherList = (dbg.verifiedActivePitchers || [])
               .map(p => `${p.name} ($${(p.salary||0).toLocaleString()})`)
               .join(', ');
-            throw new Error(errMsg + (pitcherList ? `\nEligible pitchers: ${pitcherList}` : ''));
+            const cc = dbg.cheapestCombo;
+            const cheapestHint = cc
+              ? `\nDebug: cheapest ${cc.slots}-player combo = $${(cc.totalSalary||0).toLocaleString()} / $${(cc.cap||0).toLocaleString()} cap${cc.feasible ? ' ✓ feasible — optimizer constraint bug' : ' ✗ infeasible — raise cap or add players'}.`
+              : '';
+            throw new Error(errMsg + (pitcherList ? `\nEligible pitchers: ${pitcherList}` : '') + cheapestHint);
           }
         } else {
           // ok() spreads data fields at top-level (not nested under .data)
@@ -3753,7 +3846,7 @@ function dfsRenderResults(data) {
   // Use the active lineup's data merged with shared top-level data
   const current = allLineups ? { ...data, ...allLineups[dfsCurrentLineupIdx] } : data;
 
-  const platformName = dfsState.platform === 'draftkings' ? 'DraftKings' : 'FanDuel';
+  const platformName = 'FanDuel';
   const sportName = dfsState.sport.toUpperCase();
   const contestName = dfsState.contestType === 'gpp' ? 'GPP TOURNAMENT' : 'CASH GAME';
   const isGpp = dfsState.contestType === 'gpp';
@@ -3962,7 +4055,7 @@ function dfsSaveToPerf() {
     id: Date.now(),
     date: new Date().toLocaleDateString(),
     sport: dfsState.sport.toUpperCase(),
-    platform: dfsState.platform === 'draftkings' ? 'DK' : 'FD',
+    platform: 'FD',
     contestType: dfsState.contestType.toUpperCase(),
     projectedPoints: dfsLastLineup.totalProjectedPoints || 0,
     ceilingPoints: dfsLastLineup.totalCeilingPoints || 0,
