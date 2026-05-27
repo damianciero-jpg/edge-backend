@@ -1354,6 +1354,39 @@ router.post('/optimize-csv', async (req, res) => {
     players:     cheapestN.map(p => ({ name: p.name, salary: p.salary, position: p.position })),
   };
 
+  // ── Soft-constraint relaxation stages ──────────────────────────────────────
+  // Each stage cumulatively relaxes one more optional constraint.
+  // Stage 0 = full user constraints; Stage 6 = hard constraints only.
+  function buildRelaxedStages(base) {
+    const mht        = Number(base.maxHittersPerTeam) || 4;
+    const relaxedMht = Math.min(8, mht + 1);
+    return [
+      { relaxed: null,
+        opts: base },
+      { relaxed: 'Minimum salary floor lowered to 85%',
+        opts: { ...base, minCapUsagePct: 85 } },
+      { relaxed: 'Probable pitcher filter disabled (no confirmed starter detected)',
+        opts: { ...base, minCapUsagePct: 85, requireProbablePitcher: false } },
+      { relaxed: 'Ownership cap disabled (ownership data sparse or unavailable)',
+        opts: { ...base, minCapUsagePct: 85, requireProbablePitcher: false,
+                maxOwnershipPct: 9999 } },
+      { relaxed: 'Punt player limit relaxed (+2)',
+        opts: { ...base, minCapUsagePct: 85, requireProbablePitcher: false,
+                maxOwnershipPct: 9999,
+                maxPunts: Math.min(99, (base.maxPunts || 1) + 2), allowValuePunts: true } },
+      { relaxed: `Max hitters per team relaxed (${mht} → ${relaxedMht})`,
+        opts: { ...base, minCapUsagePct: 85, requireProbablePitcher: false,
+                maxOwnershipPct: 9999,
+                maxPunts: Math.min(99, (base.maxPunts || 1) + 2), allowValuePunts: true,
+                maxHittersPerTeam: relaxedMht } },
+      { relaxed: 'Hard constraints only — all optional filters disabled',
+        opts: { ...base, minCapUsagePct: 0, requireProbablePitcher: false,
+                maxOwnershipPct: 9999, maxPunts: 99, allowValuePunts: true,
+                maxHittersPerTeam: effectiveConfig.maxHittersPerTeam || 8,
+                enableStacking: false } },
+    ];
+  }
+
   // ── Multi-lineup generation loop ────────────────────────────────────────────
   const solverOpts = {
     useTournamentUpside,
@@ -1369,9 +1402,12 @@ router.post('/optimize-csv', async (req, res) => {
     minCapUsagePct:      Number(minCapUsagePct) || 95,
   };
 
-  const results    = [];
-  const appearances = {};
-  const prevSets   = [];
+  const results         = [];
+  const appearances     = {};
+  const prevSets        = [];
+  let winningBaseOpts   = null;   // relaxed opts level that succeeded on lineup 0
+  let constraintWarning = null;   // human-readable relaxation description
+  const stagesDebug     = [];
 
   for (let li = 0; li < lineupN; li++) {
     // Apply exposure cap: exclude players who've hit their appearance ceiling
@@ -1383,14 +1419,35 @@ router.post('/optimize-csv', async (req, res) => {
       }
     }
 
-    const iterOpts = {
-      ...solverOpts,
+    // Subsequent lineups inherit the relaxation level that worked on lineup 0
+    const baseOpts = {
+      ...(winningBaseOpts || solverOpts),
       excludedNames:    iterExcluded,
       previousLineups:  prevSets,
       minUniquePlayers: li === 0 ? 0 : minUnique,
     };
 
-    const result = generateOptimalLineup(players, effectiveConfig, iterOpts);
+    let result = null;
+
+    if (li === 0) {
+      // First lineup: walk staged fallback until one succeeds
+      for (const stage of buildRelaxedStages(baseOpts)) {
+        result = generateOptimalLineup(players, effectiveConfig, stage.opts);
+        stagesDebug.push({ stage: stage.relaxed || 'full constraints', succeeded: !!result });
+        if (result) {
+          if (stage.relaxed) {
+            constraintWarning = stage.relaxed;
+            // Persist relaxed opts (without iter-specific fields) for subsequent lineups
+            winningBaseOpts = { ...stage.opts, excludedNames: excludedSet,
+                                previousLineups: [], minUniquePlayers: 0 };
+          }
+          break;
+        }
+      }
+    } else {
+      result = generateOptimalLineup(players, effectiveConfig, baseOpts);
+    }
+
     if (!result) break;
 
     results.push(result);
@@ -1399,13 +1456,26 @@ router.post('/optimize-csv', async (req, res) => {
   }
 
   if (!results.length) {
+    // Per-slot eligibility counts for diagnosing hard-constraint failures
+    const slotDebug = (effectiveSlots || []).map(slot => {
+      const elig = players.filter(p => {
+        const parts = String(p.position || '').toUpperCase().split(/[\/\s]+/).filter(Boolean);
+        if (slot === 'UTIL') return parts.some(x => ['1B', 'C', 'C1B', '2B', '3B', 'SS', 'OF'].includes(x));
+        return parts.some(x => x === slot || x.includes(slot));
+      });
+      const sals = elig.map(p => p.salary).filter(s => s > 0);
+      return { slot, eligible: elig.length, cheapest: sals.length ? Math.min(...sals) : null };
+    });
+
     return fail(res, 400, {
-      error: `No valid lineup found under $${effectiveCap.toLocaleString()} cap. Try relaxing constraints or uploading more players.`,
+      error: `No legal lineup exists for this CSV under the $${effectiveCap.toLocaleString()} cap. Try relaxing injury filters, adding more players, or lowering the minimum cap usage.`,
       debug: {
         sport, isShowdown, cap: effectiveCap, slots: effectiveSlots,
         totalPlayers: players.length,
         cheapestCombo: cheapestComboDebug,
         enrichment: enrichDebug,
+        stages: stagesDebug,
+        slotCoverage: slotDebug,
       },
     });
   }
@@ -1413,15 +1483,18 @@ router.post('/optimize-csv', async (req, res) => {
   return ok(res, {
     data: {
       ...results[0],
-      lineups:  results,
-      exposure: appearances,
+      lineups:          results,
+      exposure:         appearances,
+      constraintWarning,
     },
     debug: {
       sport, isShowdown, platform,
-      cap:         effectiveCap,
-      lineupCount: results.length,
+      cap:           effectiveCap,
+      lineupCount:   results.length,
       cheapestCombo: cheapestComboDebug,
-      enrichment: enrichDebug,
+      enrichment:    enrichDebug,
+      stages:        stagesDebug,
+      relaxedStage:  constraintWarning,
     },
   });
 });

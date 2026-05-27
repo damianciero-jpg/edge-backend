@@ -3925,6 +3925,7 @@ function dfsRenderResults(data) {
   if (current.runBackPlayer && current.runBackPlayer !== 'null') alerts.push({ cls: 'info', msg: `↩ RUN-BACK: ${current.runBackPlayer}${current.runBackGame && current.runBackGame !== 'null' ? ' — ' + current.runBackGame : ''}` });
   if (current.salaryOnlyMode) alerts.push({ cls: 'warn', msg: '⚠ SALARY-ONLY MODE — position data missing or golf contest detected. Lineup built using salary cap only (no positional requirements).' });
   if (current.relaxedQMode) alerts.push({ cls: 'warn', msg: '⚠ QUESTIONABLE PLAYERS INCLUDED — pool was too small under "Q+Out" filter; relaxed to "Out only". Review questionable players in the lineup.' });
+  if (data.constraintWarning) alerts.push({ cls: 'warn', msg: `⚠ CONSTRAINTS RELAXED — ${data.constraintWarning}. Some optional constraints were relaxed to produce a valid lineup.` });
   if (current.mlb6PlayerMode) alerts.push({ cls: 'warn', msg: '⚠ NO CONFIRMED STARTER FOUND — no probable pitchers in pool; best 6 players by value used (no positional requirements). Upload a CSV with a Probable Starter column or relax injury filters.' });
   if (current.positionInfo) alerts.push({ cls: 'info', msg: `AVAILABLE: ${current.positionInfo}` });
   // Exposure summary (multi-lineup only)
