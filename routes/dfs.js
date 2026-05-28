@@ -439,11 +439,18 @@ function enrichPlayersWithProps(players, props, sport) {
     const baseline = projection || csvBase;
     const stdDev   = p.stdDev != null ? p.stdDev : +(baseline * stdDevMult).toFixed(2);
 
+    const projectedFppg = projection > 0 ? +projection.toFixed(1) : 0;
+    const valueScore    = projectedFppg > 0 && p.salary > 0
+      ? +(projectedFppg / (p.salary / 1000)).toFixed(2)
+      : 0;
+
     return {
       ...p,
       projection,
+      projectedFppg,
       floorFppg,
       ceilingFppg,
+      valueScore,
       stdDev,
       ownershipPct: (p.ownershipPct != null && p.ownershipPct > 0) ? p.ownershipPct : PROP_DEFAULT_OWN,
       _propEnriched,
