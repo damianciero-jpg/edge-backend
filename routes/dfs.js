@@ -357,56 +357,98 @@ function estimateFppgFromProp(line, market, position) {
   if (market === 'player_reception_yds')  return +(line * 0.10 * 1.20).toFixed(1);
   if (market === 'player_strikeouts')     return +(line * 3.0).toFixed(1);
   if (market === 'player_hits_runs_rbis') return +(line * 2.0).toFixed(1);
-  if (market === 'player_points')         return +(line * 1.40).toFixed(1);
+  if (market === 'player_points')         return +(line * 1.80).toFixed(1);
   return null;
 }
 
 function enrichPlayersWithProps(players, props, sport) {
   const stdDevMult = PROP_STD_DEV[sport] || 0.20;
 
-  const propMap = new Map();
+  // Group all raw props: normalizedName → market → [{ line, bookmaker }]
+  const byPlayer = new Map();
   for (const prop of props) {
-    const key  = normalizeName(prop.playerName);
-    const fppg = estimateFppgFromProp(prop.line, prop.market, null);
-    if (fppg == null || fppg <= 0) continue;
-    const prev   = propMap.get(key);
-    const better = !prev
-      || (prop.market === 'player_fantasy_points' && prev.market !== 'player_fantasy_points')
-      || (prop.market === prev.market && fppg > prev.fppg);
-    if (better) propMap.set(key, { fppg, market: prop.market, line: prop.line });
+    const key = normalizeName(prop.playerName);
+    if (!byPlayer.has(key)) byPlayer.set(key, new Map());
+    const byMarket = byPlayer.get(key);
+    if (!byMarket.has(prop.market)) byMarket.set(prop.market, []);
+    byMarket.get(prop.market).push({ line: prop.line, bookmaker: prop.bookmaker });
   }
 
   return players.map(p => {
-    const key   = normalizeName(p.name);
-    const match = propMap.get(key);
+    const key     = normalizeName(p.name);
+    const byMarket = byPlayer.get(key);
 
-    // fppg stays as the original CSV display value (for UI rendering).
-    // csvBase tries every case variant a CSV header could produce.
-    const csvBase    = Number(p.fppg)        ||
-                       Number(p.FPPG)        ||
-                       Number(p.projection)  ||
-                       Number(p.Projection)  ||
-                       0;
-    // projection = live prop line when matched; hard fallback to CSV baseline.
-    // Never allow projection to be 0 when csvBase is available — that would
-    // zero out stdDev and break tournament math for the whole pool.
-    const projection = match ? match.fppg : csvBase;
-    // stdDev uses whichever baseline is available (prop line or CSV fppg).
-    // If both are 0 (player with genuinely missing data), stdDev stays 0.
-    const baseline   = projection || csvBase;
-    const stdDev     = p.stdDev != null
-                         ? p.stdDev
-                         : +(baseline * stdDevMult).toFixed(2);
+    const csvBase = Number(p.fppg) || Number(p.FPPG) || Number(p.projection) || Number(p.Projection) || 0;
+
+    let projection    = 0;
+    let _projSource   = null;
+    let _propEnriched = false;
+    let _propMarket   = null;
+    let floorFppg     = null;
+    let ceilingFppg   = null;
+
+    if (byMarket) {
+      // Tier 1: player_fantasy_points — direct DFS line, no multiplier needed
+      if (byMarket.has('player_fantasy_points')) {
+        const entries = byMarket.get('player_fantasy_points');
+        const fd = entries.find(e => e.bookmaker === 'fanduel');
+        const dk = entries.find(e => e.bookmaker === 'draftkings');
+        let line, srcNote;
+        if (fd && dk) {
+          line    = +((fd.line + dk.line) / 2).toFixed(1);
+          srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
+        } else {
+          const e = fd || dk;
+          line    = e.line;
+          srcNote = e.bookmaker;
+        }
+        projection    = line;
+        _projSource   = `Proj: ${projection} (${srcNote} DFS pts)`;
+        _propEnriched = true;
+        _propMarket   = 'player_fantasy_points';
+      }
+      // Tier 2: player_points × 1.8 DFS multiplier (pts + reb/ast/stl/blk)
+      else if (byMarket.has('player_points')) {
+        const entries = byMarket.get('player_points');
+        const fd = entries.find(e => e.bookmaker === 'fanduel');
+        const dk = entries.find(e => e.bookmaker === 'draftkings');
+        let rawLine, srcNote;
+        if (fd && dk) {
+          rawLine = +((fd.line + dk.line) / 2).toFixed(1);
+          srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
+        } else {
+          const e = fd || dk;
+          rawLine = e.line;
+          srcNote = e.bookmaker;
+        }
+        projection    = +(rawLine * 1.8).toFixed(1);
+        _projSource   = `Proj: ${projection} (${rawLine} pts × 1.8 DFS multiplier)`;
+        _propEnriched = true;
+        _propMarket   = 'player_points';
+      }
+    }
+
+    // Fall back to CSV when no prop found, or when prop resolved to 0
+    if (projection <= 0) projection = csvBase;
+
+    if (projection > 0) {
+      floorFppg   = +(projection * 0.75).toFixed(1);
+      ceilingFppg = +(projection * 1.35).toFixed(1);
+    }
+
+    const baseline = projection || csvBase;
+    const stdDev   = p.stdDev != null ? p.stdDev : +(baseline * stdDevMult).toFixed(2);
 
     return {
       ...p,
       projection,
+      floorFppg,
+      ceilingFppg,
       stdDev,
-      ownershipPct: (p.ownershipPct != null && p.ownershipPct > 0)
-                      ? p.ownershipPct
-                      : PROP_DEFAULT_OWN,
-      _propEnriched: !!match,
-      _propMarket:   match ? match.market : null,
+      ownershipPct: (p.ownershipPct != null && p.ownershipPct > 0) ? p.ownershipPct : PROP_DEFAULT_OWN,
+      _propEnriched,
+      _propMarket,
+      _projSource,
     };
   });
 }
@@ -428,8 +470,10 @@ async function fetchPlayerProps(apiKey, sport) {
   } catch { return []; }
 
   if (!Array.isArray(events)) return [];
+  const now = Date.now();
+  const in24h = now + 24 * 60 * 60 * 1000;
   const todayEvents = events
-    .filter(e => String(e.commence_time || '').startsWith(today))
+    .filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in24h; })
     .slice(0, 8);
   if (!todayEvents.length) return [];
 
@@ -1867,6 +1911,160 @@ Return ONLY raw JSON:
       },
     });
   }
+});
+
+// ── /projections-debug ── Step 1 diagnostic: raw Odds API response for SGA ──────
+router.get('/projections-debug', async (req, res) => {
+  const adminPw = process.env.ADMIN_PASSWORD || 'edge-admin-2026';
+  const qpw = req.query.pw || req.query.password || req.query.adminPassword;
+  const session = verifySession(req.cookies && req.cookies.edge_session);
+  if (!session && qpw !== adminPw) {
+    return fail(res, 401, { error: 'Pass ?pw=<adminPassword> or a valid session cookie.' });
+  }
+
+  const logs = {
+    log1_urlSearched: null,
+    log2_rawEventsResponse: null,
+    log3_rawPropsResponse: null,
+    log4_error: null,
+    sgaMatches: [],
+    todayEventCount: 0,
+    allEventCount: 0,
+    testEvent: null,
+  };
+
+  const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
+
+  if (!apiKey) {
+    logs.log4_error = 'No Odds API key configured — checked THE_ODDS_API_KEY, ODDS_API_KEY, ODDS_KEY';
+    return ok(res, { data: logs });
+  }
+
+  const sportKey = 'basketball_nba';
+  const eventsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events?apiKey=${apiKey}`;
+  logs.log1_urlSearched = eventsUrl.replace(apiKey, '[REDACTED]');
+
+  try {
+    const evRes = await withTimeout(fetch(eventsUrl), 8000, 'nba-events-debug');
+    const evText = await evRes.text();
+
+    logs.log2_rawEventsResponse = {
+      status: evRes.status,
+      statusText: evRes.statusText,
+      bodyPreview: evText.slice(0, 2000),
+      bodyLength: evText.length,
+    };
+
+    if (!evRes.ok) {
+      logs.log4_error = `Events fetch HTTP ${evRes.status}: ${evText.slice(0, 500)}`;
+      return ok(res, { data: logs });
+    }
+
+    let events;
+    try {
+      events = JSON.parse(evText);
+    } catch (parseErr) {
+      logs.log4_error = `Events JSON parse failed: ${parseErr.message}. Raw start: ${evText.slice(0, 300)}`;
+      return ok(res, { data: logs });
+    }
+
+    const now = Date.now();
+    const in24h = now + 24 * 60 * 60 * 1000;
+    const todayEvents = Array.isArray(events)
+      ? events.filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in24h; })
+      : [];
+
+    logs.todayEventCount = todayEvents.length;
+    logs.allEventCount = Array.isArray(events) ? events.length : 0;
+
+    if (!todayEvents.length) {
+      logs.log4_error = `No NBA events found for today (${today}). Total events in response: ${logs.allEventCount}. Sample commence_times: ${(Array.isArray(events) ? events : []).slice(0, 3).map(e => e.commence_time).join(', ')}`;
+      return ok(res, { data: logs });
+    }
+
+    // Use first today event as test case
+    const testEvent = todayEvents[0];
+    logs.testEvent = {
+      id: testEvent.id,
+      homeTeam: testEvent.home_team,
+      awayTeam: testEvent.away_team,
+      commenceTime: testEvent.commence_time,
+    };
+
+    const marketStr = 'player_fantasy_points,player_points';
+    const propsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${testEvent.id}/odds`
+      + `?apiKey=${apiKey}&regions=us&markets=${marketStr}&bookmakers=fanduel,draftkings&oddsFormat=american`;
+
+    logs.log1_propsUrlSearched = propsUrl.replace(apiKey, '[REDACTED]');
+
+    try {
+      const propsRes = await withTimeout(fetch(propsUrl), 8000, 'nba-props-debug');
+      const propsText = await propsRes.text();
+
+      logs.log3_rawPropsResponse = {
+        status: propsRes.status,
+        statusText: propsRes.statusText,
+        bodyPreview: propsText.slice(0, 3000),
+        bodyLength: propsText.length,
+      };
+
+      if (!propsRes.ok) {
+        logs.log4_error = `Props fetch HTTP ${propsRes.status}: ${propsText.slice(0, 500)}`;
+        return ok(res, { data: logs });
+      }
+
+      let propsData;
+      try {
+        propsData = JSON.parse(propsText);
+      } catch (parseErr) {
+        logs.log4_error = `Props JSON parse failed: ${parseErr.message}`;
+        return ok(res, { data: logs });
+      }
+
+      // Search every bookmaker/market/outcome for SGA
+      const sgaTokens = ['shai', 'gilgeous'];
+      for (const bk of (propsData.bookmakers || [])) {
+        for (const mkt of (bk.markets || [])) {
+          for (const outcome of (mkt.outcomes || [])) {
+            const desc = String(outcome.description || outcome.player || '').toLowerCase();
+            if (sgaTokens.every(t => desc.includes(t))) {
+              logs.sgaMatches.push({
+                bookmaker: bk.key,
+                market: mkt.key,
+                description: outcome.description || outcome.player,
+                name: outcome.name,
+                point: outcome.point,
+                price: outcome.price,
+              });
+            }
+          }
+        }
+      }
+
+      if (!logs.sgaMatches.length) {
+        // Show first 5 player names we DID find so user can see the naming format
+        const sampleNames = [];
+        outer: for (const bk of (propsData.bookmakers || [])) {
+          for (const mkt of (bk.markets || [])) {
+            for (const outcome of (mkt.outcomes || [])) {
+              const desc = outcome.description || outcome.player;
+              if (desc && !sampleNames.includes(desc)) {
+                sampleNames.push(desc);
+                if (sampleNames.length >= 10) break outer;
+              }
+            }
+          }
+        }
+        logs.sgaNotFoundSampleNames = sampleNames;
+      }
+    } catch (propsErr) {
+      logs.log4_error = `Props fetch threw: ${propsErr.message}`;
+    }
+  } catch (err) {
+    logs.log4_error = `Events fetch threw: ${err.message}`;
+  }
+
+  return ok(res, { data: logs });
 });
 
 module.exports = router;
