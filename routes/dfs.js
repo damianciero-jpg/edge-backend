@@ -460,7 +460,33 @@ async function fetchPlayerProps(apiKey, sport) {
     } catch { /* individual event failure is non-fatal */ }
   }));
 
+  // Attach earliest game commence_time for frontend auto-refresh timer
+  if (todayEvents.length > 0) {
+    const sorted = todayEvents.slice().sort((a, b) =>
+      String(a.commence_time || '').localeCompare(String(b.commence_time || ''))
+    );
+    allProps.commenceTime = sorted[0].commence_time || null;
+  }
   return allProps;
+}
+
+// ── 60/40 ceiling weighting + GPP ownership fade ──────────────────────────────
+// blended = 60% median + 40% ceiling, where ceiling = proj + stdDev × 1.2
+// Ownership fade (GPP only): chalk (>25%) gets −10%, contrarian (<10%) gets +15%.
+// Updates fppg in-place so the solver scores by the blended value.
+function applyProjectionBlend(players, isGpp) {
+  return players.map(p => {
+    const proj = Number(p.projection || p.fppg) || 0;
+    if (proj <= 0) return p;
+    const stdDev = Number(p.stdDev) || 0;
+    let blended = proj + stdDev * 0.48; // = proj*0.60 + (proj + stdDev*1.2)*0.40
+    if (isGpp) {
+      const own = Number(p.ownershipPct) || 0;
+      if (own > 25)            blended *= 0.90;
+      else if (own > 0 && own < 10) blended *= 1.15;
+    }
+    return { ...p, fppg: +blended.toFixed(2) };
+  });
 }
 
 function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers, requireProbablePitcher = true }) {
@@ -1217,6 +1243,7 @@ router.post('/optimize-csv', async (req, res) => {
     players: rawPlayers = [],
     sport: rawSport = 'mlb',
     platform = 'fanduel',
+    contestType = 'gpp',
     salaryCap: customCap,
     customSlots: rawCustomSlots,
     requireProbablePitcher = true,
@@ -1229,6 +1256,7 @@ router.post('/optimize-csv', async (req, res) => {
     enableStacking = true,
     useTournamentUpside = false,
     lineupCount = 1,
+    lineupMode = 'standard',
     maxExposure = 0.6,
     minUniquePlayers = 3,
     lockedPlayers = [],
@@ -1261,6 +1289,15 @@ router.post('/optimize-csv', async (req, res) => {
   const effectiveCap   = (customCap > 0 ? customCap : null) || config.cap;
   const effectiveSlots = resolvedSlots || config.slots;
   const effectiveConfig = { ...config, cap: effectiveCap, slots: effectiveSlots };
+
+  // MLB $35K: relax default [[5,3],[4,4]] to [[4,2],[3,3]] — more achievable under the lower cap
+  let solveConfig = effectiveConfig;
+  if (sport === 'mlb' && effectiveCap <= 35000 && effectiveConfig.stackingEnabled) {
+    solveConfig = {
+      ...effectiveConfig,
+      stackingRules: { ...effectiveConfig.stackingRules, validCombos: [[4, 2], [3, 3]] },
+    };
+  }
 
   // ── Normalise player array ──────────────────────────────────────────────────
   let players = (Array.isArray(rawPlayers) ? rawPlayers : [])
@@ -1317,6 +1354,7 @@ router.post('/optimize-csv', async (req, res) => {
       players     = enrichPlayersWithProps(players, props, sport);
       const n     = players.filter(p => p._propEnriched).length;
       enrichDebug.enrichedCount = n;
+      enrichDebug.commenceTime  = props.commenceTime || null;
       enrichDebug.propSource    = n > 0
         ? (players.find(p => p._propEnriched)?._propMarket ?? null)
         : null;
@@ -1339,6 +1377,10 @@ router.post('/optimize-csv', async (req, res) => {
   const zeroFppg = players.filter(p => !p.fppg && !p.projection).length;
   if (zeroFppg > 0) console.warn(`[DFS] ${zeroFppg}/${players.length} players have fppg=0 AND projection=0`);
 
+  // Apply 60/40 ceiling blend + GPP ownership fade before solver scoring
+  const isGppMode = contestType === 'gpp';
+  players = applyProjectionBlend(players, isGppMode);
+
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
 
@@ -1356,11 +1398,14 @@ router.post('/optimize-csv', async (req, res) => {
 
   // ── Soft-constraint relaxation stages ──────────────────────────────────────
   // Each stage cumulatively relaxes one more optional constraint.
-  // Stage 0 = full user constraints; Stage 6 = hard constraints only.
-  function buildRelaxedStages(base) {
+  // Stage 0 = full user constraints; last stage = hard constraints only.
+  // baseConfig overrides the sport config passed to generateOptimalLineup.
+  // MLB-specific stages append further stack relaxations for the $35K cap.
+  function buildRelaxedStages(base, baseConfig) {
+    const cfg        = baseConfig || solveConfig;
     const mht        = Number(base.maxHittersPerTeam) || 4;
     const relaxedMht = Math.min(8, mht + 1);
-    return [
+    const stages = [
       { relaxed: null,
         opts: base },
       { relaxed: 'Minimum salary floor lowered to 85%',
@@ -1385,6 +1430,23 @@ router.post('/optimize-csv', async (req, res) => {
                 maxHittersPerTeam: effectiveConfig.maxHittersPerTeam || 8,
                 enableStacking: false } },
     ];
+    // MLB-specific: further stack relaxation for small cap slates
+    if (sport === 'mlb' && cfg.stackingEnabled) {
+      const mlbRelaxOpts = { ...base, minCapUsagePct: 85, requireProbablePitcher: false,
+                             maxOwnershipPct: 9999, maxPunts: 99, allowValuePunts: true,
+                             maxHittersPerTeam: relaxedMht };
+      stages.push({
+        relaxed: 'MLB stack relaxed to 4-1 / 3-2',
+        opts: mlbRelaxOpts,
+        configOverride: { ...cfg, stackingRules: { ...cfg.stackingRules, validCombos: [[4,1],[3,2]] } },
+      });
+      stages.push({
+        relaxed: 'MLB stack relaxed to 3-1 / 2-2',
+        opts: { ...mlbRelaxOpts, minCapUsagePct: 0, maxHittersPerTeam: relaxedMht + 1 },
+        configOverride: { ...cfg, stackingRules: { ...cfg.stackingRules, validCombos: [[3,1],[2,2]] } },
+      });
+    }
+    return stages;
   }
 
   // ── Multi-lineup generation loop ────────────────────────────────────────────
@@ -1409,50 +1471,85 @@ router.post('/optimize-csv', async (req, res) => {
   let constraintWarning = null;   // human-readable relaxation description
   const stagesDebug     = [];
 
-  for (let li = 0; li < lineupN; li++) {
-    // Apply exposure cap: exclude players who've hit their appearance ceiling
-    const iterExcluded = new Set(excludedSet);
-    if (li > 0 && exposurePct < 1.0) {
-      const capCount = Math.max(1, Math.ceil(lineupN * exposurePct));
-      for (const [name, cnt] of Object.entries(appearances)) {
-        if (cnt >= capCount && !lockedSet.has(name)) iterExcluded.add(name);
-      }
-    }
-
-    // Subsequent lineups inherit the relaxation level that worked on lineup 0
-    const baseOpts = {
-      ...(winningBaseOpts || solverOpts),
-      excludedNames:    iterExcluded,
-      previousLineups:  prevSets,
-      minUniquePlayers: li === 0 ? 0 : minUnique,
-    };
-
-    let result = null;
-
-    if (li === 0) {
-      // First lineup: walk staged fallback until one succeeds
-      for (const stage of buildRelaxedStages(baseOpts)) {
-        result = generateOptimalLineup(players, effectiveConfig, stage.opts);
-        stagesDebug.push({ stage: stage.relaxed || 'full constraints', succeeded: !!result });
-        if (result) {
-          if (stage.relaxed) {
-            constraintWarning = stage.relaxed;
-            // Persist relaxed opts (without iter-specific fields) for subsequent lineups
-            winningBaseOpts = { ...stage.opts, excludedNames: excludedSet,
-                                previousLineups: [], minUniquePlayers: 0 };
-          }
+  if (lineupMode === 'archetypes') {
+    // ── 5-archetype mode: Chalk / Balanced 1 / Balanced 2 / Upside / Contrarian ─
+    const ARCHETYPES = [
+      { name: 'Chalk',      overrides: { useTournamentUpside: false, maxOwnershipPct: 600 } },
+      { name: 'Balanced 1', overrides: {} },
+      { name: 'Balanced 2', overrides: { minUniquePlayers: minUnique } },
+      { name: 'Upside',     overrides: { useTournamentUpside: true, maxOwnershipPct: 80 } },
+      { name: 'Contrarian', overrides: { useTournamentUpside: true, maxOwnershipPct: 35 } },
+    ];
+    for (const arch of ARCHETYPES) {
+      const archOpts = {
+        ...solverOpts, ...arch.overrides,
+        excludedNames:    excludedSet,
+        previousLineups:  prevSets,
+        minUniquePlayers: prevSets.length > 0 ? (arch.overrides.minUniquePlayers || minUnique) : 0,
+      };
+      let archResult = null;
+      for (const stage of buildRelaxedStages(archOpts, solveConfig)) {
+        archResult = generateOptimalLineup(players, stage.configOverride || solveConfig, stage.opts);
+        stagesDebug.push({ archetype: arch.name, stage: stage.relaxed || 'full constraints', succeeded: !!archResult });
+        if (archResult) {
+          if (stage.relaxed && !constraintWarning) constraintWarning = stage.relaxed;
           break;
         }
       }
-    } else {
-      result = generateOptimalLineup(players, effectiveConfig, baseOpts);
+      if (archResult) {
+        archResult.archetype = arch.name;
+        results.push(archResult);
+        archResult.lineup.forEach(p => { appearances[p.name] = (appearances[p.name] || 0) + 1; });
+        prevSets.push(new Set(archResult.lineup.map(p => p.name)));
+      }
     }
+  } else {
+    // ── Standard multi-lineup loop ──────────────────────────────────────────────
+    for (let li = 0; li < lineupN; li++) {
+      // Apply exposure cap: exclude players who've hit their appearance ceiling
+      const iterExcluded = new Set(excludedSet);
+      if (li > 0 && exposurePct < 1.0) {
+        const capCount = Math.max(1, Math.ceil(lineupN * exposurePct));
+        for (const [name, cnt] of Object.entries(appearances)) {
+          if (cnt >= capCount && !lockedSet.has(name)) iterExcluded.add(name);
+        }
+      }
 
-    if (!result) break;
+      // Subsequent lineups inherit the relaxation level that worked on lineup 0
+      const baseOpts = {
+        ...(winningBaseOpts || solverOpts),
+        excludedNames:    iterExcluded,
+        previousLineups:  prevSets,
+        minUniquePlayers: li === 0 ? 0 : minUnique,
+      };
 
-    results.push(result);
-    result.lineup.forEach(p => { appearances[p.name] = (appearances[p.name] || 0) + 1; });
-    prevSets.push(new Set(result.lineup.map(p => p.name)));
+      let result = null;
+
+      if (li === 0) {
+        // First lineup: walk staged fallback until one succeeds
+        for (const stage of buildRelaxedStages(baseOpts, solveConfig)) {
+          result = generateOptimalLineup(players, stage.configOverride || solveConfig, stage.opts);
+          stagesDebug.push({ stage: stage.relaxed || 'full constraints', succeeded: !!result });
+          if (result) {
+            if (stage.relaxed) {
+              constraintWarning = stage.relaxed;
+              // Persist relaxed opts (without iter-specific fields) for subsequent lineups
+              winningBaseOpts = { ...stage.opts, excludedNames: excludedSet,
+                                  previousLineups: [], minUniquePlayers: 0 };
+            }
+            break;
+          }
+        }
+      } else {
+        result = generateOptimalLineup(players, solveConfig, baseOpts);
+      }
+
+      if (!result) break;
+
+      results.push(result);
+      result.lineup.forEach(p => { appearances[p.name] = (appearances[p.name] || 0) + 1; });
+      prevSets.push(new Set(result.lineup.map(p => p.name)));
+    }
   }
 
   if (!results.length) {
@@ -1486,11 +1583,14 @@ router.post('/optimize-csv', async (req, res) => {
       lineups:          results,
       exposure:         appearances,
       constraintWarning,
+      lineupMode,
+      commenceTime:     enrichDebug.commenceTime || null,
     },
     debug: {
       sport, isShowdown, platform,
       cap:           effectiveCap,
       lineupCount:   results.length,
+      lineupMode,
       cheapestCombo: cheapestComboDebug,
       enrichment:    enrichDebug,
       stages:        stagesDebug,
@@ -1674,6 +1774,98 @@ ${JSON.stringify(uncached.map(({ key, location, label }) => ({ key, location, la
   } catch (err) {
     console.error('DFS weather error:', err.message);
     return fail(res, 500, { error: err.message || 'Could not refresh weather.' });
+  }
+});
+
+router.post('/slate-analysis', async (req, res) => {
+  const session = requireDfsSession(req, res);
+  if (!session) return;
+
+  const { sport = 'nba', players = [] } = req.body || {};
+  if (!['nba', 'nfl', 'mlb'].includes(sport)) return fail(res, 400, { error: 'Invalid sport.' });
+
+  const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
+  let games = [];
+  try { games = await fetchOddsData(apiKey, sport); } catch { games = []; }
+
+  const teams = [...new Set((Array.isArray(players) ? players : []).map(p => p.team).filter(Boolean))].slice(0, 20);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const oddsBlock = games.length
+    ? games.map(g => `${g.awayTeam} @ ${g.homeTeam}: O/U ${g.total}, away implied ${g.awayImplied} / home implied ${g.homeImplied} (${g.gameScript})`).join('\n')
+    : 'No odds data available.';
+
+  const prompt = `You are a DFS slate analyst. Today is ${today}. Sport: ${sport.toUpperCase()}.
+
+Vegas game data:
+${oddsBlock}
+
+Teams on slate: ${teams.join(', ') || 'unknown'}
+
+Use web_search to find:
+1. Today's injury report — OUT and Q players
+2. Pace ratings and matchup context for these teams
+3. Key DFS slate narrative
+
+Return ONLY raw JSON:
+{
+  "slateNarrative": "2-3 sentence strategic overview of this slate",
+  "topStackTargets": ["TEAM1", "TEAM2"],
+  "topFadeTargets": ["TEAM3"],
+  "games": [
+    {
+      "teams": "AWAY @ HOME",
+      "total": 220.5,
+      "awayImplied": 108.0,
+      "homeImplied": 112.5,
+      "gameScript": "neutral",
+      "paceRating": "fast",
+      "stackValue": "HIGH",
+      "keyInjuries": ["Player - Q (knee)"],
+      "notes": "brief matchup note"
+    }
+  ],
+  "keyInjuries": ["Player (TEAM) - Status: short note"],
+  "paceNarrative": "1-2 sentence pace context"
+}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      system: 'You are a DFS slate analyst. Always use web_search for current injury and pace data. Return only raw JSON.',
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    }, { timeout: 90000 });
+
+    const rawText = (response.content || []).filter(b => b.type === 'text' && b.text).map(b => b.text).join('\n').trim();
+    const parsed = parseJsonFromText(rawText);
+    return ok(res, { data: { ...parsed, updatedAt: new Date().toISOString(), oddsGames: games } });
+  } catch (err) {
+    console.error('DFS slate-analysis error:', err.message);
+    // Non-fatal: return odds-only fallback
+    return ok(res, {
+      data: {
+        slateNarrative: 'Slate analysis unavailable — showing odds data only.',
+        topStackTargets: [],
+        topFadeTargets: [],
+        games: games.map(g => ({
+          teams: `${g.awayTeam} @ ${g.homeTeam}`,
+          total: g.total,
+          awayImplied: g.awayImplied,
+          homeImplied: g.homeImplied,
+          gameScript: g.gameScript,
+          paceRating: 'neutral',
+          stackValue: (g.homeImplied || 0) >= 115 || (g.awayImplied || 0) >= 115 ? 'HIGH' : 'MEDIUM',
+          keyInjuries: [],
+          notes: '',
+        })),
+        keyInjuries: [],
+        paceNarrative: '',
+        updatedAt: new Date().toISOString(),
+        oddsGames: games,
+      },
+    });
   }
 });
 

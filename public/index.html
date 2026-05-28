@@ -1482,6 +1482,10 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
               oninput="dfsSetLineupCount(+this.value)"
               style="width:46px;font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:4px 6px;outline:none;text-align:center;">
           </div>
+          <button id="dfs-archetype-btn" onclick="dfsToggleArchetypeMode()"
+            style="font-family:var(--mono);font-size:8px;padding:4px 10px;background:var(--surface2);color:var(--muted);border:1px solid var(--border2);cursor:pointer;border-radius:3px;letter-spacing:1px;">
+            ARCHETYPE MODE
+          </button>
           <div id="dfs-multi-lineup-controls" style="display:none;gap:12px;align-items:center;">
             <div style="display:flex;gap:6px;align-items:center;">
               <span style="font-family:var(--mono);font-size:9px;color:var(--muted);">MAX EXPOSURE %</span>
@@ -1526,6 +1530,16 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
 
     <div id="dfs-weather-banner" class="dfs-weather-banner"></div>
 
+    <!-- Slate Analysis panel -->
+    <div id="dfs-slate-panel" style="display:none;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;">SLATE ANALYSIS</span>
+        <button onclick="document.getElementById('dfs-slate-panel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;">✕</button>
+      </div>
+      <div id="dfs-slate-loading" style="display:none;font-family:var(--mono);font-size:9px;color:var(--muted);">Analyzing slate...</div>
+      <div id="dfs-slate-content"></div>
+    </div>
+
     <!-- Optimize / refresh actions -->
     <div class="dfs-action-row">
       <button class="analyze-btn" id="dfs-optimize-btn" onclick="dfsOptimize()" style="width:100%;display:block;">
@@ -1533,6 +1547,9 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
       </button>
       <button class="dfs-refresh-btn" id="dfs-refresh-injuries-btn" onclick="dfsRefreshInjuries()">
         Refresh Injuries
+      </button>
+      <button class="dfs-refresh-btn" id="dfs-slate-btn" onclick="dfsSlateAnalysis()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--muted);">
+        Slate Analysis
       </button>
       <button class="dfs-cancel-btn" id="dfs-cancel-refresh-btn" onclick="dfsCancelInjuryRefresh()" style="display:none;margin-left:8px;">
         Cancel
@@ -1740,9 +1757,11 @@ let dfsState = {
   minWrStack: 1,
   enableStacking: true,
   lineupCount: 1,
+  lineupMode: 'standard',
   maxExposure: 60,
   minUniquePlayers: 3,
   minCapUsagePct: 95,
+  _autoRefreshTimer: null,
 };
 let dfsCurrentLineupIdx = 0;
 let dfsLastLineup = null;
@@ -2528,7 +2547,64 @@ function dfsToggleStacking() {
 function dfsSetLineupCount(n) {
   dfsState.lineupCount = Math.max(1, Math.min(20, isNaN(n) ? 1 : n));
   const multi = document.getElementById('dfs-multi-lineup-controls');
-  if (multi) multi.style.display = dfsState.lineupCount > 1 ? 'flex' : 'none';
+  if (multi) multi.style.display = (dfsState.lineupCount > 1 && dfsState.lineupMode !== 'archetypes') ? 'flex' : 'none';
+}
+function dfsToggleArchetypeMode() {
+  dfsState.lineupMode = dfsState.lineupMode === 'archetypes' ? 'standard' : 'archetypes';
+  const btn = document.getElementById('dfs-archetype-btn');
+  if (btn) {
+    const on = dfsState.lineupMode === 'archetypes';
+    btn.textContent = on ? '✓ ARCHETYPE MODE' : 'ARCHETYPE MODE';
+    btn.style.background = on ? 'var(--accent)' : 'var(--surface2)';
+    btn.style.color = on ? '#000' : 'var(--muted)';
+    btn.style.border = on ? 'none' : '1px solid var(--border2)';
+  }
+  const multi = document.getElementById('dfs-multi-lineup-controls');
+  if (multi) multi.style.display = (dfsState.lineupCount > 1 && dfsState.lineupMode !== 'archetypes') ? 'flex' : 'none';
+}
+async function dfsSlateAnalysis() {
+  if (!dfsState.uploadedPlayers.length) { showToast('Upload a CSV first', 'error'); return; }
+  const panel = document.getElementById('dfs-slate-panel');
+  const loading = document.getElementById('dfs-slate-loading');
+  const content = document.getElementById('dfs-slate-content');
+  panel.style.display = 'block';
+  loading.style.display = 'block';
+  content.innerHTML = '';
+  try {
+    const payload = dfsState.uploadedPlayers.slice(0, 60).map(p => ({ name: p.name, team: p.team }));
+    const res = await fetch('/api/dfs/slate-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sport: dfsState.sport, players: payload }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Slate analysis failed');
+    const d = body.data || body;
+    const gamesHtml = (d.games || []).map(g => {
+      const svColor = g.stackValue === 'HIGH' ? 'var(--green)' : g.stackValue === 'LOW' ? 'var(--red)' : 'var(--yellow)';
+      return `<div style="border:1px solid var(--border2);border-radius:4px;padding:8px;margin-bottom:6px;">
+        <div style="font-family:var(--mono);font-size:9px;font-weight:bold;color:var(--text);">${g.teams || ''}</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:3px;">
+          O/U ${g.total || '?'} · Away ${g.awayImplied || '?'} / Home ${g.homeImplied || '?'} implied ·
+          <span style="color:${svColor}">Stack: ${g.stackValue || '?'}</span> · ${g.paceRating || ''} pace
+        </div>
+        ${(g.keyInjuries||[]).length ? `<div style="font-family:var(--mono);font-size:8px;color:var(--yellow);margin-top:3px;">⚠ ${g.keyInjuries.join(' · ')}</div>` : ''}
+        ${g.notes ? `<div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:2px;">${g.notes}</div>` : ''}
+      </div>`;
+    }).join('');
+    content.innerHTML = `
+      ${d.slateNarrative ? `<div style="font-family:var(--mono);font-size:9px;color:var(--text);margin-bottom:10px;">${d.slateNarrative}</div>` : ''}
+      ${d.topStackTargets&&d.topStackTargets.length ? `<div style="font-family:var(--mono);font-size:8px;color:var(--green);margin-bottom:6px;">TOP STACKS: ${d.topStackTargets.join(', ')}</div>` : ''}
+      ${d.topFadeTargets&&d.topFadeTargets.length ? `<div style="font-family:var(--mono);font-size:8px;color:var(--red);margin-bottom:8px;">FADE: ${d.topFadeTargets.join(', ')}</div>` : ''}
+      ${gamesHtml}
+      ${(d.keyInjuries||[]).length ? `<div style="font-family:var(--mono);font-size:8px;color:var(--yellow);margin-top:6px;">INJURIES: ${d.keyInjuries.join(' · ')}</div>` : ''}
+      ${d.paceNarrative ? `<div style="font-family:var(--mono);font-size:8px;color:var(--muted);margin-top:6px;">${d.paceNarrative}</div>` : ''}
+    `;
+  } catch (err) {
+    content.innerHTML = `<div style="font-family:var(--mono);font-size:9px;color:var(--red);">${err.message}</div>`;
+  } finally {
+    loading.style.display = 'none';
+  }
 }
 function dfsSetMaxExposure(n) {
   dfsState.maxExposure = Math.max(10, Math.min(100, isNaN(n) ? 60 : n));
@@ -3731,7 +3807,10 @@ async function dfsOptimize() {
             maxOwnershipPct:        dfsState.maxOwnershipPct,
             minWrStack:             dfsState.minWrStack,
             enableStacking:         dfsState.enableStacking,
-            lineupCount:            dfsState.lineupCount,
+            useTournamentUpside:    dfsState.contestType === 'gpp',
+            contestType:            dfsState.contestType,
+            lineupCount:            dfsState.lineupMode === 'archetypes' ? 5 : dfsState.lineupCount,
+            lineupMode:             dfsState.lineupMode,
             maxExposure:            dfsState.maxExposure / 100,
             minUniquePlayers:       dfsState.minUniquePlayers,
             lockedPlayers:          dfsState.lockedPlayers,
@@ -3770,6 +3849,18 @@ async function dfsOptimize() {
         } else {
           // ok() spreads data fields at top-level (not nested under .data)
           data = csvBody;
+        }
+      }
+      // Schedule auto-injury-refresh 15 min before first game lock
+      if (data.commenceTime) {
+        const lockMs = new Date(data.commenceTime).getTime() - 15 * 60 * 1000;
+        const nowMs  = Date.now();
+        if (lockMs > nowMs) {
+          clearTimeout(dfsState._autoRefreshTimer);
+          dfsState._autoRefreshTimer = setTimeout(() => {
+            showToast('Auto-refreshing injuries — 15 min to game lock', 'info');
+            dfsRefreshInjuries();
+          }, lockMs - nowMs);
         }
       }
       dfsLastLineup = data;
@@ -3836,7 +3927,8 @@ function dfsRenderResults(data) {
     selectorEl.style.display = 'flex';
     selectorEl.innerHTML = allLineups.map((lu, i) => {
       const active = i === dfsCurrentLineupIdx;
-      return `<button onclick="dfsSelectLineup(${i})" style="font-family:var(--mono);font-size:8px;padding:5px 10px;background:${active ? 'var(--accent)' : 'var(--surface2)'};color:${active ? '#000' : 'var(--text)'};border:1px solid ${active ? 'var(--accent)' : 'var(--border2)'};cursor:pointer;border-radius:3px;line-height:1.4;text-align:center;">LINEUP ${i + 1}<br><span style="color:${active ? '#000' : 'var(--muted)'}">${(lu.totalFppg || 0).toFixed(1)} pts</span></button>`;
+      const label = lu.archetype ? lu.archetype.toUpperCase() : `LINEUP ${i + 1}`;
+      return `<button onclick="dfsSelectLineup(${i})" style="font-family:var(--mono);font-size:8px;padding:5px 10px;background:${active ? 'var(--accent)' : 'var(--surface2)'};color:${active ? '#000' : 'var(--text)'};border:1px solid ${active ? 'var(--accent)' : 'var(--border2)'};cursor:pointer;border-radius:3px;line-height:1.4;text-align:center;">${label}<br><span style="color:${active ? '#000' : 'var(--muted)'}">${(lu.totalFppg || 0).toFixed(1)} pts</span></button>`;
     }).join('');
   } else {
     dfsCurrentLineupIdx = 0;
