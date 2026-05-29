@@ -154,11 +154,24 @@ async function getCachedProps(key) {
     try {
       const redis = createRedis();
       const val = await withTimeout(redis.get(key), 3000, 'props-cache-get');
-      return val ? JSON.parse(val) : null;
+      if (!val) return null;
+      const parsed = JSON.parse(val);
+      // Empty array = previous failed fetch was cached; treat as miss and evict
+      if (Array.isArray(parsed) && parsed.length === 0) {
+        redis.del(key).catch(() => {});
+        return null;
+      }
+      return parsed;
     } catch { return null; }
   }
   const entry = memoryPropsCache.get(key);
-  return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
+  if (!entry || entry.expiresAt <= Date.now()) return null;
+  // Empty array = stale failed fetch; evict from memory cache
+  if (Array.isArray(entry.value) && entry.value.length === 0) {
+    memoryPropsCache.delete(key);
+    return null;
+  }
+  return entry.value;
 }
 
 async function setCachedProps(key, value) {
@@ -448,18 +461,18 @@ function enrichPlayersWithProps(players, props, sport) {
     let byMarket   = byPlayer.get(key);
     const isWemb   = p.name.toLowerCase().includes('wemb');
 
-    // Last-name fallback: handles API name mismatches like "V. Wembanyama" vs "Victor Wembanyama"
+    // Last-name fallback: handles API name mismatches like "V. Wembanyama" vs "Victor Wembanyama".
+    // Only fires when exactly ONE prop-map entry shares the surname (avoids Williams/Johnson collisions).
     if (!byMarket) {
       const nameParts = key.split(' ');
       const lastName  = nameParts[nameParts.length - 1];
       if (lastName && lastName.length > 3) {
-        for (const [propKey, propMap] of byPlayer) {
-          const propParts = propKey.split(' ');
-          if (propParts[propParts.length - 1] === lastName) {
-            byMarket = propMap;
-            fallbackCount++;
-            break;
-          }
+        const lastNameMatches = [...byPlayer.entries()].filter(
+          ([propKey]) => propKey.split(' ').pop() === lastName
+        );
+        if (lastNameMatches.length === 1) {
+          byMarket = lastNameMatches[0][1];
+          fallbackCount++;
         }
       }
     }
@@ -481,38 +494,42 @@ function enrichPlayersWithProps(players, props, sport) {
         const entries = byMarket.get('player_fantasy_points');
         const fd = entries.find(e => e.bookmaker === 'fanduel');
         const dk = entries.find(e => e.bookmaker === 'draftkings');
-        let line, srcNote;
-        if (fd && dk) {
-          line    = +((fd.line + dk.line) / 2).toFixed(1);
-          srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
-        } else {
-          const e = fd || dk;
-          line    = e.line;
-          srcNote = e.bookmaker;
+        const e  = fd || dk || entries[0];   // guard: fall back to first entry if neither FD nor DK
+        if (e) {
+          let line, srcNote;
+          if (fd && dk) {
+            line    = +((fd.line + dk.line) / 2).toFixed(1);
+            srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
+          } else {
+            line    = e.line;
+            srcNote = e.bookmaker;
+          }
+          projection    = line;
+          _projSource   = `Proj: ${projection} (${srcNote} DFS pts)`;
+          _propEnriched = true;
+          _propMarket   = 'player_fantasy_points';
         }
-        projection    = line;
-        _projSource   = `Proj: ${projection} (${srcNote} DFS pts)`;
-        _propEnriched = true;
-        _propMarket   = 'player_fantasy_points';
       }
       // Tier 2: player_points × 1.8 DFS multiplier (pts + reb/ast/stl/blk)
       else if (byMarket.has('player_points')) {
         const entries = byMarket.get('player_points');
         const fd = entries.find(e => e.bookmaker === 'fanduel');
         const dk = entries.find(e => e.bookmaker === 'draftkings');
-        let rawLine, srcNote;
-        if (fd && dk) {
-          rawLine = +((fd.line + dk.line) / 2).toFixed(1);
-          srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
-        } else {
-          const e = fd || dk;
-          rawLine = e.line;
-          srcNote = e.bookmaker;
+        const e  = fd || dk || entries[0];   // guard: fall back to first entry if neither FD nor DK
+        if (e) {
+          let rawLine, srcNote;
+          if (fd && dk) {
+            rawLine = +((fd.line + dk.line) / 2).toFixed(1);
+            srcNote = `avg FD ${fd.line} / DK ${dk.line}`;
+          } else {
+            rawLine = e.line;
+            srcNote = e.bookmaker;
+          }
+          projection    = +(rawLine * 1.8).toFixed(1);
+          _projSource   = `Proj: ${projection} (${rawLine} pts × 1.8 DFS multiplier)`;
+          _propEnriched = true;
+          _propMarket   = 'player_points';
         }
-        projection    = +(rawLine * 1.8).toFixed(1);
-        _projSource   = `Proj: ${projection} (${rawLine} pts × 1.8 DFS multiplier)`;
-        _propEnriched = true;
-        _propMarket   = 'player_points';
       }
     }
 
@@ -590,6 +607,7 @@ async function fetchPlayerProps(apiKey, sport) {
     return [];
   }
 
+  console.log('[Props] Starting fetch loop');
   const allProps = [];
   // Track latest credit headers from any real (non-cached) API call
   let latestRemaining = null;
@@ -601,7 +619,7 @@ async function fetchPlayerProps(apiKey, sport) {
     // Check Redis / memory cache first — never fetch the same game twice within 2 hours
     const cached = await getCachedProps(cacheKey);
     if (cached) {
-      console.log(`[DFS Props Cache] HIT ${event.id} (${sport}) — ${cached.length} props`);
+      console.log('[Props] Cache HIT — skipping fetch');
       cached.forEach(prop => allProps.push(prop));
       return;
     }
@@ -644,7 +662,7 @@ async function fetchPlayerProps(apiKey, sport) {
         console.log(`[DFS Props Cache] MISS → cached ${eventProps.length} props for ${event.id} (${sport})`);
       }
       eventProps.forEach(prop => allProps.push(prop));
-    } catch { /* individual event failure is non-fatal */ }
+    } catch (err) { console.log('[Props] FETCH ERROR:', err.message); }
   }));
 
   // Persist credits after real API calls so the frontend can display them
@@ -1437,6 +1455,8 @@ router.post('/optimize-csv', async (req, res) => {
   const session = requireDfsSession(req, res);
   if (!session) return;
 
+  try {
+
   const {
     players: rawPlayers = [],
     sport: rawSport = 'mlb',
@@ -1467,7 +1487,10 @@ router.post('/optimize-csv', async (req, res) => {
   const minUnique   = Math.max(0, Math.min(9, Number(minUniquePlayers)   || 3));
 
   // ── Resolve sport and slate type ────────────────────────────────────────────
-  const sport = ['nba', 'nfl', 'mlb', 'golf'].includes(rawSport) ? rawSport : 'mlb';
+  if (rawSport && !['nba', 'nfl', 'mlb', 'golf'].includes(rawSport)) {
+    return fail(res, 400, { error: `Invalid sport "${rawSport}". Use nba, nfl, mlb, or golf.` });
+  }
+  const sport = rawSport || 'mlb';
 
   // customSlots from the frontend (includes MVP/UTIL for showdown, GLFR for PGA)
   const resolvedSlots = Array.isArray(rawCustomSlots) && rawCustomSlots.length > 0
@@ -1590,6 +1613,7 @@ router.post('/optimize-csv', async (req, res) => {
   // too popular to provide leverage. Requires: proj < 15 pts AND ownership >= 5%.
   // Locked players are always preserved. Swap naturally happens — solver picks
   // higher-ceiling alternatives from whoever remains.
+  let gppFadedCount = 0;
   if (isGppMode) {
     const gppFaded = [];
     players = players.filter(p => {
@@ -1602,8 +1626,9 @@ router.post('/optimize-csv', async (req, res) => {
       }
       return true;
     });
-    if (gppFaded.length > 0) {
-      console.log(`[DFS GPP Fade] Excluded ${gppFaded.length} low-ceiling/high-ownership: ${gppFaded.slice(0, 8).join(', ')}`);
+    gppFadedCount = gppFaded.length;
+    if (gppFadedCount > 0) {
+      console.log(`[DFS GPP Fade] Excluded ${gppFadedCount} low-ceiling/high-ownership: ${gppFaded.slice(0, 8).join(', ')}`);
     }
   }
 
@@ -1687,12 +1712,13 @@ router.post('/optimize-csv', async (req, res) => {
     minCapUsagePct:      Number(minCapUsagePct) || 95,
   };
 
-  const results         = [];
-  const appearances     = {};
-  const prevSets        = [];
-  let winningBaseOpts   = null;   // relaxed opts level that succeeded on lineup 0
-  let constraintWarning = null;   // human-readable relaxation description
-  const stagesDebug     = [];
+  const results           = [];
+  const appearances       = {};
+  const prevSets          = [];
+  let winningBaseOpts     = null;  // relaxed opts that succeeded on lineup 0
+  let winningConfig       = null;  // configOverride (if any) that succeeded on lineup 0
+  let constraintWarning   = null;
+  const stagesDebug       = [];
 
   if (lineupMode === 'archetypes') {
     // ── 5-archetype mode: Chalk / Balanced 1 / Balanced 2 / Upside / Contrarian ─
@@ -1756,15 +1782,15 @@ router.post('/optimize-csv', async (req, res) => {
           if (result) {
             if (stage.relaxed) {
               constraintWarning = stage.relaxed;
-              // Persist relaxed opts (without iter-specific fields) for subsequent lineups
               winningBaseOpts = { ...stage.opts, excludedNames: excludedSet,
                                   previousLineups: [], minUniquePlayers: 0 };
+              winningConfig   = stage.configOverride || null;
             }
             break;
           }
         }
       } else {
-        result = generateOptimalLineup(players, solveConfig, baseOpts);
+        result = generateOptimalLineup(players, winningConfig || solveConfig, baseOpts);
       }
 
       if (!result) break;
@@ -1784,7 +1810,7 @@ router.post('/optimize-csv', async (req, res) => {
         return parts.some(x => x === slot || x.includes(slot));
       });
       const sals = elig.map(p => p.salary).filter(s => s > 0);
-      return { slot, eligible: elig.length, cheapest: sals.length ? Math.min(...sals) : null };
+      return { slot, eligible: elig.length, count: elig.length, cheapest: sals.length ? Math.min(...sals) : null };
     });
 
     return fail(res, 400, {
@@ -1792,6 +1818,7 @@ router.post('/optimize-csv', async (req, res) => {
       debug: {
         sport, isShowdown, cap: effectiveCap, slots: effectiveSlots,
         totalPlayers: players.length,
+        gppFadedCount,
         cheapestCombo: cheapestComboDebug,
         enrichment: enrichDebug,
         stages: stagesDebug,
@@ -1803,7 +1830,7 @@ router.post('/optimize-csv', async (req, res) => {
   // Compute summary totals the frontend summary bar expects
   const primary = results[0];
   const summaryLineup = primary ? primary.lineup : [];
-  const totalProjectedPoints = +summaryLineup.reduce((s, p) => s + (p.projectedFppg || p.fppg || 0), 0).toFixed(1);
+  const totalProjectedPoints = +summaryLineup.reduce((s, p) => s + (p.fppg || p.projectedFppg || 0), 0).toFixed(1);
   const totalFloorPoints     = +summaryLineup.reduce((s, p) => s + (p.floorFppg    || 0), 0).toFixed(1);
   const totalCeilingPoints   = +summaryLineup.reduce((s, p) => s + (p.ceilingFppg  || 0), 0).toFixed(1);
 
@@ -1841,6 +1868,11 @@ router.post('/optimize-csv', async (req, res) => {
       relaxedStage:  constraintWarning,
     },
   });
+
+  } catch (err) {
+    console.log('[400 ERROR]', err.message, err.stack);
+    return fail(res, 400, { error: err.message || 'Optimizer error — check server logs.' });
+  }
 });
 
 router.post('/refresh-injuries', async (req, res) => {
@@ -2174,17 +2206,18 @@ router.get('/projections-debug', async (req, res) => {
       return ok(res, { data: logs });
     }
 
-    const now = Date.now();
-    const in24h = now + 24 * 60 * 60 * 1000;
+    const now   = Date.now();
+    const in72h = now + 72 * 60 * 60 * 1000;
+    const today = new Date(now).toISOString().slice(0, 10);
     const todayEvents = Array.isArray(events)
-      ? events.filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in24h; })
+      ? events.filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in72h; })
       : [];
 
     logs.todayEventCount = todayEvents.length;
     logs.allEventCount = Array.isArray(events) ? events.length : 0;
 
     if (!todayEvents.length) {
-      logs.log4_error = `No NBA events found for today (${today}). Total events in response: ${logs.allEventCount}. Sample commence_times: ${(Array.isArray(events) ? events : []).slice(0, 3).map(e => e.commence_time).join(', ')}`;
+      logs.log4_error = `No NBA events in 72h window from ${today}. Total events: ${logs.allEventCount}. Sample commence_times: ${(Array.isArray(events) ? events : []).slice(0, 3).map(e => e.commence_time).join(', ')}`;
       return ok(res, { data: logs });
     }
 

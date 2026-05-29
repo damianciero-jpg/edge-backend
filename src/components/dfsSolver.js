@@ -25,6 +25,16 @@ const MVP_PTS_MULT = 1.5;  // FanDuel MVP slot projection multiplier
 // ─── Position Utilities ───────────────────────────────────────────────────────
 
 /**
+ * Returns true if ANY of the given tokens appear in the position string.
+ * Handles dual-tagged positions like "WR/FLEX", "RB/FLEX", "TE/FLEX".
+ * e.g. hasPos('WR/FLEX', 'WR') → true, hasPos('QB', 'QB') → true
+ */
+function hasPos(pos, ...tokens) {
+  const parts = String(pos || '').toUpperCase().split(/[\/,\s]+/);
+  return tokens.some(t => parts.includes(t));
+}
+
+/**
  * Returns true if the position string represents a pitcher (P / SP / RP).
  */
 function isMlbPitcher(pos) {
@@ -291,11 +301,11 @@ function beamSearch(players, slots, cap, opts = {}) {
         const aScore = (a.fppg || 0) + (a._antiCorrPenalty || 0)
           + (a.stdDev || 0) * 0.25
           + (a.salary || 0) / 1000000
-          + (nflQbTeam && NFL_FLEX.has(a.position) && a.team === nflQbTeam ? 4.0 : 0);
+          + (nflQbTeam && hasPos(a.position, 'WR', 'TE', 'FLEX') && a.team === nflQbTeam ? 4.0 : 0);
         const bScore = (b.fppg || 0) + (b._antiCorrPenalty || 0)
           + (b.stdDev || 0) * 0.25
           + (b.salary || 0) / 1000000
-          + (nflQbTeam && NFL_FLEX.has(b.position) && b.team === nflQbTeam ? 4.0 : 0);
+          + (nflQbTeam && hasPos(b.position, 'WR', 'TE', 'FLEX') && b.team === nflQbTeam ? 4.0 : 0);
         return bScore - aScore;
       })
   );
@@ -391,7 +401,7 @@ function beamSearch(players, slots, cap, opts = {}) {
             && st.qbTeam && NFL_FLEX.has(slot)) {
           const needed = nflMinWrStack - st.qbStack;
           if (needed > 0 && remSkill <= needed) {
-            if (!(p.team === st.qbTeam && (p.position === 'WR' || p.position === 'TE')))
+            if (!(p.team === st.qbTeam && hasPos(p.position, 'WR', 'TE')))
               return false;
           }
         }
@@ -420,10 +430,10 @@ function beamSearch(players, slots, cap, opts = {}) {
           nextHit[player.team] = (nextHit[player.team] || 0) + 1;
         }
 
-        const nextQbTeam = st.qbTeam || (player.position === 'QB' ? player.team : null);
+        const nextQbTeam = st.qbTeam || (hasPos(player.position, 'QB') ? player.team : null);
         const nextQbStk  = st.qbStack + (
           st.qbTeam
-          && (player.position === 'WR' || player.position === 'TE')
+          && hasPos(player.position, 'WR', 'TE')
           && player.team === st.qbTeam ? 1 : 0
         );
 
@@ -545,8 +555,7 @@ function solveMlbStacked(players, config, opts = {}) {
     // Anti-correlation: hitters from pitcher's opponent team take the penalty
     const penalisedHitters = tagAntiCorrelation(allHitters, [pitcher], config);
 
-    for (const [minA] of validCombos) {
-      for (const primaryTeam of stackTeams) {
+    for (const primaryTeam of stackTeams) {
         // Boost primary team to guide beam search toward the stacking target
         const boosted = penalisedHitters.map(p =>
           p.team === primaryTeam ? { ...p, fppg: (p.fppg || 0) + 50 } : p
@@ -586,7 +595,7 @@ function solveMlbStacked(players, config, opts = {}) {
         }
       }
     }
-  }
+
 
   // Fallback: no valid stacked lineup — run unconstrained
   if (!best) {
@@ -665,7 +674,7 @@ function solveNflClassic(players, config, opts = {}) {
     const qb = result.picked.find(p => p.position === 'QB');
     if (qb) {
       const actualStack = result.picked.filter(
-        p => p.team === qb.team && (p.position === 'WR' || p.position === 'TE')
+        p => p.team === qb.team && hasPos(p.position, 'WR', 'TE')
       ).length;
       if (actualStack < minStack) {
         const retry = beamSearch(players, slots, cap, {
