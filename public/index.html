@@ -1556,6 +1556,7 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
       </button>
     </div>
     <div class="dfs-refresh-meta" id="dfs-injury-refresh-meta">Injuries not refreshed yet.</div>
+    <div id="dfs-credits-bar" style="display:none;font-family:var(--mono);font-size:8px;letter-spacing:1px;text-align:right;padding:2px 0 4px;color:var(--muted);"></div>
 
     <!-- Loading -->
     <div id="dfs-loading" style="display:none;" class="loading-state">
@@ -3946,6 +3947,20 @@ function dfsRenderResults(data) {
 
   document.getElementById('dfs-result-meta').textContent =
     `${platformName} · ${sportName} · ${contestName} · CAP $${cap.toLocaleString()}${allLineups ? ` · ${allLineups.length} LINEUPS` : ''}`;
+
+  // Odds API credits bar — shown whenever credit info is available
+  const creditsBar = document.getElementById('dfs-credits-bar');
+  if (data.oddsApiCredits && data.oddsApiCredits.remaining != null) {
+    const rem   = Number(data.oddsApiCredits.remaining);
+    const used  = data.oddsApiCredits.used != null ? Number(data.oddsApiCredits.used) : null;
+    const total = used != null ? rem + used : null;
+    const isLow = rem < 50;
+    creditsBar.textContent = total != null
+      ? `API CREDITS: ${used.toLocaleString()} / ${total.toLocaleString()} USED THIS MONTH${isLow ? ' ⚠ LOW' : ''}`
+      : `API CREDITS: ${rem.toLocaleString()} REMAINING${isLow ? ' ⚠ LOW' : ''}`;
+    creditsBar.style.color = isLow ? '#f56565' : 'var(--muted)';
+    creditsBar.style.display = 'block';
+  }
 
   // Late news banner: merge lineup result items + any from the last injury refresh
   const refreshNews = (dfsState.injuryRefresh && Array.isArray(dfsState.injuryRefresh.lateNewsItems))

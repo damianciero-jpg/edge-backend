@@ -698,44 +698,129 @@ function solveNflClassic(players, config, opts = {}) {
   return { lineup, totalSalary: result.salarySoFar, totalFppg: result.fppgSoFar, stackInfo, salaryCap: cap };
 }
 
-// ─── Showdown Solver (MVP Dual-Pricing) ──────────────────────────────────────
+// ─── Showdown Solver (Exhaustive MVP Permutation) ────────────────────────────
+//
+// For every player in the pool:
+//   1. Tentatively assign them as MVP  → salary × 1.5, fppg × 1.5
+//   2. Solve the remaining UTIL slots via beam search under the leftover cap
+//   3. Score the combo with TRUE fppg sums (no beam-score bonuses)
+//   4. Pick the permutation with the highest total
+//
+// This guarantees we never miss a high-ceiling MVP because of beam pruning.
+// Top-5 candidates are logged for transparency.
 
 function solveShowdown(players, config, opts = {}) {
   const { slots, cap, sport } = config;
 
-  const expanded = expandShowdownVariants(players);
+  const mvpSlot   = slots[0];        // 'MVP'
+  const utilSlots = slots.slice(1);  // ['UTIL', 'UTIL', ...]
+  const nUtil     = utilSlots.length;
 
-  const result = beamSearch(expanded, slots, cap, {
-    ...opts,
+  const excluded       = opts.excludedNames  || new Set();
+  const locked         = opts.lockedNames    || new Set();
+  const minSalaryFloor = opts.minSalaryFloor || 0;
+
+  const pool = players.filter(p => !excluded.has(p.name));
+  if (!pool.length) return null;
+
+  // Shared beam-search options for the UTIL sub-problem
+  const utilBeamOpts = {
     sport,
-    isShowdown:        true,
-    maxPlayersPerTeam: config.maxPlayersPerTeam || 5,
-    puntThreshold:     config.puntThreshold     || 1500,
-    maxPunts:          99,  // showdown: no hard punt cap — salary enforces natural ceiling
-  });
+    isShowdown:       false,
+    maxTeamCount:     config.maxPlayersPerTeam || 5,
+    puntThreshold:    config.puntThreshold     || 1500,
+    maxPunts:         99,
+    lockedNames:      locked,
+    previousLineups:  opts.previousLineups  || [],
+    minUniquePlayers: opts.minUniquePlayers || 0,
+  };
 
-  if (!result) return null;
+  const permResults = [];
 
-  // Normalise back to real player data; preserve display salary/fppg pre-multiplier
-  const lineup = result.picked.map((p, i) => ({
-    ...p,
-    name:           p._realName  || p.name.replace(/__mvp$|__util$/, ''),
-    slot:           slots[i],
-    isMvp:          p._variant === 'mvp',
-    displaySalary:  p._variant === 'mvp'
-      ? Math.round(p.salary / MVP_SAL_MULT)
-      : p.salary,
-    displayFppg:    p._variant === 'mvp'
-      ? +((p._baseFppg ?? (p.fppg / MVP_PTS_MULT)) || 0).toFixed(2)
-      : +(p.fppg || 0).toFixed(2),
-  }));
+  for (const mvp of pool) {
+    const mvpSalary    = Math.round(mvp.salary * MVP_SAL_MULT);
+    const mvpFppg      = (mvp.fppg || 0) * MVP_PTS_MULT;
+    const remainingCap = cap - mvpSalary;
+
+    if (remainingCap <= 0) continue;
+
+    // Players available for UTIL (exclude the MVP candidate)
+    const utilPool = pool.filter(p => p.name !== mvp.name);
+    if (utilPool.length < nUtil) continue;
+
+    // Salary floor propagated to the UTIL sub-problem
+    const remainingFloor = Math.max(0, minSalaryFloor - mvpSalary);
+
+    const utilResult = beamSearch(utilPool, utilSlots, remainingCap, {
+      ...utilBeamOpts,
+      minSalaryFloor: remainingFloor,
+    });
+
+    if (!utilResult || utilResult.picked.length < nUtil) continue;
+
+    // Use raw fppg sums for honest ranking (not the beam's composite score)
+    const trueUtilFppg = utilResult.picked.reduce((s, p) => s + (p.fppg || 0), 0);
+    const totalFppg    = mvpFppg + trueUtilFppg;
+    const totalSalary  = mvpSalary + utilResult.salarySoFar;
+
+    permResults.push({
+      mvp,
+      utilPicked:  utilResult.picked,
+      mvpFppg:     +mvpFppg.toFixed(2),
+      utilFppg:    +trueUtilFppg.toFixed(2),
+      totalFppg:   +totalFppg.toFixed(2),
+      totalSalary,
+    });
+  }
+
+  if (!permResults.length) return null;
+
+  permResults.sort((a, b) => b.totalFppg - a.totalFppg);
+
+  // Log top-5 permutations so results are auditable in server logs
+  const top5 = permResults.slice(0, 5);
+  const logHeader = `[DFS Showdown] MVP permutations tested: ${permResults.length}`;
+  const logLines  = top5.map((r, i) =>
+    `  ${i + 1}. ${r.mvp.name} MVP: ${r.totalFppg.toFixed(1)}` +
+    ` (MVP pts: ${r.mvpFppg.toFixed(1)}, UTIL: ${r.utilFppg.toFixed(1)},` +
+    ` salary: $${r.totalSalary.toLocaleString()})`
+  );
+  console.log([logHeader, ...logLines].join('\n'));
+
+  const best = permResults[0];
+
+  const lineup = [
+    {
+      ...best.mvp,
+      slot:          mvpSlot,
+      isMvp:         true,
+      salary:        Math.round(best.mvp.salary * MVP_SAL_MULT),
+      displaySalary: best.mvp.salary,
+      fppg:          best.mvpFppg,
+      displayFppg:   +(best.mvp.fppg || 0).toFixed(2),
+    },
+    ...best.utilPicked.map((p, i) => ({
+      ...p,
+      slot:          utilSlots[i] || 'UTIL',
+      isMvp:         false,
+      displaySalary: p.salary,
+      displayFppg:   +(p.fppg || 0).toFixed(2),
+    })),
+  ];
 
   return {
     lineup,
-    totalSalary: result.salarySoFar,
-    totalFppg:   result.fppgSoFar,
-    stackInfo:   null,
-    salaryCap:   cap,
+    totalSalary:     best.totalSalary,
+    totalFppg:       best.totalFppg,
+    stackInfo:       null,
+    salaryCap:       cap,
+    // Surface top-5 to the frontend response
+    mvpPermutations: top5.map(r => ({
+      name:       r.mvp.name,
+      totalScore: r.totalFppg,
+      mvpScore:   r.mvpFppg,
+      utilScore:  r.utilFppg,
+    })),
   };
 }
 

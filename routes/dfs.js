@@ -14,6 +14,11 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const memoryWeatherCache = new Map();
 const WEATHER_TTL_SEC = 30 * 60;
 
+// ── Odds API props + credits cache (Redis in prod, in-memory in dev) ──────────
+const memoryPropsCache  = new Map();
+const PROPS_CACHE_TTL   = 2 * 60 * 60 * 1000; // 2 hours in ms
+const CREDITS_REDIS_KEY = 'edge:dfs:credits';
+
 // ── Odds API player-prop enrichment constants ─────────────────────────────────
 const PROP_SPORT_KEY = {
   nba: 'basketball_nba',
@@ -140,6 +145,63 @@ async function setWeatherCache(key, redis, value) {
   } else {
     memoryWeatherCache.set(key, { value, expiresAt: Date.now() + WEATHER_TTL_SEC * 1000 });
   }
+}
+
+// ── Props cache helpers ───────────────────────────────────────────────────────
+
+async function getCachedProps(key) {
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      const val = await withTimeout(redis.get(key), 3000, 'props-cache-get');
+      return val ? JSON.parse(val) : null;
+    } catch { return null; }
+  }
+  const entry = memoryPropsCache.get(key);
+  return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
+}
+
+async function setCachedProps(key, value) {
+  const ttlSec = Math.round(PROPS_CACHE_TTL / 1000);
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      await withTimeout(redis.set(key, JSON.stringify(value), { ex: ttlSec }), 3000, 'props-cache-set');
+    } catch { /* non-fatal */ }
+  } else {
+    memoryPropsCache.set(key, { value, expiresAt: Date.now() + PROPS_CACHE_TTL });
+  }
+}
+
+async function storeOddsCredits(remaining, used) {
+  const payload = JSON.stringify({
+    remaining: Number(remaining),
+    used:      Number(used) || null,
+    updatedAt: new Date().toISOString(),
+  });
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      await withTimeout(redis.set(CREDITS_REDIS_KEY, payload, { ex: 86400 }), 3000, 'credits-store');
+    } catch { /* non-fatal */ }
+  } else {
+    memoryPropsCache.set(CREDITS_REDIS_KEY, {
+      value: JSON.parse(payload),
+      expiresAt: Date.now() + 86400 * 1000,
+    });
+  }
+}
+
+async function getOddsCredits() {
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      const val = await withTimeout(redis.get(CREDITS_REDIS_KEY), 3000, 'credits-get');
+      return val ? JSON.parse(val) : null;
+    } catch { return null; }
+  }
+  const entry = memoryPropsCache.get(CREDITS_REDIS_KEY);
+  return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
 }
 
 async function fetchEspnInjurySnapshot(sport) {
@@ -307,7 +369,10 @@ async function fetchOddsData(apiKey, sport) {
   try {
     const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=us&markets=totals,h2h&oddsFormat=american`;
     const res = await withTimeout(fetch(url), 5000, `${sport} odds`);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[Odds] fetchOddsData sportKey="${sportKey}" HTTP ${res.status} — returning empty`);
+      return [];
+    }
     const games = await res.json();
     if (!Array.isArray(games)) return [];
     return games.map(g => {
@@ -374,9 +439,32 @@ function enrichPlayersWithProps(players, props, sport) {
     byMarket.get(prop.market).push({ line: prop.line, bookmaker: prop.bookmaker });
   }
 
-  return players.map(p => {
-    const key     = normalizeName(p.name);
-    const byMarket = byPlayer.get(key);
+  let matchedCount  = 0;
+  let fallbackCount = 0;
+  let wembyMatched  = false;
+
+  const enriched = players.map(p => {
+    const key      = normalizeName(p.name);
+    let byMarket   = byPlayer.get(key);
+    const isWemb   = p.name.toLowerCase().includes('wemb');
+
+    // Last-name fallback: handles API name mismatches like "V. Wembanyama" vs "Victor Wembanyama"
+    if (!byMarket) {
+      const nameParts = key.split(' ');
+      const lastName  = nameParts[nameParts.length - 1];
+      if (lastName && lastName.length > 3) {
+        for (const [propKey, propMap] of byPlayer) {
+          const propParts = propKey.split(' ');
+          if (propParts[propParts.length - 1] === lastName) {
+            byMarket = propMap;
+            fallbackCount++;
+            break;
+          }
+        }
+      }
+    }
+
+    if (isWemb && byMarket) wembyMatched = true;
 
     const csvBase = Number(p.fppg) || Number(p.FPPG) || Number(p.projection) || Number(p.Projection) || 0;
 
@@ -428,8 +516,15 @@ function enrichPlayersWithProps(players, props, sport) {
       }
     }
 
-    // Fall back to CSV when no prop found, or when prop resolved to 0
-    if (projection <= 0) projection = csvBase;
+    // Fall back to CSV FPPG when no Odds API prop line found
+    if (projection <= 0) {
+      projection = csvBase;
+      if (csvBase > 0) {
+        _projSource = `Proj: ${csvBase.toFixed(1)} (CSV FPPG — no Odds API prop line)`;
+      } else {
+        console.warn('[Props] zero projection:', p.name, p.salary);
+      }
+    }
 
     if (projection > 0) {
       floorFppg   = +(projection * 0.75).toFixed(1);
@@ -458,6 +553,12 @@ function enrichPlayersWithProps(players, props, sport) {
       _projSource,
     };
   });
+
+  matchedCount = enriched.filter(p => p._propEnriched).length;
+  console.log('[Props] Props matched:', matchedCount);
+  console.log('[Props] CSV fallbacks:', fallbackCount);
+  console.log('[Props] Wemby matched:', wembyMatched ? 'YES' : 'NO');
+  return enriched;
 }
 
 async function fetchPlayerProps(apiKey, sport) {
@@ -465,7 +566,6 @@ async function fetchPlayerProps(apiKey, sport) {
   const sportKey  = PROP_SPORT_KEY[sport];
   const marketStr = (PROP_MARKETS[sport] || []).join(',');
 
-  const today = new Date().toISOString().slice(0, 10);
   let events;
   try {
     const evRes = await withTimeout(
@@ -478,14 +578,34 @@ async function fetchPlayerProps(apiKey, sport) {
 
   if (!Array.isArray(events)) return [];
   const now = Date.now();
-  const in24h = now + 24 * 60 * 60 * 1000;
+  const in72h = now + 72 * 60 * 60 * 1000;
   const todayEvents = events
-    .filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in24h; })
+    .filter(e => { const t = new Date(e.commence_time).getTime(); return t >= now && t <= in72h; })
     .slice(0, 8);
-  if (!todayEvents.length) return [];
+
+  const eventCount = todayEvents.length;
+  console.log('[Props] Events found:', eventCount);
+  if (!eventCount) {
+    console.log('[Props] Window end:', new Date(in72h).toISOString());
+    return [];
+  }
 
   const allProps = [];
+  // Track latest credit headers from any real (non-cached) API call
+  let latestRemaining = null;
+  let latestUsed = null;
+
   await Promise.all(todayEvents.map(async (event) => {
+    const cacheKey = `edge:dfs:props:${sport}:${event.id}`;
+
+    // Check Redis / memory cache first — never fetch the same game twice within 2 hours
+    const cached = await getCachedProps(cacheKey);
+    if (cached) {
+      console.log(`[DFS Props Cache] HIT ${event.id} (${sport}) — ${cached.length} props`);
+      cached.forEach(prop => allProps.push(prop));
+      return;
+    }
+
     try {
       const url =
         `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${event.id}/odds` +
@@ -493,14 +613,23 @@ async function fetchPlayerProps(apiKey, sport) {
         `&bookmakers=fanduel,draftkings&oddsFormat=american`;
       const res = await withTimeout(fetch(url), 6000, `odds-props-${event.id}`);
       if (!res.ok) return;
+
+      // Capture remaining credits from Odds API response headers
+      const rem  = res.headers.get('x-requests-remaining');
+      const used = res.headers.get('x-requests-used');
+      if (rem  !== null) latestRemaining = rem;
+      if (used !== null) latestUsed = used;
+
       const data = await res.json();
       const bk = (data.bookmakers || []).find(b => b.key === 'fanduel')
               || (data.bookmakers || [])[0];
       if (!bk) return;
+
+      const eventProps = [];
       for (const mkt of (bk.markets || [])) {
         for (const outcome of (mkt.outcomes || [])) {
           if (outcome.name !== 'Over') continue;
-          allProps.push({
+          eventProps.push({
             playerName: outcome.description,
             market:     mkt.key,
             line:       outcome.point,
@@ -508,8 +637,26 @@ async function fetchPlayerProps(apiKey, sport) {
           });
         }
       }
+
+      // Cache for 2 hours and push to merged array
+      if (eventProps.length > 0) {
+        setCachedProps(cacheKey, eventProps).catch(() => {});
+        console.log(`[DFS Props Cache] MISS → cached ${eventProps.length} props for ${event.id} (${sport})`);
+      }
+      eventProps.forEach(prop => allProps.push(prop));
     } catch { /* individual event failure is non-fatal */ }
   }));
+
+  // Persist credits after real API calls so the frontend can display them
+  if (latestRemaining !== null) {
+    storeOddsCredits(latestRemaining, latestUsed).catch(() => {});
+    const rem   = Number(latestRemaining);
+    const used  = Number(latestUsed) || 0;
+    const total = rem + used;
+    allProps.oddsCreditsRemaining = rem;
+    allProps.oddsCreditsUsed      = used || null;
+    console.log(`[DFS Props] Odds API credits — used: ${used}, remaining: ${rem}, total: ${total}`);
+  }
 
   // Attach earliest game commence_time for frontend auto-refresh timer
   if (todayEvents.length > 0) {
@@ -1404,8 +1551,12 @@ router.post('/optimize-csv', async (req, res) => {
       const props = await withTimeout(fetchPlayerProps(oddsKey, sport), 14000, 'player-props');
       players     = enrichPlayersWithProps(players, props, sport);
       const n     = players.filter(p => p._propEnriched).length;
-      enrichDebug.enrichedCount = n;
-      enrichDebug.commenceTime  = props.commenceTime || null;
+      enrichDebug.enrichedCount       = n;
+      enrichDebug.commenceTime        = props.commenceTime || null;
+      enrichDebug.oddsCreditsRemaining = typeof props.oddsCreditsRemaining === 'number'
+        ? props.oddsCreditsRemaining : null;
+      enrichDebug.oddsCreditsUsed      = typeof props.oddsCreditsUsed === 'number'
+        ? props.oddsCreditsUsed : null;
       enrichDebug.propSource    = n > 0
         ? (players.find(p => p._propEnriched)?._propMarket ?? null)
         : null;
@@ -1434,6 +1585,27 @@ router.post('/optimize-csv', async (req, res) => {
 
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
+
+  // GPP Ownership Fade: in tournament mode, exclude low-ceiling players who are
+  // too popular to provide leverage. Requires: proj < 15 pts AND ownership >= 5%.
+  // Locked players are always preserved. Swap naturally happens — solver picks
+  // higher-ceiling alternatives from whoever remains.
+  if (isGppMode) {
+    const gppFaded = [];
+    players = players.filter(p => {
+      if (lockedSet.has(p.name)) return true;
+      const pts = Number(p.fppg || p.projection) || 0;
+      const own = Number(p.ownershipPct) || 0;
+      if (pts < 15 && own >= 5) {
+        gppFaded.push(p.name);
+        return false;
+      }
+      return true;
+    });
+    if (gppFaded.length > 0) {
+      console.log(`[DFS GPP Fade] Excluded ${gppFaded.length} low-ceiling/high-ownership: ${gppFaded.slice(0, 8).join(', ')}`);
+    }
+  }
 
   // Feasibility check: cheapest N-player combo from the uploaded pool.
   const nSlots = effectiveSlots.length;
@@ -1628,14 +1800,35 @@ router.post('/optimize-csv', async (req, res) => {
     });
   }
 
+  // Compute summary totals the frontend summary bar expects
+  const primary = results[0];
+  const summaryLineup = primary ? primary.lineup : [];
+  const totalProjectedPoints = +summaryLineup.reduce((s, p) => s + (p.projectedFppg || p.fppg || 0), 0).toFixed(1);
+  const totalFloorPoints     = +summaryLineup.reduce((s, p) => s + (p.floorFppg    || 0), 0).toFixed(1);
+  const totalCeilingPoints   = +summaryLineup.reduce((s, p) => s + (p.ceilingFppg  || 0), 0).toFixed(1);
+
+  // Bundle Odds API credit info (live from this request, or last stored value)
+  const oddsApiCredits = enrichDebug.oddsCreditsRemaining != null
+    ? {
+        remaining: enrichDebug.oddsCreditsRemaining,
+        used:      enrichDebug.oddsCreditsUsed,
+        source:    'live',
+        updatedAt: new Date().toISOString(),
+      }
+    : await getOddsCredits().catch(() => null);
+
   return ok(res, {
     data: {
-      ...results[0],
+      ...primary,
+      totalProjectedPoints,
+      totalFloorPoints,
+      totalCeilingPoints,
       lineups:          results,
       exposure:         appearances,
       constraintWarning,
       lineupMode,
       commenceTime:     enrichDebug.commenceTime || null,
+      oddsApiCredits,
     },
     debug: {
       sport, isShowdown, platform,
@@ -1941,6 +2134,12 @@ router.get('/projections-debug', async (req, res) => {
   };
 
   const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
+  const keySource = process.env.THE_ODDS_API_KEY ? 'THE_ODDS_API_KEY'
+                  : process.env.ODDS_API_KEY     ? 'ODDS_API_KEY'
+                  : process.env.ODDS_KEY         ? 'ODDS_KEY'
+                  : 'none';
+  console.log('API KEY PREFIX:', process.env.THE_ODDS_API_KEY?.slice(0, 8));
+  console.log(`[projections-debug] key source=${keySource} prefix=${apiKey ? apiKey.slice(0, 8) : 'MISSING'}`);
 
   if (!apiKey) {
     logs.log4_error = 'No Odds API key configured — checked THE_ODDS_API_KEY, ODDS_API_KEY, ODDS_KEY';

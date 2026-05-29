@@ -34,10 +34,17 @@ router.get('/', async (req, res) => {
     url.searchParams.set('oddsFormat', 'american');
     url.searchParams.set('dateFormat', 'iso');
 
+    const upstreamUrl = url.toString().replace(apiKey, '[KEY]');
+    console.log(`[Odds] fetching sportKey="${sport}" url=${upstreamUrl}`);
     const upstream = await fetch(url.toString());
     if (!upstream.ok) {
       const body = await upstream.json().catch(() => ({}));
-      console.warn(`Odds API error for ${sport}: ${upstream.status}`, body);
+      console.warn(`[Odds] sportKey="${sport}" HTTP ${upstream.status} — url=${upstreamUrl}`, body);
+      // 401/403 means the key doesn't cover this sport or has expired.
+      // Return empty array so the frontend shows "NO UPCOMING GAMES" instead of an error page.
+      if (upstream.status === 401 || upstream.status === 403) {
+        return res.json([]);
+      }
       return res.status(upstream.status).json({ error: body.message || 'Odds API request failed.' });
     }
 
