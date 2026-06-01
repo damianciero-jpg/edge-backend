@@ -4906,7 +4906,6 @@ function selectGame(i, el) {
   prefillTrackerFromCurrentGame();
   syncSelectedGameToMarkets();
   if (isMobile()) document.getElementById('view-odds').classList.add('detail-open');
-  setTimeout(() => runAnalysis(false, selectedGameKey), 0);
 }
 
 // ─── ODDS DETAIL ──────────────────────────────────────────────────────────────
@@ -5135,15 +5134,7 @@ async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(
   const hBest = getBest(game, game.home_team);
   const aBest = getBest(game, game.away_team);
   const selection = getAnalysisSelection(game, hBest, aBest);
-  console.log('[ODDS analyze]', {
-    clickedGameKey: selectedGameKey,
-    analyzedGameKey: requestGameKey,
-    match: selectedGameKey === requestGameKey,
-    awayTeam: game.away_team,
-    homeTeam: game.home_team,
-    awayOdds: aBest,
-    homeOdds: hBest,
-  });
+  console.log(`[ANALYZE] Game selected: ${game.away_team} vs ${game.home_team}, odds: ${fmt(aBest)}/${fmt(hBest)}`);
 
   const prompt = `You are an expert sports betting analyst. Analyze this upcoming game for expected value.
 
