@@ -928,6 +928,7 @@ function buildStructuredResult(evaluation, aiText) {
     risk: evaluation.risk,
     edgeStrength: evaluation.edgeStrength,
     edgeScore: evaluation.edgeScore,
+    odds: evaluation.odds,
     // Phase 1 fields
     consensusProb: evaluation.consensusProb,
     noVigProb: evaluation.noVigProb,

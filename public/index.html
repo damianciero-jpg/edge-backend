@@ -5839,6 +5839,7 @@ function renderParlaySlip() {
 function addToParlayFromResult() {
   if (!lastAnalysisResult) { showToast('Run an EDGE evaluation first', 'info'); return; }
   const r = lastAnalysisResult;
+  console.log('[Parlay] lastAnalysisResult:', JSON.stringify(r));
   const verdict = String(r.verdict || '').toUpperCase();
 
   if (verdict === 'PASS') {
@@ -5855,7 +5856,16 @@ function addToParlayFromResult() {
   }
 
   const pick = r.pick || r.evaluating || 'Unknown pick';
-  const odds = Number(r.odds);
+
+  // r.odds is the American odds integer returned by the backend.
+  // Fall back to deriving it from impliedProb if the field is absent.
+  let odds = Number(r.odds || r.selectedOdds || r.price || 0);
+  if (!odds || !Number.isFinite(odds)) {
+    const p = Number(r.impliedProb);
+    if (p > 0 && p < 1) {
+      odds = p >= 0.5 ? Math.round(-p / (1 - p) * 100) : Math.round((1 - p) / p * 100);
+    }
+  }
   if (!odds || !Number.isFinite(odds)) {
     showToast('No odds available for this pick — cannot add to parlay.', 'error');
     return;
