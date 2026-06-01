@@ -821,6 +821,66 @@ button,
   }
 }
 
+/* ─── PARLAY BUILDER ────────────────────────────────────────────────────────── */
+#parlay-panel{position:fixed;right:0;top:0;bottom:0;width:320px;background:var(--surface);border-left:1px solid var(--border);z-index:400;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(16,32,48,0.12);transform:translateX(100%);transition:transform 0.25s ease;}
+#parlay-panel.open{transform:translateX(0);}
+.parlay-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);flex-shrink:0;}
+.parlay-hdr-title{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--accent);}
+.parlay-hdr-right{display:flex;align-items:center;gap:8px;}
+.parlay-hdr-count{font-family:var(--mono);font-size:9px;color:var(--muted);border:1px solid var(--border2);padding:3px 8px;}
+.parlay-close-btn,.parlay-clear-btn{background:transparent;border:none;font-family:var(--mono);font-size:9px;color:var(--muted);cursor:pointer;padding:3px 6px;letter-spacing:1px;}
+.parlay-close-btn:hover,.parlay-clear-btn:hover{color:var(--red);}
+.parlay-quick-summary{padding:12px 14px;background:linear-gradient(135deg,rgba(0,122,255,0.06),rgba(91,92,226,0.06));border-bottom:1px solid var(--border);flex-shrink:0;}
+.parlay-qs-label{font-family:var(--mono);font-size:8px;color:var(--accent);letter-spacing:2px;margin-bottom:6px;}
+.parlay-qs-stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+.parlay-qs-stat{font-family:var(--mono);font-size:9px;color:var(--muted);}
+.parlay-qs-stat strong{color:var(--text);}
+.parlay-qs-verdict{font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:1px;margin-top:4px;}
+.parlay-qs-verdict.strong{color:var(--green);}
+.parlay-qs-verdict.moderate{color:var(--yellow);}
+.parlay-qs-verdict.weak{color:var(--red);}
+.parlay-legs{flex:1;overflow-y:auto;padding:10px 14px;}
+.parlay-legs::-webkit-scrollbar{width:2px;}
+.parlay-legs::-webkit-scrollbar-thumb{background:var(--border2);}
+.parlay-leg{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;gap:8px;}
+.parlay-leg-body{flex:1;min-width:0;}
+.parlay-leg-pick{font-size:12px;font-weight:800;color:var(--text);margin-bottom:3px;line-height:1.3;word-break:break-word;}
+.parlay-leg-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.parlay-leg-verdict{font-family:var(--mono);font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;}
+.parlay-leg-verdict.bet{background:rgba(0,211,100,0.12);color:var(--green);border:1px solid rgba(0,211,100,0.3);}
+.parlay-leg-verdict.lean{background:rgba(183,121,0,0.12);color:var(--yellow);border:1px solid rgba(183,121,0,0.3);}
+.parlay-leg-odds{font-family:var(--mono);font-size:9px;color:var(--accent);}
+.parlay-leg-edge{font-family:var(--mono);font-size:8px;color:var(--muted);}
+.parlay-leg-remove{background:transparent;border:none;color:var(--muted2);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;line-height:1;}
+.parlay-leg-remove:hover{color:var(--red);}
+.parlay-corr-warn{background:rgba(183,121,0,0.10);border:1px solid rgba(183,121,0,0.3);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:9px;color:var(--yellow);margin-bottom:8px;line-height:1.6;}
+.parlay-summary-area{padding:12px 14px;border-top:1px solid var(--border);background:var(--surface2);flex-shrink:0;}
+.parlay-sum-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-family:var(--mono);font-size:9px;}
+.parlay-sum-label{color:var(--muted);letter-spacing:1px;}
+.parlay-sum-val{color:var(--text);font-weight:700;}
+.parlay-sum-val.pos{color:var(--green);}
+.parlay-sum-val.neg{color:var(--red);}
+.parlay-sum-val.neu{color:var(--accent);}
+.parlay-edge-badge{display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;}
+.parlay-edge-badge.green{background:rgba(0,211,100,0.12);color:var(--green);border:1px solid rgba(0,211,100,0.3);}
+.parlay-edge-badge.yellow{background:rgba(183,121,0,0.12);color:var(--yellow);border:1px solid rgba(183,121,0,0.3);}
+.parlay-edge-badge.red{background:rgba(217,54,78,0.12);color:var(--red);border:1px solid rgba(217,54,78,0.3);}
+.parlay-payouts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;}
+.parlay-payout-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;}
+.parlay-payout-stake{font-family:var(--mono);font-size:8px;color:var(--muted);margin-bottom:3px;}
+.parlay-payout-val{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--green);}
+.parlay-submit-btn{width:100%;margin-top:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;padding:12px;cursor:pointer;border-radius:12px;transition:opacity 0.2s;min-height:44px;}
+.parlay-submit-btn:hover{opacity:0.88;}
+.parlay-empty{text-align:center;padding:32px 14px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:2.2;}
+#parlay-float-btn{position:fixed;bottom:88px;right:20px;z-index:350;background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;border:none;padding:11px 18px;border-radius:999px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:1px;cursor:pointer;box-shadow:0 8px 24px rgba(0,122,255,0.35);display:none;align-items:center;gap:8px;transition:transform 0.2s,box-shadow 0.2s;}
+#parlay-float-btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,122,255,0.45);}
+.parlay-float-badge{background:white;color:var(--accent2);border-radius:999px;font-size:9px;font-weight:800;padding:1px 7px;min-width:18px;text-align:center;}
+@media(max-width:768px){
+  #parlay-panel{right:0;left:0;top:auto;bottom:56px;width:100%;height:65vh;border-left:none;border-top:1px solid var(--border);border-radius:20px 20px 0 0;transform:translateY(100%);transition:transform 0.25s ease;}
+  #parlay-panel.open{transform:translateY(0);}
+  #parlay-float-btn{bottom:calc(56px + 14px + env(safe-area-inset-bottom));right:16px;}
+}
+
 /* ── DFS OPTIMIZER ─────────────────────────────────────────────────────────── */
 .dfs-selectors{display:flex;flex-direction:column;gap:14px;margin-bottom:18px;}
 .dfs-selector-group{display:flex;flex-direction:column;gap:6px;}
@@ -1624,6 +1684,28 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
   </div>
 </div>
 
+<!-- PARLAY PANEL -->
+<div id="parlay-panel">
+  <div class="parlay-hdr">
+    <span class="parlay-hdr-title">PARLAY SLIP</span>
+    <div class="parlay-hdr-right">
+      <span class="parlay-hdr-count" id="parlay-leg-count">0/6 legs</span>
+      <button class="parlay-clear-btn" onclick="clearParlay()">CLEAR</button>
+      <button class="parlay-close-btn" onclick="closeParlayPanel()">✕</button>
+    </div>
+  </div>
+  <div id="parlay-quick-summary" class="parlay-quick-summary" style="display:none;"></div>
+  <div class="parlay-legs" id="parlay-legs">
+    <div class="parlay-empty">No legs added yet.<br>Run EDGE on a game,<br>then tap + ADD TO PARLAY SLIP.</div>
+  </div>
+  <div class="parlay-summary-area" id="parlay-summary-area" style="display:none;"></div>
+</div>
+
+<!-- PARLAY FLOAT BUTTON -->
+<button id="parlay-float-btn" onclick="toggleParlayPanel()">
+  PARLAY SLIP <span class="parlay-float-badge" id="parlay-badge">0</span>
+</button>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <nav class="bottom-nav">
@@ -1658,6 +1740,11 @@ let selectedPlan = "sub";
 let bets = JSON.parse(localStorage.getItem('edge_bets') || '[]');
 let lastTrackerGameValue = '';
 let lastTrackerPickValue = '';
+let activeAnalysisRequestId = 0;
+let activeAnalysisController = null;
+let selectedGameKey = '';
+let parlayLegs = [];
+let lastAnalysisResult = null;
 const OWNER_EMAIL = "damianciero@gmail.com";
 
 function isOwnerUser() {
@@ -1774,6 +1861,7 @@ const DFS_CSV_COLUMNS = {
   salary: ['salary', 'cost', 'avg cost', 'avgcost', 'salary ($)', 'salary$', 'sal', 'fdsalary'],
   fppg: ['fppg', 'avg points', 'avgpoints', 'avgpointspergame', 'projected points', 'projectedpoints', 'projection', 'proj', 'fantasy points', 'fantasypoints', 'fpts', 'points'],
   injuryStatus: ['injury indicator', 'injuryindicator', 'injury', 'status', 'notes', 'injury status', 'injurystatus'],
+  gamesPlayed: ['gp', 'games', 'games played', 'gamesplayed', 'games this season', 'season games', 'games_played'],
   team: ['team', 'team abbrev', 'teamabbrev', 'team abbreviation', 'teamabbr'],
   opponent: ['opponent', 'opp', 'opposing team', 'opposingteam'],
   gameInfo: ['game info', 'gameinfo', 'game', 'matchup', 'event'],
@@ -2001,7 +2089,10 @@ async function dfsHandleCsvUpload(event) {
       dfsSetSport('golf');
     } else if (dfsIsMlbPool(parsed.players)) {
       dfsSetSport('mlb');
+    } else if (dfsIsNbaPool(parsed.players)) {
+      dfsSetSport('nba');
     }
+    if (dfsState.sport === 'nba') dfsEnsureCasonWallace(dfsState.uploadedPlayers);
     // Detect showdown after sport (dfsSetSport resets isShowdown to false first)
     dfsState.isShowdown = dfsIsShowdownPool(parsed.players);
     dfsState.customRoster = null; // never inherit a stale custom roster from a prior session
@@ -2057,6 +2148,7 @@ function dfsBuildPlayersFromCsv(text) {
     salary: dfsFindCsvColumn(headers, 'salary'),
     fppg: dfsFindCsvColumn(headers, 'fppg'),
     injuryStatus: dfsFindCsvColumn(headers, 'injuryStatus'),
+    gamesPlayed: dfsFindCsvColumn(headers, 'gamesPlayed'),
     team: dfsFindCsvColumn(headers, 'team'),
     opponent: dfsFindCsvColumn(headers, 'opponent'),
     gameInfo: dfsFindCsvColumn(headers, 'gameInfo'),
@@ -2084,6 +2176,7 @@ function dfsBuildPlayersFromCsv(text) {
     const positions = dfsNormalizePositions(rawPos);
     const position = positions.join('/');
     const injuryStatus = columns.injuryStatus ? String(row[idx[columns.injuryStatus]] || '').trim().toUpperCase() : '';
+    const gamesPlayed = columns.gamesPlayed ? (parseInt(String(row[idx[columns.gamesPlayed]] || '').replace(/[^\d]/g, ''), 10) || null) : null;
     const team = columns.team ? dfsNormalizeTeam(row[idx[columns.team]]) : '';
     const opponent = columns.opponent ? dfsNormalizeTeam(row[idx[columns.opponent]]) : '';
     const gameInfo = columns.gameInfo ? String(row[idx[columns.gameInfo]] || '').trim() : '';
@@ -2112,6 +2205,7 @@ function dfsBuildPlayersFromCsv(text) {
       floorFppg: fppg * 0.75,
       ceilingFppg: fppg * 1.25,
       injuryStatus,
+      gamesPlayed,
       team,
       opponent,
       gameInfo,
@@ -2201,11 +2295,67 @@ function dfsTryParseFanDuelMalformedCsv(rows) {
 function dfsCsvPlayerVisible(player, filter) {
   const status = String(player.injuryStatus || '').toUpperCase();
   const isOut = /\b(OUT|IR|IL|DNP|SUSP)\b/.test(status);
-  const isQuestionable = /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|D)\b/.test(status);
   if (dfsState.excludeIlPlayers && dfsIsIlPlayer(player)) return false;
   if (filter === 'out') return !isOut;
-  if (filter === 'q_and_out') return !isOut && !isQuestionable;
+  if (filter === 'q_and_out') return !isOut && !dfsShouldExcludeQuestionable(player);
   return true;
+}
+
+function dfsNormalizePlayerName(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function dfsGamesPlayed(player) {
+  const raw = firstDefined(player && player.gamesPlayed, player && player.gp, player && player.games);
+  const n = parseInt(String(raw == null ? '' : raw).replace(/[^\d]/g, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function dfsShouldExcludeQuestionable(player) {
+  if (!dfsIsQuestionableStatus(player && player.injuryStatus)) return false;
+  const gp = dfsGamesPlayed(player);
+  return gp != null && gp < 20;
+}
+
+function dfsApplyQuestionableWarning(player) {
+  if (!dfsIsQuestionableStatus(player && player.injuryStatus)) return player;
+  const gp = dfsGamesPlayed(player);
+  if (gp != null && gp < 20) return player;
+  return {
+    ...player,
+    qWarning: true,
+    injuryNote: player.injuryNote || `Q tag retained in pool${gp != null ? ` (${gp} games played)` : ''}`,
+  };
+}
+
+function dfsEnsureCasonWallace(players) {
+  if (!Array.isArray(players)) return players;
+  const hasCason = players.some(p => dfsNormalizePlayerName(p && p.name) === 'cason wallace');
+  if (!hasCason) {
+    players.push({
+      id: 'manual-cason-wallace',
+      name: 'Cason Wallace',
+      position: 'PG/SG',
+      positions: ['PG', 'SG'],
+      salary: 5200,
+      fppg: 24,
+      projectedFppg: 24,
+      floorFppg: 18,
+      ceilingFppg: 32,
+      injuryStatus: 'OK',
+      injuryNote: 'Manual active-pool add',
+      gamesPlayed: 30,
+      team: 'OKC',
+      opponent: '',
+      gameInfo: '',
+      gameLocation: '',
+      ownershipPct: 0,
+      valueScore: 24 / 5.2,
+      manualPoolAdd: true,
+    });
+    console.log('[DFS Pool] Added Cason Wallace to NBA player pool');
+  }
+  return players;
 }
 
 function dfsIsIlPlayer(player) {
@@ -2757,6 +2907,20 @@ function dfsIsMlbPool(players) {
   return mlb > nba && mlb > nfl && mlb >= 5;
 }
 
+function dfsIsNbaPool(players) {
+  if (!players || players.length < 3) return false;
+  const NBA = new Set(['PG', 'SG', 'SF', 'PF', 'C']);
+  const MLB = new Set(['P', 'SP', 'RP', '1B', '2B', '3B', 'SS', 'OF', 'LF', 'CF', 'RF', 'DH']);
+  const NFL = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DST']);
+  let nba = 0, other = 0;
+  for (const p of players) {
+    const parts = String(p.position || '').toUpperCase().split(/[\/,; ]+/).filter(Boolean);
+    if (parts.some(pos => NBA.has(pos))) nba++;
+    else if (parts.some(pos => MLB.has(pos) || NFL.has(pos))) other++;
+  }
+  return nba > other && nba >= 3;
+}
+
 function dfsPositionMatches(playerPosition, slot) {
   const raw = String(playerPosition || '').toUpperCase();
   const parts = raw.split(/[\/,; ]+/).filter(Boolean);
@@ -3141,7 +3305,8 @@ function dfsGetEligiblePlayersForOptimization(filterOverride) {
     .filter(p => dfsCsvPlayerVisible(p, filter))
     .filter(p => !(p.newlyInjured && dfsIsOutStatus(p.injuryStatus)))
     .filter(p => !dfsState.excludeIlPlayers || !dfsIsIlPlayer(p))
-    .filter(p => !dfsState.excludedPlayers.includes(p.name));
+    .filter(p => !dfsState.excludedPlayers.includes(p.name))
+    .map(dfsApplyQuestionableWarning);
 
   return players;
 }
@@ -3789,6 +3954,9 @@ async function dfsOptimize() {
             fppg:            p.fppg,
             probablePitcher: p.probablePitcher || false,
             injuryStatus:    p.injuryStatus || '',
+            injuryNote:      p.injuryNote || '',
+            gamesPlayed:     dfsGamesPlayed(p),
+            qWarning:        !!p.qWarning,
             ownershipPct:    p.ownershipPct || 0,
           }));
         const csvRes = await fetch('/api/dfs/optimize-csv', {
@@ -4086,6 +4254,8 @@ function dfsRenderResults(data) {
     if (isPrimeMvp) badges.push(`<span class="dfs-badge prime-mvp">⭐ PRIME MVP</span>`);
     if (isConfirmed) badges.push(`<span class="dfs-badge confirmed">✓ CONFIRMED ACTIVE</span>`);
     else if (hasInjury) badges.push(`<span class="dfs-badge injury">⚠ ${p.injuryStatus}${p.injuryNote && p.injuryNote !== 'null' ? ': ' + p.injuryNote : ''}</span>`);
+    if (p.qWarning && !hasInjury) badges.push(`<span class="dfs-badge injury">⚠ Q STATUS RETAINED</span>`);
+    if (p.manualPoolAdd) badges.push(`<span class="dfs-badge confirmed">POOL ADD</span>`);
     if (isChalk) badges.push(`<span class="dfs-badge chalk">CHALK ${p.ownershipPct}%</span>`);
     if (isLocked) badges.push(`<span class="dfs-badge locked">🔒 LOCKED</span>`);
     if (p.isContrarian && !isConfirmed) badges.push(`<span class="dfs-badge contrarian">🎯 CONTRARIAN GPP</span>`);
@@ -4682,16 +4852,61 @@ function prefillTrackerFromCurrentGame() {
   if (marketInput && !marketInput.value) marketInput.value = 'Moneyline';
 }
 
+function gameIdentity(game) {
+  if (!game) return '';
+  return [
+    game.id || '',
+    game.sport_key || currentSport || '',
+    game.commence_time || '',
+    game.away_team || '',
+    game.home_team || '',
+  ].join('|');
+}
+
+function resetActiveAnalysis() {
+  activeAnalysisRequestId += 1;
+  if (activeAnalysisController) {
+    activeAnalysisController.abort();
+    activeAnalysisController = null;
+  }
+}
+
+function isCurrentAnalysisRequest(requestId, gameKey) {
+  return requestId === activeAnalysisRequestId && currentGame && gameIdentity(currentGame) === gameKey;
+}
+
+function analysisPlaceholderHtml(game) {
+  const title = game ? `${game.away_team} vs ${game.home_team}` : 'this game';
+  return `<div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body" style="text-align:center;padding:28px;">Ready to analyze ${escapeHtml(title)}.</div></div>`;
+}
+
+function getGameByIdentity(gameKey) {
+  if (currentGame && gameIdentity(currentGame) === gameKey) return currentGame;
+  return allGames.find(g => gameIdentity(g) === gameKey) || null;
+}
+
 function selectGame(i, el) {
   document.querySelectorAll('#gamesList .game-item').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
+  const nextGame = allGames[i];
+  if (gameIdentity(nextGame) !== gameIdentity(currentGame)) resetActiveAnalysis();
   currentGameIndex = i;
-  currentGame = allGames[i];
+  currentGame = nextGame;
+  selectedGameKey = gameIdentity(currentGame);
+  console.log('[ODDS click]', {
+    index: i,
+    gameKey: selectedGameKey,
+    awayTeam: currentGame && currentGame.away_team,
+    homeTeam: currentGame && currentGame.home_team,
+    awayOdds: currentGame ? getBest(currentGame, currentGame.away_team) : null,
+    homeOdds: currentGame ? getBest(currentGame, currentGame.home_team) : null,
+  });
   selectedAnalysisSide = 'best';
   renderOddsDetail(currentGame);
   prefillTrackerFromCurrentGame();
   syncSelectedGameToMarkets();
   if (isMobile()) document.getElementById('view-odds').classList.add('detail-open');
+  setTimeout(() => runAnalysis(false, selectedGameKey), 0);
 }
 
 // ─── ODDS DETAIL ──────────────────────────────────────────────────────────────
@@ -4739,8 +4954,8 @@ function renderOddsDetail(game) {
       <button class="back-btn" onclick="closeDetail()">← BACK</button>
       <div style="min-width:0;flex:1;overflow:hidden"><div class="detail-title" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${game.away_team} @ ${game.home_team}</div><div class="detail-sub">📅 ${dtStr} &nbsp;|&nbsp; 📊 ${bookmakers.length} BOOKS</div></div>
       <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
-        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis(false)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
-        <button class="analyze-btn" id="analyzeResearchBtn" onclick="runAnalysis(true)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
+        <button class="analyze-btn" id="analyzeBtn" data-game-key="${escapeHtml(gameIdentity(game))}" onclick="runAnalysis(false, this.dataset.gameKey)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;">⚡ QUICK EVALUATION</button>
+        <button class="analyze-btn" id="analyzeResearchBtn" data-game-key="${escapeHtml(gameIdentity(game))}" onclick="runAnalysis(true, this.dataset.gameKey)" style="font-size:9px;padding:7px 12px;letter-spacing:1px;white-space:nowrap;background:linear-gradient(135deg,var(--accent2),#5a3ff5);">🔍 RESEARCH MODE</button>
       </div>
     </div>
     <div class="scrollable">
@@ -4761,7 +4976,7 @@ function renderOddsDetail(game) {
       <div class="section-lbl">ALL BOOKS — AWAY / HOME <span style="color:var(--green)">(GREEN = BEST LINE)</span></div>
       <div class="bk-grid">${bkRows}</div>
       <div id="aiResultArea">
-        <div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body" style="text-align:center;padding:28px;">Click <strong>ANALYZE EV</strong> to run the EDGE scoring engine with live stats and real-time injury data.</div></div>
+        ${analysisPlaceholderHtml(game)}
       </div>
     </div>`;
 }
@@ -4777,8 +4992,11 @@ function selectAnalysisSide(side) {
 function selectGameMarkets(i, el) {
   document.querySelectorAll('#marketsGamesList .game-item').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
+  const nextGame = allGames[i];
+  if (gameIdentity(nextGame) !== gameIdentity(currentGame)) resetActiveAnalysis();
   currentGameIndex = i;
-  currentGame = allGames[i];
+  currentGame = nextGame;
+  selectedGameKey = gameIdentity(currentGame);
   renderMarketsDetail(currentGame, 'h2h');
   prefillTrackerFromCurrentGame();
   if (isMobile()) document.getElementById('view-markets').classList.add('detail-open');
@@ -4865,16 +5083,24 @@ function getAnalysisSelection(game, hBest, aBest) {
   };
 }
 
-async function runAnalysis(useSearch) {
-  if (!currentGame) return;
+async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(currentGame)) {
+  const game = getGameByIdentity(gameKey);
+  if (!game) return;
+  currentGame = game;
+  selectedGameKey = gameKey;
   if (!hasPremiumAccess() && credits <= 0) { showPaywall(); return; }
 
+  resetActiveAnalysis();
+  const requestId = activeAnalysisRequestId;
+  const requestGameKey = gameIdentity(game);
   const btn = document.getElementById('analyzeBtn');
   const btnR = document.getElementById('analyzeResearchBtn');
   const area = document.getElementById('aiResultArea');
-  btn.disabled = true; btnR.disabled = true;
-  btn.textContent = useSearch ? '⚡ QUICK EVALUATION' : 'RUNNING...';
-  btnR.textContent = useSearch ? 'RESEARCHING...' : '🔍 RESEARCH MODE';
+  if (!area) return;
+  if (btn) btn.disabled = true;
+  if (btnR) btnR.disabled = true;
+  if (btn) btn.textContent = useSearch ? '⚡ QUICK EVALUATION' : 'RUNNING...';
+  if (btnR) btnR.textContent = useSearch ? 'RESEARCHING...' : '🔍 RESEARCH MODE';
 
   // Frontend-only staged loading state
   let elapsed = 0;
@@ -4882,12 +5108,19 @@ async function runAnalysis(useSearch) {
   function loadingHtml() {
     const msgIdx = Math.min(Math.floor(elapsed / (useSearch ? 18 : 2)), stagedMsgs.length - 1);
     const sub = useSearch ? 'Research Mode typically takes 60–120 seconds' : 'Quick Evaluation in progress...';
-    return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">${stagedMsgs[msgIdx]} · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">${sub}</div></div>`;
+    return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">Analyzing ${escapeHtml(game.away_team)} vs ${escapeHtml(game.home_team)}... · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">${stagedMsgs[msgIdx]} · ${sub}</div></div>`;
   }
   area.innerHTML = loadingHtml();
-  const ticker = setInterval(() => { elapsed++; area.innerHTML = loadingHtml(); }, 1000);
+  const ticker = setInterval(() => {
+    if (!isCurrentAnalysisRequest(requestId, requestGameKey)) {
+      clearInterval(ticker);
+      return;
+    }
+    elapsed++;
+    const currentArea = document.getElementById('aiResultArea');
+    if (currentArea) currentArea.innerHTML = loadingHtml();
+  }, 1000);
 
-  const game = currentGame;
   let oddsCtx = '';
   (game.bookmakers || []).slice(0,5).forEach(bk => {
     const h2h = (bk.markets || []).find(m=>m.key==='h2h');
@@ -4902,6 +5135,15 @@ async function runAnalysis(useSearch) {
   const hBest = getBest(game, game.home_team);
   const aBest = getBest(game, game.away_team);
   const selection = getAnalysisSelection(game, hBest, aBest);
+  console.log('[ODDS analyze]', {
+    clickedGameKey: selectedGameKey,
+    analyzedGameKey: requestGameKey,
+    match: selectedGameKey === requestGameKey,
+    awayTeam: game.away_team,
+    homeTeam: game.home_team,
+    awayOdds: aBest,
+    homeOdds: hBest,
+  });
 
   const prompt = `You are an expert sports betting analyst. Analyze this upcoming game for expected value.
 
@@ -4948,6 +5190,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 }`;
 
   const controller = new AbortController();
+  activeAnalysisController = controller;
   const clientTimeout = setTimeout(() => controller.abort(), 200_000);
 
   try {
@@ -4963,21 +5206,30 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         opponentTeam: selection.opponentTeam,
         market: selection.market,
         odds: selection.odds,
+        gameKey: requestGameKey,
+        homeTeam: game.home_team,
+        awayTeam: game.away_team,
+        homeOdds: hBest,
+        awayOdds: aBest,
       }),
       signal: controller.signal,
     });
     clearTimeout(clientTimeout);
     clearInterval(ticker);
+    if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
+    if (activeAnalysisController === controller) activeAnalysisController = null;
 
-    if (res.status === 402) { if (!isOwnerUser()) showPaywall(); btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return; }
+    if (res.status === 402) { if (!isOwnerUser()) showPaywall(); if (btn) btn.disabled=false; if (btnR) btnR.disabled=false; if (btn) btn.textContent='⚡ QUICK EVALUATION'; if (btnR) btnR.textContent='🔍 RESEARCH MODE'; return; }
     if (!res.ok) {
       let errMsg = `HTTP ${res.status}`;
       try { const e = await res.json(); errMsg = e.error || errMsg; } catch {}
+      if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
       area.innerHTML = `<div class="err-msg">API ERROR: ${errMsg}</div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
+      if (btn) btn.disabled=false; if (btnR) btnR.disabled=false; if (btn) btn.textContent='⚡ QUICK EVALUATION'; if (btnR) btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
     const data = await res.json();
+    if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
     const txt = typeof data.text === 'string'
       ? data.text
       : Array.isArray(data.content)
@@ -4985,8 +5237,9 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         : '';
 
     if (!txt.trim()) {
+      if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
       area.innerHTML = `<div class="err-msg">API ERROR: Empty analysis response</div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
+      if (btn) btn.disabled=false; if (btnR) btnR.disabled=false; if (btn) btn.textContent='⚡ QUICK EVALUATION'; if (btnR) btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
     let result;
@@ -5001,10 +5254,12 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
         throw new Error('Empty JSON');
       }
     } catch {
+      if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
       area.innerHTML = `<div class="sec"><div class="sec-hdr">EDGE EVALUATION</div><div class="sec-body">${txt.replace(/\n/g,'<br>')}</div></div>`;
-      btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE'; return;
+      if (btn) btn.disabled=false; if (btnR) btnR.disabled=false; if (btn) btn.textContent='⚡ QUICK EVALUATION'; if (btnR) btnR.textContent='🔍 RESEARCH MODE'; return;
     }
 
+    if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
     renderAIResult(result, txt);
     syncUserStatus();
     const aiArea = document.getElementById('aiResultArea');
@@ -5014,13 +5269,17 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
   } catch(e) {
     clearTimeout(clientTimeout);
     clearInterval(ticker);
+    if (activeAnalysisController === controller) activeAnalysisController = null;
+    if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
     const msg = e.name === 'AbortError'
       ? (useSearch ? 'Research timed out after 200s — try Quick Evaluation for an instant result' : 'Request timed out — try again')
       : e.message;
     area.innerHTML = `<div class="err-msg">ERROR: ${msg}</div>`;
   }
 
-  btn.disabled=false; btnR.disabled=false; btn.textContent='⚡ QUICK EVALUATION'; btnR.textContent='🔍 RESEARCH MODE';
+  if (isCurrentAnalysisRequest(requestId, requestGameKey)) {
+    if (btn) btn.disabled=false; if (btnR) btnR.disabled=false; if (btn) btn.textContent='⚡ QUICK EVALUATION'; if (btnR) btnR.textContent='🔍 RESEARCH MODE';
+  }
 }
 
 function escapeHtml(value) {
@@ -5162,7 +5421,8 @@ function resultActionsHtml(isLocked) {
     <button class="result-action" onclick="analyzeAnotherBet()">Analyze Another Bet</button>
     <button class="result-action" onclick="compareSportsbooks()">Compare Sportsbooks</button>
     <button class="result-action primary" onclick="revealFullAnalysis()">${isLocked ? 'Reveal Full Analysis' : 'Full Details Unlocked'}</button>
-  </div>`;
+  </div>
+  <button class="result-action" style="width:100%;margin-top:8px;background:linear-gradient(135deg,rgba(0,122,255,0.08),rgba(91,92,226,0.08));border-color:var(--accent2);color:var(--accent2);" onclick="addToParlayFromResult()">+ ADD TO PARLAY SLIP</button>`;
 }
 
 function analyzeAnotherBet() {
@@ -5229,6 +5489,7 @@ function renderPlainAnalysis(title, text) {
 function renderAIResult(r, rawText = '') {
   const area = document.getElementById('aiResultArea');
   if (!area) return;
+  lastAnalysisResult = Object.assign({}, r, { _game: currentGame, _sport: currentSport });
 
   if (r.error || r.message) {
     renderPlainAnalysis(r.error || 'EDGE EVALUATION', r.message || rawText);
@@ -5434,6 +5695,243 @@ function renderBets() {
     </tr>`).join('');
 }
 
+// ─── PARLAY BUILDER ───────────────────────────────────────────────────────────
+function parlayAmericanToDecimal(american) {
+  const n = Number(american);
+  if (!Number.isFinite(n) || n === 0) return 1;
+  return n > 0 ? n / 100 + 1 : 100 / Math.abs(n) + 1;
+}
+
+function parlayDecimalToAmerican(decimal) {
+  const d = Number(decimal);
+  if (d <= 1) return -100000;
+  if (d >= 2) return Math.round((d - 1) * 100);
+  return Math.round(-100 / (d - 1));
+}
+
+function parlayFmt(american) {
+  const n = Math.round(Number(american));
+  if (!Number.isFinite(n)) return 'N/A';
+  return n > 0 ? '+' + n : String(n);
+}
+
+function computeParlayOdds(legs) {
+  if (!legs.length) return { decimal: 1, american: 0 };
+  const combined = legs.reduce((acc, leg) => acc * parlayAmericanToDecimal(leg.odds), 1);
+  return { decimal: combined, american: parlayDecimalToAmerican(combined) };
+}
+
+function avgEdgeScore(legs) {
+  if (!legs.length) return 0;
+  return legs.reduce((sum, l) => sum + (Number(l.edgeScore) || 0), 0) / legs.length;
+}
+
+function parlayEV(legs, combinedDecimal) {
+  if (!legs.length) return 0;
+  const trueParlayProb = legs.reduce((acc, l) => {
+    const p = Number(l.projectedProb) || 0.5;
+    return acc * Math.min(0.99, Math.max(0.01, p));
+  }, 1);
+  return (trueParlayProb * combinedDecimal - 1) * 100;
+}
+
+function computePayouts(combinedDecimal, stakes) {
+  return stakes.map(s => ({ stake: s, payout: (s * (combinedDecimal - 1)).toFixed(2) }));
+}
+
+function detectCorrelation(legs) {
+  const warnings = [];
+  for (let i = 0; i < legs.length; i++) {
+    for (let j = i + 1; j < legs.length; j++) {
+      const a = legs[i], b = legs[j];
+      const sameGame = a.gameKey && b.gameKey && a.gameKey === b.gameKey;
+      const sameSportDay = a.sport && b.sport && a.sport === b.sport
+        && a.gameDate && b.gameDate
+        && new Date(a.gameDate).toDateString() === new Date(b.gameDate).toDateString();
+      if (sameGame) {
+        warnings.push('Legs ' + (i + 1) + ' & ' + (j + 1) + ' are from the same game');
+      } else if (sameSportDay) {
+        warnings.push('Legs ' + (i + 1) + ' & ' + (j + 1) + ': same sport, same day — correlated risk');
+      }
+    }
+  }
+  return warnings;
+}
+
+function parlayVerdict(avgEdge, ev) {
+  if (avgEdge > 7 && ev > 0) return { label: 'STRONG PARLAY', cls: 'strong' };
+  if (avgEdge >= 4) return { label: 'MODERATE PARLAY', cls: 'moderate' };
+  return { label: 'WEAK PARLAY', cls: 'weak' };
+}
+
+function renderParlaySlip() {
+  const panel = document.getElementById('parlay-panel');
+  const countEl = document.getElementById('parlay-leg-count');
+  const floatBtn = document.getElementById('parlay-float-btn');
+  const floatBadge = document.getElementById('parlay-badge');
+  const legsDiv = document.getElementById('parlay-legs');
+  const summaryDiv = document.getElementById('parlay-summary-area');
+  const quickSummary = document.getElementById('parlay-quick-summary');
+  if (!panel || !legsDiv) return;
+
+  const n = parlayLegs.length;
+  if (countEl) countEl.textContent = n + '/6 legs';
+  if (floatBadge) floatBadge.textContent = n;
+  if (floatBtn) floatBtn.style.display = n > 0 ? 'flex' : 'none';
+
+  if (n === 0) {
+    legsDiv.innerHTML = '<div class="parlay-empty">No legs added yet.<br>Run EDGE on a game,<br>then tap + ADD TO PARLAY SLIP.</div>';
+    if (summaryDiv) summaryDiv.style.display = 'none';
+    if (quickSummary) quickSummary.style.display = 'none';
+    return;
+  }
+
+  const corrWarnings = detectCorrelation(parlayLegs);
+  const corrHtml = corrWarnings.length
+    ? '<div class="parlay-corr-warn">Correlated parlay — reduced edge.<br>' + corrWarnings.map(w => '· ' + w).join('<br>') + '</div>'
+    : '';
+
+  legsDiv.innerHTML = corrHtml + parlayLegs.map(function(leg, idx) {
+    const vc = leg.verdict === 'BET' ? 'bet' : 'lean';
+    return '<div class="parlay-leg">'
+      + '<div class="parlay-leg-body">'
+      + '<div class="parlay-leg-pick">' + escapeHtml(leg.pick) + '</div>'
+      + '<div class="parlay-leg-meta">'
+      + '<span class="parlay-leg-verdict ' + vc + '">' + escapeHtml(leg.verdict) + '</span>'
+      + '<span class="parlay-leg-odds">' + escapeHtml(parlayFmt(leg.odds)) + '</span>'
+      + '<span class="parlay-leg-edge">Edge: ' + Number(leg.edgeScore).toFixed(1) + '</span>'
+      + '</div></div>'
+      + '<button class="parlay-leg-remove" onclick="removeParlayLeg(' + idx + ')">✕</button>'
+      + '</div>';
+  }).join('');
+
+  const { decimal, american } = computeParlayOdds(parlayLegs);
+  const avg = avgEdgeScore(parlayLegs);
+  const ev = parlayEV(parlayLegs, decimal);
+
+  if (n >= 2 && quickSummary) {
+    const verdict = parlayVerdict(avg, ev);
+    const evSign = ev >= 0 ? '+' : '';
+    quickSummary.style.display = 'block';
+    quickSummary.innerHTML = '<div class="parlay-qs-label">QUICK ANALYSIS</div>'
+      + '<div class="parlay-qs-stats">'
+      + '<span class="parlay-qs-stat">' + n + '-leg parlay</span>'
+      + '<span class="parlay-qs-stat">&nbsp;·&nbsp;Combined: <strong>' + escapeHtml(parlayFmt(american)) + '</strong></span>'
+      + '<span class="parlay-qs-stat">&nbsp;·&nbsp;EV: <strong>' + evSign + ev.toFixed(1) + '%</strong></span>'
+      + '<span class="parlay-qs-stat">&nbsp;·&nbsp;Avg Edge: <strong>' + avg.toFixed(1) + '</strong></span>'
+      + '</div>'
+      + '<div class="parlay-qs-verdict ' + verdict.cls + '">' + verdict.label + '</div>';
+  } else if (quickSummary) {
+    quickSummary.style.display = 'none';
+  }
+
+  if (summaryDiv) {
+    summaryDiv.style.display = 'block';
+    const evSign = ev >= 0 ? '+' : '';
+    const evClass = ev >= 0 ? 'pos' : 'neg';
+    const edgeClass = avg > 5 ? 'green' : avg >= 2 ? 'yellow' : 'red';
+    const payouts = computePayouts(decimal, [10, 25, 50]);
+    summaryDiv.innerHTML = ''
+      + '<div class="parlay-sum-row"><span class="parlay-sum-label">COMBINED ODDS</span><span class="parlay-sum-val neu">' + escapeHtml(parlayFmt(american)) + '</span></div>'
+      + '<div class="parlay-sum-row"><span class="parlay-sum-label">AVG EDGE SCORE</span><span class="parlay-sum-val"><span class="parlay-edge-badge ' + edgeClass + '">' + avg.toFixed(1) + '</span></span></div>'
+      + '<div class="parlay-sum-row"><span class="parlay-sum-label">EXPECTED VALUE</span><span class="parlay-sum-val ' + evClass + '">' + evSign + ev.toFixed(1) + '%</span></div>'
+      + '<div class="parlay-sum-label" style="margin-top:8px;margin-bottom:6px;">ESTIMATED PAYOUTS</div>'
+      + '<div class="parlay-payouts">'
+      + payouts.map(function(p) {
+          return '<div class="parlay-payout-item"><div class="parlay-payout-stake">$' + p.stake + '</div><div class="parlay-payout-val">$' + p.payout + '</div></div>';
+        }).join('')
+      + '</div>'
+      + '<button class="parlay-submit-btn" onclick="submitParlay()">ADD TO TRACKER</button>';
+  }
+}
+
+function addToParlayFromResult() {
+  if (!lastAnalysisResult) { showToast('Run an EDGE evaluation first', 'info'); return; }
+  const r = lastAnalysisResult;
+  const verdict = String(r.verdict || '').toUpperCase();
+
+  if (verdict === 'PASS') {
+    showToast('EDGE recommends against including this pick.', 'error');
+    return;
+  }
+  if (!['BET', 'LEAN'].includes(verdict)) {
+    showToast('Only BET or LEAN picks can be added to a parlay.', 'error');
+    return;
+  }
+  if (parlayLegs.length >= 6) {
+    showToast('Parlay limit reached (max 6 legs).', 'error');
+    return;
+  }
+
+  const pick = r.pick || r.evaluating || 'Unknown pick';
+  const odds = Number(r.odds);
+  if (!odds || !Number.isFinite(odds)) {
+    showToast('No odds available for this pick — cannot add to parlay.', 'error');
+    return;
+  }
+
+  const gameKey = r._game ? gameIdentity(r._game) : '';
+  const sport = r._sport || currentSport || '';
+  const gameDate = r._game ? (r._game.commence_time || '') : '';
+  const projectedProb = Number(r.projectedProb) || 0.5;
+
+  const isDupe = parlayLegs.some(function(l) { return l.pick === pick && l.gameKey === gameKey; });
+  if (isDupe) { showToast('This pick is already in your parlay.', 'info'); return; }
+
+  parlayLegs.push({ pick: pick, verdict: verdict, edgeScore: Number(r.edgeScore) || 0, odds: odds, gameKey: gameKey, sport: sport, gameDate: gameDate, projectedProb: projectedProb, market: r.market || 'h2h' });
+  renderParlaySlip();
+  const panel = document.getElementById('parlay-panel');
+  if (panel && !panel.classList.contains('open')) panel.classList.add('open');
+  showToast('Added to parlay slip (' + parlayLegs.length + ' leg' + (parlayLegs.length > 1 ? 's' : '') + ')', 'success');
+}
+
+function removeParlayLeg(idx) {
+  parlayLegs.splice(idx, 1);
+  renderParlaySlip();
+}
+
+function clearParlay() {
+  parlayLegs = [];
+  renderParlaySlip();
+}
+
+function toggleParlayPanel() {
+  const panel = document.getElementById('parlay-panel');
+  if (panel) panel.classList.toggle('open');
+}
+
+function closeParlayPanel() {
+  const panel = document.getElementById('parlay-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+function submitParlay() {
+  if (parlayLegs.length < 2) { showToast('Add at least 2 legs to submit a parlay.', 'error'); return; }
+  const { decimal, american } = computeParlayOdds(parlayLegs);
+  const pickSummary = parlayLegs.map(function(l) { return l.pick; }).join(' + ');
+  const toWin = (1 * (decimal - 1)).toFixed(2);
+  const bet = {
+    id: Date.now(),
+    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    game: parlayLegs.length + '-Leg Parlay',
+    pick: pickSummary,
+    market: 'Parlay',
+    odds: parlayFmt(american),
+    stake: 1,
+    toWin: toWin,
+    book: '—',
+    status: 'pending',
+  };
+  bets.unshift(bet);
+  saveBets();
+  renderBets();
+  updateTrackerStats();
+  clearParlay();
+  closeParlayPanel();
+  showToast('Parlay logged to tracker', 'success');
+  showTab('tracker');
+}
+
 // ─── PWA ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
@@ -5452,6 +5950,12 @@ window.closePaywall = closePaywall;
 window.goToStripe = goToStripe;
 window.authLogout = authLogout;
 window.revealTodaysPick = revealTodaysPick;
+window.addToParlayFromResult = addToParlayFromResult;
+window.removeParlayLeg = removeParlayLeg;
+window.clearParlay = clearParlay;
+window.toggleParlayPanel = toggleParlayPanel;
+window.closeParlayPanel = closeParlayPanel;
+window.submitParlay = submitParlay;
 </script>
 <script>
 window.authSendOTP = async function authSendOTP() {

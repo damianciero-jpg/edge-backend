@@ -11,6 +11,14 @@ const { getConfig, isShowdownSlots } = require('../src/sports/sportConfigs');
 const { generateOptimalLineup, isMlbPitcher: isMlbPitcherFD } = require('../src/components/dfsSolver');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Prevent Vercel edge caching on all DFS routes — responses are always dynamic
+router.use((_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  next();
+});
+
 const memoryWeatherCache = new Map();
 const WEATHER_TTL_SEC = 30 * 60;
 
@@ -215,6 +223,130 @@ async function getOddsCredits() {
   }
   const entry = memoryPropsCache.get(CREDITS_REDIS_KEY);
   return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
+}
+
+// ── NBA defensive stat cache (blk/stl per game) ───────────────────────────────
+
+function _defKey(normalizedName) {
+  return `edge:dfs:defstats:nba:${normalizedName.replace(/[^a-z0-9]/g, '-')}`;
+}
+
+async function _getDefCache(normalizedName) {
+  const key = _defKey(normalizedName);
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      const val = await withTimeout(redis.get(key), 2000, 'defstats-get');
+      return val ? JSON.parse(val) : null;
+    } catch { return null; }
+  }
+  const entry = memoryPropsCache.get(key);
+  return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
+}
+
+async function _setDefCache(normalizedName, stats, ttlSec = 86400) {
+  const key = _defKey(normalizedName);
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      await withTimeout(redis.set(key, JSON.stringify(stats), { ex: ttlSec }), 2000, 'defstats-set');
+    } catch { /* non-fatal */ }
+  } else {
+    memoryPropsCache.set(key, { value: stats, expiresAt: Date.now() + ttlSec * 1000 });
+  }
+}
+
+/**
+ * Fetches 2025-26 NBA blocks/steals per game for the given players via
+ * Anthropic web search. Results are cached in Redis for 24 hours per player.
+ * Returns a Map of normalizedName → { blk, stl }.
+ * Non-fatal: any failure returns an empty map.
+ */
+async function fetchNbaDefStats(players) {
+  const result  = new Map();
+  const uncached = [];
+
+  // Check cache in parallel — avoid repeated Redis round-trips
+  await Promise.all(players.map(async p => {
+    const nkey   = normalizeName(p.name);
+    const cached = await _getDefCache(nkey);
+    if (cached) result.set(nkey, cached);
+    else uncached.push(p);
+  }));
+
+  if (!uncached.length) return result;
+
+  // Cap at the 25 highest-salary uncached players to bound search time
+  const toFetch = [...uncached]
+    .sort((a, b) => (b.salary || 0) - (a.salary || 0))
+    .slice(0, 25);
+
+  const nameList = toFetch.map(p => p.name).join(', ');
+
+  const prompt =
+    `Search for the 2025-26 NBA regular-season averages for each of these players ` +
+    `and return ONLY raw JSON — no markdown, no comments.\n` +
+    `Format: { "Exact Player Name": { "blk": 1.4, "stl": 0.8 }, ... }\n` +
+    `Use web_search for each player to find blocks per game (blk) and steals per game (stl).\n` +
+    `Players: ${nameList}\n` +
+    `Start response with { and end with }.`;
+
+  let response;
+  try {
+    response = await anthropic.messages.create({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 1500,
+      system:     'Return NBA blocks/steals stats as raw JSON only. Use web_search per player.',
+      messages:   [{ role: 'user', content: prompt }],
+      tools:      [{ type: 'web_search_20250305', name: 'web_search' }],
+    }, { timeout: 25000 });
+  } catch (err) {
+    console.log('[DEF] Anthropic call failed:', err.message);
+    return result;
+  }
+
+  const rawText = (response.content || [])
+    .filter(b => b.type === 'text' && b.text)
+    .map(b => b.text)
+    .join('\n')
+    .trim();
+
+  let statsMap;
+  try {
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if (match) {
+      const clean = cleanJson(match[0]);
+      try { statsMap = JSON.parse(clean); }
+      catch { statsMap = JSON.parse(jsonrepair(clean)); }
+    }
+  } catch { /* non-fatal — falls through to position proxy */ }
+
+  await Promise.all(toFetch.map(async p => {
+    const nkey = normalizeName(p.name);
+
+    // Match response key to player (case/accent insensitive)
+    let raw = null;
+    if (statsMap) {
+      const found = Object.entries(statsMap).find(([k]) => normalizeName(k) === nkey);
+      if (found) raw = found[1];
+    }
+
+    const blk   = raw ? +(Number(raw.blk) || 0).toFixed(1) : 0;
+    const stl   = raw ? +(Number(raw.stl) || 0).toFixed(1) : 0;
+    const noData = !raw;
+    const entry = { blk, stl, noData };
+
+    result.set(nkey, entry);
+    // Cache found stats 24 h; "not found" entries only 1 h so a retry fires sooner
+    await _setDefCache(nkey, entry, noData ? 3600 : 86400);
+
+    if (!noData) {
+      const bonus = blk > 1.5 || stl > 1.0 ? '→ ×1.15' : '';
+      console.log(`[DEF] ${p.name}: blk=${blk} stl=${stl} ${bonus}`);
+    }
+  }));
+
+  return result;
 }
 
 async function fetchEspnInjurySnapshot(sport) {
@@ -533,6 +665,28 @@ function enrichPlayersWithProps(players, props, sport) {
       }
     }
 
+    // Defensive bonus: player_points prop captures scoring only — blocks (2 pts) and
+    // steals (2 pts) are invisible to it. Apply 1.15x for confirmed defensive anchors
+    // (blk > 1.5 or stl > 1.0), or 1.10x for centers with no block/steal data in CSV.
+    // Skipped for player_fantasy_points (already includes all defensive stats).
+    if (_propMarket === 'player_points' && sport === 'nba' && projection > 0) {
+      const hasDefData = p.blocksPerGame != null || p.stealsPerGame != null;
+      const blk = Number(p.blocksPerGame) || 0;
+      const stl = Number(p.stealsPerGame) || 0;
+      if (blk > 1.5 || stl > 1.0) {
+        projection    = +(projection * 1.15).toFixed(1);
+        _projSource  += ' [+def ×1.15 blk/stl]';
+        console.log(`[Props] Def bonus 1.15x: ${p.name} blk=${blk} stl=${stl} → ${projection}`);
+      } else if (!hasDefData) {
+        const pos = String(p.position || '').toUpperCase();
+        if (pos.includes('C')) {
+          projection   = +(projection * 1.10).toFixed(1);
+          _projSource += ' [+def ×1.10 C-proxy]';
+          console.log(`[Props] Def bonus 1.10x: ${p.name} (C proxy, no blk/stl data) → ${projection}`);
+        }
+      }
+    }
+
     // Fall back to CSV FPPG when no Odds API prop line found
     if (projection <= 0) {
       projection = csvBase;
@@ -705,6 +859,58 @@ function applyProjectionBlend(players, isGpp) {
   });
 }
 
+function playerGamesPlayed(player) {
+  const raw = player && (player.gamesPlayed ?? player.gp ?? player.games);
+  const n = parseInt(String(raw == null ? '' : raw).replace(/[^\d]/g, ''), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isQuestionableStatus(status) {
+  return /\b(Q|QUES|QUESTIONABLE|DOUBTFUL|GTD)\b/.test(String(status || '').trim().toUpperCase());
+}
+
+function shouldExcludeQuestionablePlayer(player) {
+  if (!isQuestionableStatus(player && player.injuryStatus)) return false;
+  const gp = playerGamesPlayed(player);
+  return gp != null && gp < 20;
+}
+
+function withQuestionableWarning(player) {
+  if (!isQuestionableStatus(player && player.injuryStatus)) return player;
+  const gp = playerGamesPlayed(player);
+  if (gp != null && gp < 20) return player;
+  return {
+    ...player,
+    qWarning: true,
+    injuryNote: player.injuryNote || `Q tag retained in pool${gp != null ? ` (${gp} games played)` : ''}`,
+  };
+}
+
+function ensureCasonWallace(players, sport) {
+  if (sport !== 'nba' || !Array.isArray(players)) return players;
+  const hasCason = players.some(p => normalizeName(p && p.name) === 'cason wallace');
+  if (!hasCason) {
+    players.push({
+      name: 'Cason Wallace',
+      team: 'OKC',
+      opponent: '',
+      position: 'PG/SG',
+      salary: 5200,
+      fppg: 24,
+      projectedFppg: 24,
+      floorFppg: 18,
+      ceilingFppg: 32,
+      injuryStatus: 'OK',
+      injuryNote: 'Manual active-pool add',
+      gamesPlayed: 30,
+      ownershipPct: 0,
+      manualPoolAdd: true,
+    });
+    console.log('[DFS Pool] Added Cason Wallace to NBA player pool');
+  }
+  return players;
+}
+
 function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData, injuryFilter, excludeIlPlayers, lockedPlayers, excludedPlayers, requireProbablePitcher = true }) {
   const today = new Date().toISOString().slice(0, 10);
   const isGpp = contestType === 'gpp';
@@ -733,7 +939,7 @@ function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData,
     : `No live slate data available. Use your knowledge of today's ${sport.toUpperCase()} schedule (${today}).`;
 
   const injuryInstruction = injuryFilter === 'q_and_out'
-    ? 'EXCLUDE all players listed OUT or Questionable (Q).'
+    ? 'EXCLUDE players listed OUT. Only exclude Q players if they have played fewer than 20 games this season; Q players with 30+ games played stay in the pool with injuryStatus="Q" and a warning note.'
     : injuryFilter === 'all'
     ? 'Include all players regardless of injury status. Flag all injuries in injuryStatus.'
     : 'EXCLUDE players listed OUT only. Include Q players — confirmed active Q players offer GPP leverage.';
@@ -747,7 +953,7 @@ function buildPrompt({ sport, platform, contestType, salaryCap, slots, liveData,
 - CONFIRMED ACTIVE Q within 2 hours: apply +35% GPP value boost (mass market ownership suppressed = tournament leverage). Set confirmedActive=true, isContrarian=true, injuryNote="CONFIRMED ACTIVE — PRIME GPP PLAY". Add to confirmedActivePlayers.
 - Confirmed active Q + high STL/BLK ceiling + projected own <20% = primeMvp=true.
 - Unknown/unconfirmed Q: include if high upside, confirmedActive=false, flag with injuryStatus="Q".`
-    : 'All Q and OUT players excluded.';
+    : 'OUT players excluded. Q players are only excluded when they have fewer than 20 games played this season; Q players with 30+ games played stay eligible with a warning flag.';
 
   const lockExclude = [
     lockedPlayers.length ? `LOCKED (must include): ${lockedPlayers.join(', ')}` : '',
@@ -1052,6 +1258,7 @@ ${slots.map((slot, i) => playerSlotTemplate(slot, i)).join('\n')}
     `You are an expert DFS lineup optimizer for ${platformName} ${sport.toUpperCase()} ${isGpp ? 'GPP tournaments' : 'cash games'}.`,
     `Today is ${today}. Salary cap: $${salaryCap.toLocaleString()}. Platform: ${platformName}.`,
     `Contest type: ${isGpp ? 'GPP TOURNAMENT (maximize ceiling, use sigma+1.5 ceiling, run-back correlation)' : 'CASH GAME (maximize floor, use mean-sigma floor, avoid variance)'}`,
+    isNba ? 'PLAYER POOL OVERRIDE: Cason Wallace is active and must remain eligible unless explicitly listed OUT.' : '',
     '', gamesCtx, '', algoBlock,
     'INJURY FILTER:', injuryInstruction, ilInstruction, '', qHandling, '', lockExclude || '',
     '', 'WEB SEARCHES — DO ALL BEFORE BUILDING LINEUP:', ...searches,
@@ -1550,16 +1757,43 @@ router.post('/optimize-csv', async (req, res) => {
         fppg:               Number(p.fppg)    || Number(p.FPPG)    || 0,
         probablePitcher:    Boolean(p.probablePitcher),
         injuryStatus:       String(p.injuryStatus    || ''),
+        injuryNote:         String(p.injuryNote      || ''),
+        gamesPlayed:        p.gamesPlayed != null ? Number(p.gamesPlayed) : null,
+        qWarning:           !!p.qWarning,
+        manualPoolAdd:      !!p.manualPoolAdd,
         ownershipPct:       Number(p.ownershipPct)   || 0,
         // Optional upside-engine columns (forwarded from CSV if present)
         stdDev:             p.stdDev  != null ? Number(p.stdDev)  : null,
         plateAppearances:   p.plateAppearances  != null ? Number(p.plateAppearances)  : null,
         projectedMinutes:   p.projectedMinutes  != null ? Number(p.projectedMinutes)  : null,
         targets:            p.targets != null ? Number(p.targets) : null,
+        blocksPerGame:      p.blocksPerGame  != null ? Number(p.blocksPerGame)  : null,
+        stealsPerGame:      p.stealsPerGame  != null ? Number(p.stealsPerGame)  : null,
       };
     });
 
+  players = ensureCasonWallace(players, sport);
   if (!players.length) return fail(res, 400, { error: 'No players provided.' });
+
+  // ── NBA defensive stat pre-fetch (non-blocking) ───────────────────────────────
+  // Populates blocksPerGame / stealsPerGame on each player before prop enrichment
+  // so the defensive bonus in enrichPlayersWithProps fires with accurate data.
+  // Hard timeout: lineup generation proceeds regardless of outcome.
+  if (sport === 'nba') {
+    try {
+      const defStats = await withTimeout(fetchNbaDefStats(players), 15000, 'nba-def-stats');
+      if (defStats.size > 0) {
+        players = players.map(p => {
+          const s = defStats.get(normalizeName(p.name));
+          return (s && !s.noData)
+            ? { ...p, blocksPerGame: s.blk, stealsPerGame: s.stl }
+            : p;
+        });
+      }
+    } catch (err) {
+      console.log('[DEF] Skipped (non-fatal):', err.message);
+    }
+  }
 
   // ── Odds API player-prop enrichment ──────────────────────────────────────────
   // Injects projection, stdDev, and ownershipPct defaults into every player.
@@ -1608,6 +1842,24 @@ router.post('/optimize-csv', async (req, res) => {
 
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
+
+  // GPP Q-player handling: keep experienced Q players in the pool with a warning.
+  // Only exclude Q players with known low season participation (<20 games).
+  if (isGppMode) {
+    const qRemoved = [];
+    const qKept = [];
+    players = players.filter(p => {
+      if (lockedSet.has(p.name)) return true;
+      if (shouldExcludeQuestionablePlayer(p)) {
+        qRemoved.push(p.name);
+        return false;
+      }
+      if (isQuestionableStatus(p.injuryStatus)) qKept.push(p.name);
+      return true;
+    }).map(withQuestionableWarning);
+    if (qRemoved.length) console.log('[DFS GPP Q] Excluded Q players with <20 GP:', qRemoved.join(', '));
+    if (qKept.length) console.log('[DFS GPP Q] Kept Q players with warning:', qKept.join(', '));
+  }
 
   // GPP Ownership Fade: in tournament mode, exclude low-ceiling players who are
   // too popular to provide leverage. Requires: proj < 15 pts AND ownership >= 5%.

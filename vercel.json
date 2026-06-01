@@ -1,6 +1,15 @@
 {
   "version": 2,
   "builds": [{ "src": "server.js", "use": "@vercel/node", "config": { "maxDuration": 300 } }],
+  "headers": [
+    {
+      "source": "/api/dfs/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" },
+        { "key": "Pragma",        "value": "no-cache" }
+      ]
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "server.js" },
     { "src": "/(.*)", "dest": "server.js" }

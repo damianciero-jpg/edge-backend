@@ -796,6 +796,13 @@ function solveShowdown(players, config, opts = {}) {
   );
   console.log([logHeader, ...logLines].join('\n'));
 
+  // Dedicated per-player trace — short lines avoid Vercel truncation
+  const wembPerm = permResults.find(r => r.mvp.name.toLowerCase().includes('wemb'));
+  const sgaPerm  = permResults.find(r => r.mvp.name.toLowerCase().includes('shai'));
+  if (wembPerm) console.log('[MVP] WEMB total:', wembPerm.totalFppg, '| mvp:', wembPerm.mvpFppg, '| util:', wembPerm.utilFppg, '| sal:', wembPerm.totalSalary);
+  if (sgaPerm)  console.log('[MVP] SGA  total:', sgaPerm.totalFppg,  '| mvp:', sgaPerm.mvpFppg,  '| util:', sgaPerm.utilFppg,  '| sal:', sgaPerm.totalSalary);
+  if (wembPerm && sgaPerm) console.log('[MVP] WEMB rank:', permResults.indexOf(wembPerm) + 1, '| SGA rank:', permResults.indexOf(sgaPerm) + 1);
+
   const best = permResults[0];
 
   const lineup = [

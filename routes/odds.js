@@ -12,6 +12,7 @@ const ALLOWED_SPORTS = new Set([
   'soccer_epl',
   'soccer_usa_mls',
   'mma_mixed_martial_arts',
+  'golf_pga_tour',
 ]);
 
 router.get('/', async (req, res) => {
@@ -34,21 +35,29 @@ router.get('/', async (req, res) => {
     url.searchParams.set('oddsFormat', 'american');
     url.searchParams.set('dateFormat', 'iso');
 
-    const upstreamUrl = url.toString().replace(apiKey, '[KEY]');
-    console.log(`[Odds] fetching sportKey="${sport}" url=${upstreamUrl}`);
+    const keyPrefix = apiKey.slice(0, 8);
+    console.log('[Odds] Fetching sport key:', sport);
     const upstream = await fetch(url.toString());
+    const status   = upstream.status;
+    const rawText  = await upstream.text();
+
+    const creditsRemaining = upstream.headers.get('x-requests-remaining');
+    const creditsUsed      = upstream.headers.get('x-requests-used');
+
     if (!upstream.ok) {
-      const body = await upstream.json().catch(() => ({}));
-      console.warn(`[Odds] sportKey="${sport}" HTTP ${upstream.status} — url=${upstreamUrl}`, body);
-      // 401/403 means the key doesn't cover this sport or has expired.
-      // Return empty array so the frontend shows "NO UPCOMING GAMES" instead of an error page.
-      if (upstream.status === 401 || upstream.status === 403) {
-        return res.json([]);
-      }
-      return res.status(upstream.status).json({ error: body.message || 'Odds API request failed.' });
+      console.warn(`[Odds] Key prefix: ${keyPrefix}, events returned: 0, status: ${status}`);
+      console.warn('[Odds] Raw error body:', rawText.slice(0, 300));
+      if (creditsRemaining !== null) console.log('[Odds] Credits remaining:', creditsRemaining, 'used:', creditsUsed);
+      if (status === 401 || status === 403) return res.json([]);
+      return res.status(status).json({ error: JSON.parse(rawText).message || 'Odds API request failed.' });
     }
 
-    const games = await upstream.json();
+    let games;
+    try { games = JSON.parse(rawText); } catch { games = []; }
+    const count = Array.isArray(games) ? games.length : 0;
+    console.log(`[Odds] Key prefix: ${keyPrefix}, events returned: ${count}, status: ${status}`);
+    if (creditsRemaining !== null) console.log('[Odds] Credits remaining:', creditsRemaining, 'used:', creditsUsed);
+    if (count === 0) console.warn('[Odds] Zero games returned — raw response:', rawText.slice(0, 300));
     return res.json(Array.isArray(games) ? games : []);
   } catch (err) {
     console.error('Odds proxy error:', err?.stack || err);
