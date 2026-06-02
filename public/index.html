@@ -822,8 +822,8 @@ button,
 }
 
 /* ─── PARLAY BUILDER ────────────────────────────────────────────────────────── */
-#parlay-panel{position:fixed;right:0;top:0;bottom:0;width:320px;background:var(--surface);border-left:1px solid var(--border);z-index:400;display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(16,32,48,0.12);transform:translateX(100%);transition:transform 0.25s ease;pointer-events:none;}
-#parlay-panel.open{transform:translateX(0);pointer-events:auto;}
+#parlay-panel{position:fixed;right:0;top:0;bottom:0;width:320px;background:var(--surface);border-left:1px solid var(--border);z-index:400;display:none;flex-direction:column;box-shadow:-8px 0 24px rgba(16,32,48,0.12);}
+#parlay-panel.open{display:flex;}
 .parlay-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);flex-shrink:0;}
 .parlay-hdr-title{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--accent);}
 .parlay-hdr-right{display:flex;align-items:center;gap:8px;}
@@ -876,8 +876,7 @@ button,
 #parlay-float-btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,122,255,0.45);}
 .parlay-float-badge{background:white;color:var(--accent2);border-radius:999px;font-size:9px;font-weight:800;padding:1px 7px;min-width:18px;text-align:center;}
 @media(max-width:768px){
-  #parlay-panel{right:0;left:0;top:auto;bottom:56px;width:100%;height:65vh;border-left:none;border-top:1px solid var(--border);border-radius:20px 20px 0 0;transform:translateY(100%);transition:transform 0.25s ease;pointer-events:none;}
-  #parlay-panel.open{transform:translateY(0);pointer-events:auto;}
+  #parlay-panel{right:0;left:0;top:auto;bottom:56px;width:100%;height:65vh;border-left:none;border-top:1px solid var(--border);border-radius:20px 20px 0 0;}
   #parlay-float-btn{bottom:calc(56px + 14px + env(safe-area-inset-bottom));right:16px;}
 }
 
@@ -1020,6 +1019,19 @@ tr.dfs-row-banned td.dfs-player-name{text-decoration:line-through;opacity:0.55;}
   .dfs-btn-group{display:grid;grid-template-columns:1fr;gap:8px;}
   .dfs-totals-row{grid-template-columns:repeat(3,1fr);}
   .dfs-perf-grid{grid-template-columns:repeat(2,1fr);}
+}
+
+/* ─── SCROLL GUARANTEE ───────────────────────────────────────────────────────── */
+/* display:none on #parlay-panel when closed means zero rendering impact.        */
+/* overflow rules here win the cascade; -webkit-overflow-scrolling for iOS.      */
+html {
+  overflow-x: hidden;
+  overflow-y: auto !important;
+}
+body {
+  overflow-x: hidden;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 </style>
 <!-- Google Analytics -->
