@@ -225,6 +225,191 @@ async function getOddsCredits() {
   return (entry && entry.expiresAt > Date.now()) ? entry.value : null;
 }
 
+// ── PGA Tournament Leaderboard Cache ─────────────────────────────────────────
+// Fetches current tournament leaderboard via Anthropic web search.
+// Cached in Redis 30 min (in-memory fallback in dev).
+
+const PGA_LEADERBOARD_TTL = 30 * 60; // 30 minutes in seconds
+const memoryPgaCache = new Map();
+
+async function getCachedPgaLeaderboard(key) {
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      const val = await withTimeout(redis.get(key), 3000, 'pga-lb-get');
+      return val ? JSON.parse(val) : null;
+    } catch { return null; }
+  }
+  const entry = memoryPgaCache.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) return null;
+  return entry.value;
+}
+
+async function setCachedPgaLeaderboard(key, value) {
+  if (hasRedisConfig()) {
+    try {
+      const redis = createRedis();
+      await withTimeout(redis.set(key, JSON.stringify(value), { ex: PGA_LEADERBOARD_TTL }), 3000, 'pga-lb-set');
+    } catch { /* non-fatal */ }
+  } else {
+    memoryPgaCache.set(key, { value, expiresAt: Date.now() + PGA_LEADERBOARD_TTL * 1000 });
+  }
+}
+
+async function fetchPgaLeaderboard(tournamentHint) {
+  const date = new Date().toISOString().slice(0, 10);
+  const cacheKey = `edge:dfs:pga:lb:${date}`;
+
+  const cached = await getCachedPgaLeaderboard(cacheKey);
+  if (cached) { console.log('[PGA] Leaderboard cache HIT'); return { leaderboard: cached, fromCache: true }; }
+
+  const query = tournamentHint
+    ? `${tournamentHint} PGA leaderboard current scores 2026`
+    : 'PGA Tour current tournament leaderboard scores 2026';
+
+  const prompt = `Search for the current PGA Tour tournament leaderboard using web_search.
+Query: "${query}"
+Return ONLY raw JSON (no markdown, no code fences):
+{
+  "tournament": "Tournament Name",
+  "round": "R2",
+  "leaderboard": [
+    { "position": 1, "name": "Scottie Scheffler", "totalScore": -12, "r1Score": -5, "r2Score": -7, "r1Position": 3 }
+  ]
+}
+Rules:
+- totalScore: integer vs par (e.g. -9 = nine under, 0 = even, +2 = two over).
+- r1Score, r2Score: individual round scores vs par.
+- r1Position: leaderboard position after round 1 only.
+- Include top 40 players. Start with { end with }.`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 3000,
+      system: 'Return PGA leaderboard as raw JSON only. Use web_search. Start with { end with }.',
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    }, { timeout: 30000 });
+
+    const rawText = (response.content || [])
+      .filter(b => b.type === 'text' && b.text)
+      .map(b => b.text).join('\n').trim();
+    const parsed = parseJsonFromText(rawText);
+    const leaderboard = Array.isArray(parsed.leaderboard) ? parsed.leaderboard.slice(0, 40) : [];
+    if (leaderboard.length > 0) await setCachedPgaLeaderboard(cacheKey, leaderboard);
+    console.log(`[PGA] Fetched ${leaderboard.length} players — ${parsed.tournament || 'unknown tournament'}`);
+    return { leaderboard, tournament: parsed.tournament || null, round: parsed.round || null };
+  } catch (err) {
+    console.warn('[PGA] Leaderboard fetch failed:', err.message);
+    return { leaderboard: [], error: err.message };
+  }
+}
+
+function pgaNameMatch(a, b) {
+  const na = normalizeName(a), nb = normalizeName(b);
+  if (na === nb) return true;
+  const al = na.split(' ').pop(), bl = nb.split(' ').pop();
+  return al && al.length > 3 && al === bl;
+}
+
+function pgaScoreLabel(score) {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 'E';
+  return n < 0 ? String(n) : n === 0 ? 'E' : `+${n}`;
+}
+
+function pgaPosLabel(pos) {
+  const n = Number(pos);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n === 1) return '1st'; if (n === 2) return '2nd'; if (n === 3) return '3rd';
+  return `T${n}`;
+}
+
+// Re-scores golfer fppg using leaderboard weights:
+// 40% tournament position · 25% season FPPG · 20% SG/course-fit proxy · 15% ownership fade
+function applyPgaLeaderboardScoring(players, leaderboard, isGpp) {
+  if (!leaderboard.length) return players;
+  const maxFppg = Math.max(...players.map(p => Number(p.fppg || p.projection) || 0), 1);
+  const maxPos  = Math.max(...leaderboard.map(l => Number(l.position) || 50), 50);
+
+  return players.map(p => {
+    const entry = leaderboard.find(l => pgaNameMatch(p.name, l.name));
+    if (!entry) return p;
+
+    const position   = Number(entry.position)  || 50;
+    const r1Position = Number(entry.r1Position) || position;
+    const totalScore = Number(entry.totalScore) || 0;
+    const r1Score    = Number(entry.r1Score)    || 0;
+    const r2Score    = Number(entry.r2Score)    || 0;
+
+    // 40% — position weight (lower position = higher score)
+    const posWeight  = Math.max(0, 100 * (1 - (position - 1) / Math.max(maxPos - 1, 1)));
+    // 25% — season FPPG normalised 0–100
+    const fppgWeight = Math.min(100, (Number(p.fppg || p.projection) || 0) / maxFppg * 100);
+    // 20% — SG/course-fit proxy: R2 improvement vs R1 as signal
+    const r2Improvement = r1Score - r2Score; // positive = player fired lower round
+    const sgWeight   = Math.min(100, Math.max(0, posWeight + r2Improvement * 3));
+    // 15% — ownership fade
+    const own        = Number(p.ownershipPct) || 15;
+    const ownWeight  = isGpp ? Math.max(0, 100 - own * 2) : 50;
+
+    const composite  = posWeight * 0.40 + fppgWeight * 0.25 + sgWeight * 0.20 + ownWeight * 0.15;
+
+    // Hot player: 5+ positions improved R1→R2 = TRENDING (+10%)
+    const posImprv   = r1Position - position;
+    const isTrending = posImprv >= 5;
+    const finalFppg  = isTrending ? +(composite * 1.10).toFixed(2) : +composite.toFixed(2);
+
+    return {
+      ...p,
+      fppg:                   finalFppg,
+      pgaPosition:            position,
+      pgaPositionLabel:       pgaPosLabel(position),
+      pgaTotalScore:          totalScore,
+      pgaTotalScoreLabel:     pgaScoreLabel(totalScore),
+      pgaR2Score:             r2Score,
+      pgaR2ScoreLabel:        pgaScoreLabel(r2Score),
+      pgaR1Score:             r1Score,
+      pgaIsTrending:          isTrending,
+      pgaPositionImprovement: posImprv,
+    };
+  });
+}
+
+// Exclude players at E or worse after R2. If < 20 remain, relax to include E.
+function pgaEligibilityFilter(players, leaderboard, round) {
+  if (!leaderboard.length) return { players, warning: null };
+  const roundNum = parseInt(String(round || '').replace(/\D/g, '')) || 0;
+  if (roundNum < 2) return { players, warning: null };
+
+  const underPar = players.filter(p => {
+    const e = leaderboard.find(l => pgaNameMatch(p.name, l.name));
+    return !e || Number(e.totalScore) <= -1;
+  });
+  if (underPar.length >= 20) return { players: underPar, warning: null };
+
+  const evenOrBetter = players.filter(p => {
+    const e = leaderboard.find(l => pgaNameMatch(p.name, l.name));
+    return !e || Number(e.totalScore) <= 0;
+  });
+  console.log(`[PGA] Eligibility: ${underPar.length} under par → relaxed to ${evenOrBetter.length} (incl. E)`);
+  const pool = evenOrBetter.length >= underPar.length ? evenOrBetter : players;
+  return { players: pool, warning: 'Limited pool — including even par players.' };
+}
+
+function buildPgaRationale(lineup, leaderboard) {
+  if (!leaderboard.length || !lineup.length) return null;
+  const leader   = leaderboard[0];
+  const top5     = leaderboard.slice(0, 5);
+  const hasTop5  = lineup.some(p => top5.some(l => pgaNameMatch(p.name, l.name)));
+  const matched  = lineup.filter(p => leaderboard.find(l => pgaNameMatch(p.name, l.name)));
+  const avgScore = matched.length
+    ? matched.reduce((s, p) => { const e = leaderboard.find(l => pgaNameMatch(p.name, l.name)); return s + (Number(e && e.totalScore) || 0); }, 0) / matched.length
+    : 0;
+  return `Tournament leader: ${leader.name} at ${pgaScoreLabel(leader.totalScore)}. Top 5 included: ${hasTop5 ? 'yes' : 'no'}. Avg tournament score: ${pgaScoreLabel(Math.round(avgScore))}.`;
+}
+
 // ── NBA defensive stat cache (blk/stl per game) ───────────────────────────────
 
 function _defKey(normalizedName) {
@@ -1843,6 +2028,56 @@ router.post('/optimize-csv', async (req, res) => {
   const lockedSet   = new Set((lockedPlayers  || []).map(n => String(n)));
   const excludedSet = new Set((excludedPlayers || []).map(n => String(n)));
 
+  // ── PGA Tournament Leaderboard (golf only) ──────────────────────────────────
+  let pgaLeaderboard = [];
+  let pgaTournament  = null;
+  let pgaRound       = null;
+  let pgaWarning     = null;
+
+  if (sport === 'golf') {
+    // Try to extract tournament name from player game-info string if present
+    const gameInfoRaw = (rawPlayers.find(p => p && p.gameInfo) || {}).gameInfo || '';
+    const tournamentHint = gameInfoRaw.split(/\d+\/\d+/)[0].replace(/[^a-zA-Z\s]/g, '').trim() || null;
+
+    try {
+      const pgaData = await withTimeout(fetchPgaLeaderboard(tournamentHint), 35000, 'pga-leaderboard');
+      pgaLeaderboard = pgaData.leaderboard || [];
+      pgaTournament  = pgaData.tournament  || null;
+      pgaRound       = pgaData.round       || null;
+      if (pgaData.error && !pgaLeaderboard.length) {
+        pgaWarning = 'Live leaderboard unavailable — using season projections only.';
+      }
+    } catch (err) {
+      console.warn('[PGA] Leaderboard unavailable (non-fatal):', err.message);
+      pgaWarning = 'Live leaderboard unavailable — using season projections only.';
+    }
+
+    if (pgaLeaderboard.length > 0) {
+      // 1. Eligibility filter (E or worse excluded after R2; relax if < 20 remain)
+      const eligResult = pgaEligibilityFilter(players, pgaLeaderboard, pgaRound);
+      players   = eligResult.players;
+      if (eligResult.warning) pgaWarning = eligResult.warning;
+
+      // 2. Re-score using 40/25/20/15 leaderboard weights
+      players = applyPgaLeaderboardScoring(players, pgaLeaderboard, isGppMode);
+
+      // 3. Mandatory top-5 lock: auto-lock the best available top-5 player
+      const top5       = pgaLeaderboard.slice(0, 5);
+      const top5Locked = top5.some(l => [...lockedSet].some(n => pgaNameMatch(n, l.name)));
+      if (!top5Locked) {
+        const bestTop5 = players
+          .filter(p => top5.some(l => pgaNameMatch(p.name, l.name)) && !excludedSet.has(p.name))
+          .sort((a, b) => (b.fppg || 0) - (a.fppg || 0))[0];
+        if (bestTop5) {
+          lockedSet.add(bestTop5.name);
+          console.log(`[PGA] Auto-locked top-5: ${bestTop5.name} (pos ${bestTop5.pgaPosition}, ${pgaScoreLabel(bestTop5.pgaTotalScore)})`);
+        }
+      }
+    } else {
+      pgaWarning = pgaWarning || 'Live leaderboard unavailable — using season projections only.';
+    }
+  }
+
   // GPP Q-player handling: keep experienced Q players in the pool with a warning.
   // Only exclude Q players with known low season participation (<20 games).
   if (isGppMode) {
@@ -2079,6 +2314,11 @@ router.post('/optimize-csv', async (req, res) => {
     });
   }
 
+  // PGA rationale — built from primary lineup after solve
+  const pgaRationale = (sport === 'golf' && pgaLeaderboard.length > 0 && results.length > 0)
+    ? buildPgaRationale(results[0].lineup || [], pgaLeaderboard)
+    : null;
+
   // Compute summary totals the frontend summary bar expects
   const primary = results[0];
   const summaryLineup = primary ? primary.lineup : [];
@@ -2108,6 +2348,10 @@ router.post('/optimize-csv', async (req, res) => {
       lineupMode,
       commenceTime:     enrichDebug.commenceTime || null,
       oddsApiCredits,
+      pgaRationale,
+      pgaWarning,
+      pgaTournament,
+      pgaRound,
     },
     debug: {
       sport, isShowdown, platform,
