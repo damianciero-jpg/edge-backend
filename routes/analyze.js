@@ -58,6 +58,70 @@ function teamNameMatch(promptText, teamName) {
 function fmt(odds) { return odds > 0 ? `+${odds}` : String(odds); }
 function fmtPoint(point) { return point > 0 ? `+${point}` : String(point); }
 
+// ─── MLB STATS API ────────────────────────────────────────────────────────────
+const MLB_TEAM_NAME_MAP = {
+  'arizona diamondbacks':109,'atlanta braves':144,'baltimore orioles':110,
+  'boston red sox':111,'chicago cubs':112,'chicago white sox':145,
+  'cincinnati reds':113,'cleveland guardians':114,'colorado rockies':115,
+  'detroit tigers':116,'houston astros':117,'kansas city royals':118,
+  'los angeles angels':108,'los angeles dodgers':119,'miami marlins':146,
+  'milwaukee brewers':158,'minnesota twins':142,'new york mets':121,
+  'new york yankees':147,'oakland athletics':133,'philadelphia phillies':143,
+  'pittsburgh pirates':134,'san diego padres':135,'san francisco giants':137,
+  'seattle mariners':136,'st. louis cardinals':138,'tampa bay rays':139,
+  'texas rangers':140,'toronto blue jays':141,'washington nationals':120,
+};
+
+function resolveMLBTeamId(teamName) {
+  const lower = String(teamName || '').toLowerCase();
+  if (MLB_TEAM_NAME_MAP[lower]) return MLB_TEAM_NAME_MAP[lower];
+  for (const [key, id] of Object.entries(MLB_TEAM_NAME_MAP)) {
+    if (lower && key.includes(lower)) return id;
+    const parts = lower.split(' ');
+    if (parts.some(p => p.length > 3 && key.includes(p))) return id;
+  }
+  return null;
+}
+
+async function fetchMLBTeamStats(teamName) {
+  const teamId = resolveMLBTeamId(teamName);
+  if (!teamId) return null;
+  try {
+    const season = new Date().getFullYear();
+    const res = await withTimeout(fetch(`https://statsapi.mlb.com/api/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`), 4000, 'mlb standings');
+    if (!res.ok) return null;
+    const data = await res.json();
+    for (const division of (data.records || [])) {
+      for (const team of (division.teamRecords || [])) {
+        if (team.team && team.team.id === teamId) {
+          const splits = (team.records && team.records.splitRecords) || [];
+          const home = splits.find(s => s.type === 'home') || {};
+          const away = splits.find(s => s.type === 'away') || {};
+          return {
+            record: `${team.wins||0}-${team.losses||0}`,
+            homeRecord: `${home.wins||0}-${home.losses||0}`,
+            awayRecord: `${away.wins||0}-${away.losses||0}`,
+            streak: team.streak && team.streak.streakCode ? team.streak.streakCode : null,
+            winPct: team.winningPercentage || null,
+          };
+        }
+      }
+    }
+  } catch (err) { console.warn('MLB stats fetch failed:', err.message); }
+  return null;
+}
+
+async function fetchMLBTeamStatsBlock(homeTeam, awayTeam) {
+  try {
+    const [homeStats, awayStats] = await Promise.all([fetchMLBTeamStats(homeTeam), fetchMLBTeamStats(awayTeam)]);
+    if (!homeStats && !awayStats) return null;
+    const lines = ['', '--- MLB TEAM STATS (Live) ---'];
+    if (homeStats) lines.push(`${homeTeam}: ${homeStats.record} overall | Home: ${homeStats.homeRecord} | Away: ${homeStats.awayRecord}${homeStats.streak ? ` | Streak: ${homeStats.streak}` : ''}`);
+    if (awayStats) lines.push(`${awayTeam}: ${awayStats.record} overall | Home: ${awayStats.homeRecord} | Away: ${awayStats.awayRecord}${awayStats.streak ? ` | Streak: ${awayStats.streak}` : ''}`);
+    return lines.join('\n');
+  } catch { return null; }
+}
+
 async function fetchLiveGameOdds(prompt) {
   try {
     const apiKey = process.env.THE_ODDS_API_KEY || process.env.ODDS_API_KEY || process.env.ODDS_KEY;
@@ -183,13 +247,24 @@ async function fetchLiveGameOdds(prompt) {
       );
     }
 
+    // Fetch MLB team stats if this is a baseball game
+    let mlbStatsBlock = null;
+    if (sportKey === MLB_SPORT_KEY) {
+      try {
+        mlbStatsBlock = await withTimeout(fetchMLBTeamStatsBlock(homeTeam, awayTeam), 4000, 'mlb stats');
+      } catch { mlbStatsBlock = null; }
+    }
+
+    const enrichedOddsBlock = mlbStatsBlock ? oddsBlock + mlbStatsBlock : oddsBlock;
+
     return {
       homeTeam,
       awayTeam,
       homeOdds: h2hHome,
       awayOdds: h2hAway,
-      oddsBlock,
+      oddsBlock: enrichedOddsBlock,
       candidates,
+      mlbStats: mlbStatsBlock,
     };
   } catch (err) {
     console.warn('fetchLiveGameOdds failed:', err.message);

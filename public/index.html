@@ -5320,13 +5320,26 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function confidenceScoreFrom(confidence, explicitScore) {
+function confidenceScoreFrom(confidence, explicitScore, edgeScore) {
+  // Prefer explicit score if provided
   const parsed = parseFloat(explicitScore);
   if (Number.isFinite(parsed)) return clamp(Math.round(parsed), 0, 100);
+
+  // Use edgeScore from backend to compute a real dynamic percentage.
+  // edgeScore range in practice: ~-5 (no value) to ~20 (very strong edge).
+  // Map that to a 30–97% meter range so it never looks artificially perfect.
+  const edge = parseFloat(edgeScore);
+  if (Number.isFinite(edge)) {
+    // clamp edgeScore to [-5, 20], then normalize to [30, 97]
+    const normalized = (clamp(edge, -5, 20) + 5) / 25; // 0..1
+    return clamp(Math.round(30 + normalized * 67), 30, 97);
+  }
+
+  // Final fallback: label-based (used only when no edgeScore available)
   const c = String(confidence || '').toUpperCase();
-  if (c === 'HIGH') return 82;
-  if (c === 'LOW') return 48;
-  return 66;
+  if (c === 'HIGH') return 75;
+  if (c === 'LOW') return 42;
+  return 58;
 }
 
 function confidenceBand(score) {
@@ -5541,7 +5554,7 @@ function renderAIResult(r, rawText = '') {
     return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
   };
   const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
-  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct));
+  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct), r.edgeScore);
   const confText = `${confLabel} (${confScore}%)`;
   const homeEV = firstDefined(r.home_ev, r.homeEV);
   const awayEV = firstDefined(r.away_ev, r.awayEV);
