@@ -1466,12 +1466,14 @@ router.post('/', async (req, res) => {
         }, lineMovementScore),
       }));
 
-      console.log('CANDIDATES LOG:', JSON.stringify(pairs.map(p => ({
+      const candidateSummary = pairs.map(p => ({
         team: p.candidate.team,
         market: p.candidate.market,
         odds: p.candidate.odds,
         edgeScore: p.eval.edgeScore,
-      }))));
+        verdict: p.eval.verdict,
+      }));
+      console.log('CANDIDATES LOG:', JSON.stringify(candidateSummary));
 
       pairs.sort((a, b) => b.eval.edgeScore - a.eval.edgeScore);
       evaluation = pairs[0].eval;
@@ -1481,6 +1483,18 @@ router.post('/', async (req, res) => {
         evaluation.pick = bestCandidate.label;
         evaluation.evaluating = bestCandidate.label;
       }
+
+      // Surface all candidates so the UI can show what was evaluated
+      // Filter to BET/LEAN candidates first, fall back to top 3 by score
+      const betCandidates = pairs.filter(p => p.eval.verdict !== 'PASS');
+      evaluation.allCandidates = (betCandidates.length ? betCandidates : pairs.slice(0, 3)).map(p => ({
+        label: p.candidate.label,
+        market: p.candidate.market,
+        edgeScore: p.eval.edgeScore,
+        verdict: p.eval.verdict,
+        impliedProb: p.eval.impliedProb,
+        projectedProb: p.eval.projectedProb,
+      }));
     } else {
       evaluation = buildEdgeEvaluation(resolvedPrompt, {
         selectedSide: resolvedSelectedSide,

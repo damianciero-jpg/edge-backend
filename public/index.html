@@ -5669,6 +5669,7 @@ function renderAIResult(r, rawText = '') {
       <div class="ev-card"><div class="ev-label">SELECTED EDGE</div><div class="ev-val ${ec(homeEV)}">${Number.isFinite(homeEV) ? (homeEV > 0 ? '+' : '') + homeEV.toFixed(1) + '%' : 'N/A'}</div></div>
       <div class="ev-card"><div class="ev-label">OPPONENT EDGE</div><div class="ev-val ${ec(awayEV)}">${Number.isFinite(awayEV) ? (awayEV > 0 ? '+' : '') + awayEV.toFixed(1) + '%' : 'N/A'}</div></div>
     </div>
+    ${r.allCandidates && r.allCandidates.length > 1 ? `<div class="sec"><div class="sec-hdr" style="color:var(--muted)">ALL PLAYS SCANNED (${r.allCandidates.length})</div><div class="sec-body" style="font-family:var(--mono);font-size:10px;line-height:2">${r.allCandidates.map(c => `<span style="color:${c.verdict==='BET'?'var(--green)':c.verdict==='LEAN'?'var(--yellow)':'var(--muted)'}">${c.verdict}</span> &nbsp;${escapeHtml(c.label)}&nbsp;<span style="color:var(--muted2)">score: ${Number.isFinite(c.edgeScore)?c.edgeScore.toFixed(1):c.edgeScore}</span>`).join('<br>')}</div></div>` : ''}
     <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
