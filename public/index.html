@@ -5339,13 +5339,25 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function confidenceScoreFrom(confidence, explicitScore) {
+function confidenceScoreFrom(confidence, explicitScore, edgeScore) {
+  // Prefer explicit score if provided
   const parsed = parseFloat(explicitScore);
   if (Number.isFinite(parsed)) return clamp(Math.round(parsed), 0, 100);
+
+  // Use edgeScore from backend to compute a real dynamic percentage.
+  // edgeScore range in practice: ~-5 (no value) to ~20 (very strong edge).
+  // Map that to a 30-97% meter range so it never looks artificially perfect.
+  const edge = parseFloat(edgeScore);
+  if (Number.isFinite(edge)) {
+    const normalized = (clamp(edge, -5, 20) + 5) / 25; // 0..1
+    return clamp(Math.round(30 + normalized * 67), 30, 97);
+  }
+
+  // Final fallback: label-based (used only when no edgeScore available)
   const c = String(confidence || '').toUpperCase();
-  if (c === 'HIGH') return 82;
-  if (c === 'LOW') return 48;
-  return 66;
+  if (c === 'HIGH') return 75;
+  if (c === 'LOW') return 42;
+  return 58;
 }
 
 function confidenceBand(score) {
@@ -5652,8 +5664,8 @@ function renderAIResult(r, rawText = '') {
       <div class="ev-card"><div class="ev-label">IMPLIED PROBABILITY</div><div class="ev-val neu">${escapeHtml(pct(r.impliedProb))}</div></div>
       <div class="ev-card"><div class="ev-label">EDGE PROJECTION</div><div class="ev-val neu">${escapeHtml(pct(r.projectedProb))}</div></div>
       <div class="ev-card"><div class="ev-label">EDGE SCORE</div><div class="ev-val ${ec(r.edgeScore)}">${escapeHtml(firstDefined(r.edgeScore, 'N/A'))}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${homeTrueProb != null ? homeTrueProb + '%' : 'N/A'}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${awayTrueProb != null ? awayTrueProb + '%' : 'N/A'}</div></div>
+      <div class="ev-card"><div class="ev-label">SELECTED TRUE PROB</div><div class="ev-val neu">${homeTrueProb != null ? homeTrueProb + '%' : 'N/A'}</div></div>
+      <div class="ev-card"><div class="ev-label">OPPONENT TRUE PROB</div><div class="ev-val neu">${awayTrueProb != null ? awayTrueProb + '%' : 'N/A'}</div></div>
       <div class="ev-card"><div class="ev-label">SELECTED EDGE</div><div class="ev-val ${ec(homeEV)}">${Number.isFinite(homeEV) ? (homeEV > 0 ? '+' : '') + homeEV.toFixed(1) + '%' : 'N/A'}</div></div>
       <div class="ev-card"><div class="ev-label">OPPONENT EDGE</div><div class="ev-val ${ec(awayEV)}">${Number.isFinite(awayEV) ? (awayEV > 0 ? '+' : '') + awayEV.toFixed(1) + '%' : 'N/A'}</div></div>
     </div>

@@ -767,10 +767,29 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   const pinnacleOpponentOdds = opponentOdds != null ? extractPinnacleOdds(prompt, candidate && candidate.opponent, candidate && candidate.team) : null;
 
   let implied, projected;
+  const candidateMarketType = (candidate && candidate.market) || 'h2h';
+
   if (!oddsDetected) {
     implied = 0.5;
     projected = 0.5;
+  } else if (candidateMarketType === 'spreads' || candidateMarketType === 'totals') {
+    // CRITICAL: For spread/total markets, ALWAYS use the market's own two-sided
+    // odds for probability — never use moneyline-derived probability.
+    // A -3000 ML favorite is NOT a 94% spread cover proposition.
+    // The spread market already prices the cover probability correctly.
+    if (opponentOdds != null) {
+      const rawA = impliedProb(odds);
+      const rawB = impliedProb(opponentOdds);
+      projected = clampProbability(vigRemoved(rawA, rawB));
+      implied = rawA;
+    } else {
+      // No opponent odds available — use the spread price directly
+      // Spread odds near -110/-110 imply ~50% true probability
+      implied = impliedProb(odds);
+      projected = clampProbability(implied + 0.015);
+    }
   } else if (pinnacleOdds != null && pinnacleOpponentOdds != null) {
+    // h2h market with Pinnacle data — gold standard
     const pinnacleRawA = impliedProb(pinnacleOdds);
     const pinnacleRawB = impliedProb(pinnacleOpponentOdds);
     projected = clampProbability(vigRemoved(pinnacleRawA, pinnacleRawB));
