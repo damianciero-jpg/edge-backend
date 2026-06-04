@@ -965,14 +965,18 @@ function buildScoredPrompt(prompt, evaluation) {
     '',
     'Instruction:',
     'You are an expert sports betting analyst using the Pinnacle sharp-line methodology.',
-    'Explain the reasoning for this pick using the algorithm values above.',
+    'Review the algorithm values AND the live odds/team stats data above.',
+    'Form your OWN independent verdict: BET, LEAN, or PASS.',
+    '- BET: you agree there is genuine value and the pick is sound',
+    '- LEAN: modest value but some concern, small unit only',
+    '- PASS: the data does not support this pick regardless of the price gap',
     'Reference the true probability vs implied probability gap as the core value signal.',
+    'If team stats show a struggling offense, injured star, or bad road record, factor that in.',
     'If line movement data is available, reference whether sharp money agrees or disagrees.',
-    'Do not change the verdict. Return strict JSON only.',
-    'Do not recommend a different side than the selected pick unless verdict is PASS.',
+    'Return strict JSON only. No markdown, no preamble.',
     '',
     'Return this JSON shape only:',
-    '{"reason":"2-3 sentence explanation referencing the value gap and key signals","topFactors":["factor 1","factor 2","factor 3"]}',
+    '{"aiVerdict":"BET|LEAN|PASS","reason":"2-3 sentence explanation referencing value gap, team context, and key signals","topFactors":["factor 1","factor 2","factor 3"]}',
   ].filter(Boolean).join('\n');
 }
 
@@ -984,23 +988,85 @@ function parseJsonObject(text) {
   }
 }
 
+
+// ─── CONSENSUS GATE ───────────────────────────────────────────────────────────
+// Only output BET when both the algorithm score AND the AI independently agree.
+// If they diverge, downgrade to PASS to avoid bad picks.
+//
+// Rules:
+//   Algorithm BET  + AI BET   → BET  (full consensus)
+//   Algorithm BET  + AI LEAN  → LEAN (AI has reservations — respect them)
+//   Algorithm BET  + AI PASS  → PASS (AI vetoed — conflict)
+//   Algorithm LEAN + AI BET   → LEAN (algorithm isn't strong enough alone)
+//   Algorithm LEAN + AI LEAN  → LEAN
+//   Algorithm LEAN + AI PASS  → PASS
+//   Algorithm PASS + anything → PASS (algorithm already said no)
+
+function applyConsensusGate(algoVerdict, aiVerdict) {
+  const algo = String(algoVerdict || '').toUpperCase();
+  const ai   = String(aiVerdict   || '').toUpperCase();
+
+  // No AI verdict returned — fall back to algorithm alone (don't block)
+  if (!ai || ai === 'UNKNOWN') return { verdict: algo, conflicted: false };
+
+  if (algo === 'PASS') return { verdict: 'PASS', conflicted: false };
+
+  if (algo === 'BET' && ai === 'BET')  return { verdict: 'BET',  conflicted: false };
+  if (algo === 'BET' && ai === 'LEAN') return { verdict: 'LEAN', conflicted: false };
+  if (algo === 'BET' && ai === 'PASS') return { verdict: 'PASS', conflicted: true  };
+
+  if (algo === 'LEAN' && ai === 'BET')  return { verdict: 'LEAN', conflicted: false };
+  if (algo === 'LEAN' && ai === 'LEAN') return { verdict: 'LEAN', conflicted: false };
+  if (algo === 'LEAN' && ai === 'PASS') return { verdict: 'PASS', conflicted: true  };
+
+  return { verdict: algo, conflicted: false };
+}
+
+function conflictReason(evaluation, aiVerdict) {
+  return `Algorithm identified a ${evaluation.edgeScore > 0 ? '+' : ''}${evaluation.edgeScore.toFixed(1)} edge score on ${evaluation.evaluating || evaluation.pick}, but AI analysis returned ${aiVerdict} after reviewing team context, injuries, and matchup data. When algorithm and AI signals conflict, EDGE defaults to PASS — no bet until signals align.`;
+}
+
 function buildStructuredResult(evaluation, aiText) {
   const parsed = parseJsonObject(aiText) || {};
   const parsedReason = parsed.reason || parsed.reasoning;
-  const reason = reasonConflictsWithSelectedSide(parsedReason, evaluation)
-    ? sideAlignedReason(evaluation)
-    : parsedReason || sideAlignedReason(evaluation) || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
+  const aiVerdict = String(parsed.aiVerdict || '').toUpperCase();
+
+  // Apply consensus gate — only BET when algorithm and AI agree
+  const { verdict: consensusVerdict, conflicted } = applyConsensusGate(evaluation.verdict, aiVerdict);
+
+  // If conflicted, override reason with conflict explanation
+  const rawReason = conflicted
+    ? conflictReason(evaluation, aiVerdict)
+    : reasonConflictsWithSelectedSide(parsedReason, evaluation)
+      ? sideAlignedReason(evaluation)
+      : parsedReason || sideAlignedReason(evaluation) || fallbackReason(evaluation.oddsDetected, evaluation.edgeScore);
+
+  // Downgrade confidence and pick if verdict changed by consensus gate
+  const finalVerdict = consensusVerdict;
+  const finalPick = finalVerdict === 'PASS' ? 'PASS — signals conflict' : evaluation.pick;
+  const finalConfidence = conflicted ? 'LOW'
+    : finalVerdict === 'BET' ? evaluation.confidence
+    : finalVerdict === 'LEAN' && evaluation.confidence === 'HIGH' ? 'MEDIUM'
+    : evaluation.confidence;
+  const finalRecommendedAction = conflicted
+    ? 'Pass — algorithm and AI signals are in conflict. Wait for alignment.'
+    : getRecommendedAction(finalVerdict, finalConfidence);
+
+  const reason = rawReason;
 
   return {
-    verdict: evaluation.verdict,
-    pick: evaluation.pick,
+    verdict: finalVerdict,
+    pick: finalPick,
+    aiVerdict: aiVerdict || null,
+    algoVerdict: evaluation.verdict,
+    consensusConflict: conflicted,
     evaluating: evaluation.evaluating || evaluation.pick,
     selectedSide: evaluation.selectedSide,
     selectedTeam: evaluation.selectedTeam,
     opponentTeam: evaluation.opponentTeam,
     market: evaluation.market,
-    confidence: evaluation.confidence,
-    risk: evaluation.risk,
+    confidence: finalConfidence,
+    risk: conflicted ? 'HIGH' : evaluation.risk,
     edgeStrength: evaluation.edgeStrength,
     edgeScore: evaluation.edgeScore,
     odds: evaluation.odds,
@@ -1018,7 +1084,7 @@ function buildStructuredResult(evaluation, aiText) {
     lineMovementSignal: evaluation.lineMovementSignal,
     reason,
     topFactors: normalizeTopFactors(parsed.topFactors || parsed.key_factors || parsed.keyFactors, evaluation),
-    recommendedAction: evaluation.recommendedAction,
+    recommendedAction: finalRecommendedAction,
   };
 }
 
