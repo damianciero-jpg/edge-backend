@@ -265,6 +265,7 @@ async function fetchLiveGameOdds(prompt) {
       oddsBlock: enrichedOddsBlock,
       candidates,
       mlbStats: mlbStatsBlock,
+      fetchedAt: Date.now(),
     };
   } catch (err) {
     console.warn('fetchLiveGameOdds failed:', err.message);
@@ -521,6 +522,12 @@ function computeEdgeScore({
   teamFormSignal = 0,
 }) {
   const priceEdge = (noVigProb - rawImplied) * 100;
+
+  // HARD GATE: if the true probability is lower than implied (negative price edge),
+  // there is no value on this side. Context signals cannot rescue a negative edge.
+  // Return a negative score that will always resolve to PASS.
+  if (priceEdge <= 0) return priceEdge * 0.55;
+
   // If we have real team form data, use it as the primary contextual signal.
   // Otherwise fall back to keyword-based situational signal.
   const contextSignal = teamFormSignal !== 0 ? teamFormSignal : situationalSignal;
@@ -540,8 +547,10 @@ function computeEdgeScore({
 // This allows plus-money underdogs with real value (e.g. score 0.22+) to show
 // LEAN instead of defaulting to PASS every time.
 function getVerdict(score) {
-  if (score > 5) return 'BET';
-  if (score > 0) return 'LEAN';
+  // Require meaningful positive score for any recommendation.
+  // score > 0 but < 1 is noise — too small to act on.
+  if (score > 5)   return 'BET';
+  if (score > 1.5) return 'LEAN';
   return 'PASS';
 }
 
@@ -1418,7 +1427,8 @@ router.post('/', async (req, res) => {
       resolvedSelectedTeam = liveOdds.homeTeam;
       resolvedOpponentTeam = liveOdds.awayTeam;
       resolvedOdds = { home: liveOdds.homeOdds, away: liveOdds.awayOdds };
-      resolvedMarket = 'h2h';
+      // Don't force h2h — each candidate carries its own market type
+      resolvedMarket = market || 'h2h';
     }
 
     let lineMovementScore = 0;
@@ -1447,6 +1457,31 @@ router.post('/', async (req, res) => {
         lineMovementSignal = null;
       }
     }
+
+    // ─── STALE LINE DETECTION ─────────────────────────────────────────────────
+    const STALE_WARN_MS = 15 * 60 * 1000;
+    const STALE_HARD_MS = 30 * 60 * 1000;
+    let staleWarning = null;
+    let staleAgeMinutes = 0;
+
+    if (liveOdds && liveOdds.fetchedAt) {
+      const age = Date.now() - liveOdds.fetchedAt;
+      staleAgeMinutes = Math.round(age / 60000);
+      if (age > STALE_HARD_MS) {
+        staleWarning = `⚠️ LINE AGE WARNING: Odds data is ${staleAgeMinutes} minutes old. This edge may no longer exist — the line has likely moved. Analysis capped at LEAN. Refresh and re-run for a current read.`;
+        console.warn(`STALE LINE: ${staleAgeMinutes} min old (HARD)`);
+      } else if (age > STALE_WARN_MS) {
+        staleWarning = `⚠️ Line data is ${staleAgeMinutes} minutes old. Verify the current price before betting — value gaps close fast.`;
+        console.warn(`STALE LINE: ${staleAgeMinutes} min old (WARN)`);
+      }
+    }
+
+    // Inject stale warning into prompt so AI is also aware
+    const resolvedPromptFinal = staleWarning
+      ? `${resolvedPrompt}
+
+${staleWarning}`
+      : resolvedPrompt;
 
     // Evaluate all candidates (up to 6: home ML, away ML, home spread, away spread, over, under)
     let evaluation;
@@ -1521,7 +1556,7 @@ router.post('/', async (req, res) => {
       projected: evaluation.projectedProb,
     }));
 
-    const scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
+    const scoredPrompt = buildScoredPrompt(resolvedPromptFinal, evaluation);
 
     if (evaluation.oddsDetected) {
       try {
@@ -1532,10 +1567,12 @@ router.post('/', async (req, res) => {
         fallbackUsed = true;
       }
     } else {
+      // Deterministic fallback: no AI call — pass empty string to buildStructuredResult
+      // at the single call point below (line ~1571) to avoid applying consensus gate twice.
       result = {
         provider: 'edge-scoring',
         model: 'deterministic-fallback',
-        text: JSON.stringify(buildStructuredResult(evaluation, '')),
+        text: '',
       };
     }
 
@@ -1560,6 +1597,20 @@ router.post('/', async (req, res) => {
     ]).catch(e => console.error(e.message));
 
     const structured = buildStructuredResult(evaluation, result.text);
+
+    // Apply stale line penalty to final result
+    if (staleWarning) {
+      structured.staleWarning = staleWarning;
+      structured.lineAgeMinutes = staleAgeMinutes;
+      // Hard stale: cap verdict at LEAN
+      if (staleAgeMinutes >= 30 && structured.verdict === 'BET') {
+        structured.verdict = 'LEAN';
+        structured.confidence = 'LOW';
+        structured.risk = 'HIGH';
+        structured.recommendedAction = 'Line data is over 30 minutes old. Verify current price before betting.';
+      }
+    }
+
     result.text = JSON.stringify(structured);
 
     return ok(res, {
