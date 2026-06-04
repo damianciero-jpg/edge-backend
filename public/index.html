@@ -240,6 +240,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .ed-pick.lean{color:var(--yellow);}
 .ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
 .ed-metric{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;box-shadow:0 8px 18px rgba(16,32,48,0.04);}
+.kelly-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px;}
+.kelly-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin-bottom:10px;}
+.kelly-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.kelly-metric{text-align:center;}
+.kelly-label{font-family:var(--mono);font-size:8px;letter-spacing:1px;color:var(--muted);margin-bottom:4px;}
+.kelly-value{font-family:var(--sans);font-size:18px;font-weight:700;}
+.kelly-sub{font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:2px;}
+.kelly-bankroll{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.kelly-bankroll-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;white-space:nowrap;}
+.kelly-bankroll-input{flex:1;background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:12px;padding:6px 10px;outline:none;border-radius:6px;}
+.kelly-bankroll-input:focus{border-color:var(--accent);}
+.kelly-unit{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
 .ed-label{font-family:var(--mono);font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;}
 .ed-value{font-family:var(--mono);font-size:12px;font-weight:800;color:var(--text);line-height:1.35;}
 .confidence-meter{height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:999px;overflow:hidden;margin-top:8px;}
@@ -5601,6 +5613,7 @@ function renderAIResult(r, rawText = '') {
     </div>
     <div class="ed-label">CONFIDENCE METER · ${confScore}%</div>
     <div class="confidence-meter"><div class="confidence-fill ${meterBand}" style="width:${confScore}%"></div></div>
+    ${buildKellyHtml(r, verdict)}
   </div>`;
 
   const playHtml = `<div class="locked-play">
@@ -5791,6 +5804,108 @@ async function refreshCLV() {
       ? `CLV updated for ${updated} bet${updated !== 1 ? 's' : ''}.`
       : eligible.length > 0 ? 'No closing line data available yet.' : '';
   }
+}
+
+
+// ─── KELLY CRITERION ──────────────────────────────────────────────────────────
+// Calculates optimal bet sizing based on true edge probability.
+// Full Kelly is theoretically optimal but volatile in practice.
+// Quarter Kelly (0.25x) is the standard recommendation for sports betting.
+//
+// Formula: f* = (bp - q) / b
+//   b = decimal odds - 1 (net profit per unit staked)
+//   p = true probability of winning (projectedProb)
+//   q = 1 - p (probability of losing)
+
+function americanToDecimal(american) {
+  const n = Number(american);
+  if (!Number.isFinite(n) || n === 0) return null;
+  return n > 0 ? n / 100 + 1 : 100 / Math.abs(n) + 1;
+}
+
+function computeKelly(projectedProb, americanOdds) {
+  const p = Number(projectedProb);
+  if (!Number.isFinite(p) || p <= 0 || p >= 1) return null;
+
+  const dec = americanToDecimal(americanOdds);
+  if (!dec || dec <= 1) return null;
+
+  const b = dec - 1;
+  const q = 1 - p;
+  const fullKelly = (b * p - q) / b;
+
+  if (fullKelly <= 0) return null; // No edge — don't bet
+
+  const quarterKelly = fullKelly * 0.25;
+  const halfKelly    = fullKelly * 0.50;
+
+  return {
+    full:    Math.min(fullKelly,    0.25), // cap at 25% of bankroll
+    half:    Math.min(halfKelly,    0.15),
+    quarter: Math.min(quarterKelly, 0.08),
+  };
+}
+
+function buildKellyHtml(r, verdict) {
+  if (!['BET', 'LEAN'].includes(String(verdict).toUpperCase())) return '';
+
+  const prob = parseFloat(r.projectedProb);
+  const odds = r.odds || (r.pick && String(r.pick).match(/([+-]\d{3,4})/)?.[1]);
+  const oddsNum = odds ? parseInt(String(odds).replace(/[^0-9+-]/g, ''), 10) : null;
+
+  if (!Number.isFinite(prob) || !oddsNum) return '';
+
+  const kelly = computeKelly(prob <= 1 ? prob : prob / 100, oddsNum);
+  if (!kelly) return '';
+
+  const bankrollKey = 'edge_bankroll';
+  const savedBankroll = parseFloat(localStorage.getItem(bankrollKey) || '1000');
+
+  const fullPct    = (kelly.full    * 100).toFixed(1);
+  const halfPct    = (kelly.half    * 100).toFixed(1);
+  const quarterPct = (kelly.quarter * 100).toFixed(1);
+
+  const qUnits = (kelly.quarter * savedBankroll).toFixed(2);
+  const hUnits = (kelly.half    * savedBankroll).toFixed(2);
+
+  return `<div class="kelly-card">
+    <div class="kelly-title">KELLY CRITERION — BET SIZING</div>
+    <div class="kelly-grid">
+      <div class="kelly-metric">
+        <div class="kelly-label">FULL KELLY</div>
+        <div class="kelly-value" style="color:var(--red)">${fullPct}%</div>
+        <div class="kelly-sub">aggressive</div>
+      </div>
+      <div class="kelly-metric">
+        <div class="kelly-label">HALF KELLY</div>
+        <div class="kelly-value" style="color:var(--yellow)">${halfPct}%</div>
+        <div class="kelly-sub">moderate</div>
+      </div>
+      <div class="kelly-metric">
+        <div class="kelly-label">¼ KELLY</div>
+        <div class="kelly-value" style="color:var(--green)">${quarterPct}%</div>
+        <div class="kelly-sub">recommended</div>
+      </div>
+    </div>
+    <div class="kelly-bankroll">
+      <span class="kelly-bankroll-label">BANKROLL $</span>
+      <input class="kelly-bankroll-input" id="kelly-bankroll-inp" type="number" value="${savedBankroll}" min="1" step="100"
+        oninput="updateKellyUnits(this.value, ${kelly.quarter.toFixed(6)}, ${kelly.half.toFixed(6)})">
+      <span class="kelly-unit">¼K = $<span id="kelly-q-amt">${qUnits}</span> · ½K = $<span id="kelly-h-amt">${hUnits}</span></span>
+    </div>
+    <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;line-height:1.6;">
+      Based on ${(prob <= 1 ? prob * 100 : prob).toFixed(1)}% true probability at ${oddsNum > 0 ? '+' : ''}${oddsNum} odds. ¼ Kelly is standard for sports betting — limits variance while preserving long-run edge.
+    </div>
+  </div>`;
+}
+
+function updateKellyUnits(bankroll, qFraction, hFraction) {
+  const b = parseFloat(bankroll) || 0;
+  localStorage.setItem('edge_bankroll', b);
+  const qEl = document.getElementById('kelly-q-amt');
+  const hEl = document.getElementById('kelly-h-amt');
+  if (qEl) qEl.textContent = (b * qFraction).toFixed(2);
+  if (hEl) hEl.textContent = (b * hFraction).toFixed(2);
 }
 
 // ─── TRACKER ──────────────────────────────────────────────────────────────────
