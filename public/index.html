@@ -5320,26 +5320,13 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function confidenceScoreFrom(confidence, explicitScore, edgeScore) {
-  // Prefer explicit score if provided
+function confidenceScoreFrom(confidence, explicitScore) {
   const parsed = parseFloat(explicitScore);
   if (Number.isFinite(parsed)) return clamp(Math.round(parsed), 0, 100);
-
-  // Use edgeScore from backend to compute a real dynamic percentage.
-  // edgeScore range in practice: ~-5 (no value) to ~20 (very strong edge).
-  // Map that to a 30–97% meter range so it never looks artificially perfect.
-  const edge = parseFloat(edgeScore);
-  if (Number.isFinite(edge)) {
-    // clamp edgeScore to [-5, 20], then normalize to [30, 97]
-    const normalized = (clamp(edge, -5, 20) + 5) / 25; // 0..1
-    return clamp(Math.round(30 + normalized * 67), 30, 97);
-  }
-
-  // Final fallback: label-based (used only when no edgeScore available)
   const c = String(confidence || '').toUpperCase();
-  if (c === 'HIGH') return 75;
-  if (c === 'LOW') return 42;
-  return 58;
+  if (c === 'HIGH') return 82;
+  if (c === 'LOW') return 48;
+  return 66;
 }
 
 function confidenceBand(score) {
@@ -5554,7 +5541,7 @@ function renderAIResult(r, rawText = '') {
     return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
   };
   const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
-  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct), r.edgeScore);
+  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct));
   const confText = `${confLabel} (${confScore}%)`;
   const homeEV = firstDefined(r.home_ev, r.homeEV);
   const awayEV = firstDefined(r.away_ev, r.awayEV);
@@ -5612,6 +5599,8 @@ function renderAIResult(r, rawText = '') {
       <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
       <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
       <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
+      ${r.staleWarning ? `<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">⚠ LINE AGE</div><div class="sec-body" style="color:#c8a830;font-size:12px">${escapeHtml(r.staleWarning)}</div></div>` : ''}
+      ${r.consensusConflict ? `<div class="sec"><div class="sec-hdr" style="color:var(--red)">⚠ SIGNAL CONFLICT</div><div class="sec-body" style="color:var(--red);font-size:12px">Algorithm and AI signals disagree. EDGE defaulted to PASS.</div></div>` : ''}
       <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
       <button class="pw-cta" onclick="revealFullAnalysis()" style="margin-top:2px;">Reveal Full Analysis</button>
       ${resultActionsHtml(true)}
@@ -5642,6 +5631,8 @@ function renderAIResult(r, rawText = '') {
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
     <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
+    ${r.staleWarning ? `<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">⚠ LINE AGE</div><div class="sec-body" style="color:#c8a830;font-size:12px">${escapeHtml(r.staleWarning)}</div></div>` : ''}
+    ${r.consensusConflict ? `<div class="sec"><div class="sec-hdr" style="color:var(--red)">⚠ SIGNAL CONFLICT</div><div class="sec-body" style="color:var(--red);font-size:12px">Algorithm and AI signals disagree. EDGE defaulted to PASS. Re-run when signals align.</div></div>` : ''}
     <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
