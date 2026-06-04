@@ -1138,12 +1138,26 @@ function parseJsonObject(text) {
 //   Algorithm LEAN + AI PASS  → PASS
 //   Algorithm PASS + anything → PASS (algorithm already said no)
 
-function applyConsensusGate(algoVerdict, aiVerdict) {
-  const algo = String(algoVerdict || '').toUpperCase();
-  const ai   = String(aiVerdict   || '').toUpperCase();
+function applyConsensusGate(algoVerdict, aiVerdict, edgeScore, mode) {
+  const algo  = String(algoVerdict || '').toUpperCase();
+  const ai    = String(aiVerdict   || '').toUpperCase();
+  const score = Number(edgeScore)  || 0;
+  const deep  = String(mode || '').toLowerCase() === 'deep';
 
   // No AI verdict returned — fall back to algorithm alone (don't block)
   if (!ai || ai === 'UNKNOWN') return { verdict: algo, conflicted: false };
+
+  // RESEARCH MODE OVERRIDE:
+  // When Research Mode (web search) runs and the AI independently finds BET,
+  // allow a small negative algorithm score (-2 to 0) to be upgraded to LEAN.
+  // Rationale: public money distorts lines. Research Mode finds injuries, sharp
+  // splits, and series context that the price-gap algorithm misses. A -0.54
+  // score on a line with 83% public tickets and three key injuries is not the
+  // same as a -0.54 score on a clean efficient market.
+  // Hard floor: score must be > -3 to prevent truly bad picks from slipping through.
+  if (deep && ai === 'BET' && score > -3 && score <= 0) {
+    return { verdict: 'LEAN', conflicted: false, researchOverride: true };
+  }
 
   if (algo === 'PASS') return { verdict: 'PASS', conflicted: false };
 
@@ -1168,7 +1182,7 @@ function buildStructuredResult(evaluation, aiText) {
   const aiVerdict = String(parsed.aiVerdict || '').toUpperCase();
 
   // Apply consensus gate — only BET when algorithm and AI agree
-  const { verdict: consensusVerdict, conflicted } = applyConsensusGate(evaluation.verdict, aiVerdict);
+  const { verdict: consensusVerdict, conflicted, researchOverride } = applyConsensusGate(evaluation.verdict, aiVerdict, evaluation.edgeScore, evaluation.mode);
 
   // If conflicted, override reason with conflict explanation
   const rawReason = conflicted
@@ -1180,13 +1194,16 @@ function buildStructuredResult(evaluation, aiText) {
   // Downgrade confidence and pick if verdict changed by consensus gate
   const finalVerdict = consensusVerdict;
   const finalPick = finalVerdict === 'PASS' ? 'PASS — signals conflict' : evaluation.pick;
+  const researchNote = researchOverride ? ' (Research Mode override — AI found context algorithm missed)' : '';
   const finalConfidence = conflicted ? 'LOW'
     : finalVerdict === 'BET' ? evaluation.confidence
     : finalVerdict === 'LEAN' && evaluation.confidence === 'HIGH' ? 'MEDIUM'
     : evaluation.confidence;
   const finalRecommendedAction = conflicted
     ? 'Pass — algorithm and AI signals are in conflict. Wait for alignment.'
-    : getRecommendedAction(finalVerdict, finalConfidence);
+    : researchOverride
+      ? 'Research Mode found context the algorithm missed (injuries/sharp money). Small unit only — verify line is still available.'
+      : getRecommendedAction(finalVerdict, finalConfidence);
 
   const reason = rawReason;
 
@@ -1540,8 +1557,9 @@ ${staleWarning}`
       }, lineMovementScore);
     }
 
-    // Phase 2: attach lineMovementSignal to the evaluation object
+    // Phase 2: attach lineMovementSignal and mode to the evaluation object
     evaluation.lineMovementSignal = lineMovementSignal;
+    evaluation.mode = mode;
 
 
     // ─── DEBUG LOG ────────────────────────────────────────────────────────────
