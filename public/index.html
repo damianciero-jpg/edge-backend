@@ -5541,10 +5541,20 @@ function renderAIResult(r, rawText = '') {
     return `${(n <= 1 ? n * 100 : n).toFixed(1)}%`;
   };
   const confLabel = confidence.charAt(0) + confidence.slice(1).toLowerCase();
-  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct));
+  const confScore = confidenceScoreFrom(confidence, firstDefined(r.confidence_score, r.confidenceScore, r.confidence_pct, r.confidencePct), r.edgeScore);
   const confText = `${confLabel} (${confScore}%)`;
-  const homeEV = firstDefined(r.home_ev, r.homeEV);
-  const awayEV = firstDefined(r.away_ev, r.awayEV);
+
+  // Derive legacy N/A fields from new engine values
+  const projProb = parseFloat(r.projectedProb);
+  const priceEdgeVal = parseFloat(r.priceEdge);
+  const homeTrueProb = Number.isFinite(projProb)
+    ? (projProb <= 1 ? (projProb * 100).toFixed(1) : projProb.toFixed(1))
+    : firstDefined(r.home_true_prob, null);
+  const awayTrueProb = Number.isFinite(projProb)
+    ? ((1 - (projProb <= 1 ? projProb : projProb / 100)) * 100).toFixed(1)
+    : firstDefined(r.away_true_prob, null);
+  const homeEV = Number.isFinite(priceEdgeVal) ? priceEdgeVal : firstDefined(r.home_ev, r.homeEV);
+  const awayEV = Number.isFinite(priceEdgeVal) ? -priceEdgeVal : firstDefined(r.away_ev, r.awayEV);
   const betLower = betOn.toString().toLowerCase();
   const homeName = currentGame && currentGame.home_team ? currentGame.home_team.toLowerCase() : '';
   const awayName = currentGame && currentGame.away_team ? currentGame.away_team.toLowerCase() : '';
@@ -5622,10 +5632,10 @@ function renderAIResult(r, rawText = '') {
       <div class="ev-card"><div class="ev-label">IMPLIED PROBABILITY</div><div class="ev-val neu">${escapeHtml(pct(r.impliedProb))}</div></div>
       <div class="ev-card"><div class="ev-label">EDGE PROJECTION</div><div class="ev-val neu">${escapeHtml(pct(r.projectedProb))}</div></div>
       <div class="ev-card"><div class="ev-label">EDGE SCORE</div><div class="ev-val ${ec(r.edgeScore)}">${escapeHtml(firstDefined(r.edgeScore, 'N/A'))}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${escapeHtml(firstDefined(r.home_true_prob, 'N/A'))}${r.home_true_prob !== undefined ? '%' : ''}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${escapeHtml(firstDefined(r.away_true_prob, 'N/A'))}${r.away_true_prob !== undefined ? '%' : ''}</div></div>
-      <div class="ev-card"><div class="ev-label">HOME EV</div><div class="ev-val ${ec(homeEV)}">${escapeHtml(firstDefined(homeEV, 'N/A'))}</div></div>
-      <div class="ev-card"><div class="ev-label">AWAY EV</div><div class="ev-val ${ec(awayEV)}">${escapeHtml(firstDefined(awayEV, 'N/A'))}</div></div>
+      <div class="ev-card"><div class="ev-label">HOME TRUE PROB</div><div class="ev-val neu">${homeTrueProb != null ? homeTrueProb + '%' : 'N/A'}</div></div>
+      <div class="ev-card"><div class="ev-label">AWAY TRUE PROB</div><div class="ev-val neu">${awayTrueProb != null ? awayTrueProb + '%' : 'N/A'}</div></div>
+      <div class="ev-card"><div class="ev-label">SELECTED EDGE</div><div class="ev-val ${ec(homeEV)}">${Number.isFinite(homeEV) ? (homeEV > 0 ? '+' : '') + homeEV.toFixed(1) + '%' : 'N/A'}</div></div>
+      <div class="ev-card"><div class="ev-label">OPPONENT EDGE</div><div class="ev-val ${ec(awayEV)}">${Number.isFinite(awayEV) ? (awayEV > 0 ? '+' : '') + awayEV.toFixed(1) + '%' : 'N/A'}</div></div>
     </div>
     <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
