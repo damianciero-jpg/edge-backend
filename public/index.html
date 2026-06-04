@@ -1283,7 +1283,10 @@ body {
       <div class="stat-card"><div class="stat-label">WIN RATE</div><div class="stat-val neu" id="st-wr">—</div></div>
       <div class="stat-card"><div class="stat-label">UNITS P&L</div><div class="stat-val neu" id="st-pnl">0.00u</div></div>
       <div class="stat-card"><div class="stat-label">ROI</div><div class="stat-val neu" id="st-roi">—</div></div>
+      <div class="stat-card"><div class="stat-label">AVG CLV</div><div class="stat-val neu" id="st-clv">—</div></div>
+      <div class="stat-card"><div class="stat-label">BEAT CLOSE</div><div class="stat-val neu" id="st-beat">—</div></div>
     </div>
+    <div id="clv-status" style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:12px;min-height:16px;"></div>
 
     <!-- Log form -->
     <div class="bet-form">
@@ -1337,6 +1340,7 @@ body {
             <th>STAKE</th>
             <th>TO WIN</th>
             <th>BOOK</th>
+            <th>CLV</th>
             <th>STATUS</th>
             <th></th>
           </tr>
@@ -1805,7 +1809,10 @@ function showTab(tab) {
     syncMarketsGames();
     syncSelectedGameToMarkets();
   }
-  if (tab === 'tracker') prefillTrackerFromCurrentGame();
+  if (tab === 'tracker') {
+    prefillTrackerFromCurrentGame();
+    refreshCLV();
+  }
 }
 
 function closeDetail() {
@@ -5651,6 +5658,141 @@ function renderAIResult(r, rawText = '') {
   area.innerHTML = renderAIResultShell(contentHtml, false);
 }
 
+
+// ─── CLV TRACKER ──────────────────────────────────────────────────────────────
+// Closing Line Value: did you beat the line at game time?
+// Methodology: compare entry odds to the last available line before game start.
+// Positive CLV = beat the close = sharp betting behavior.
+// Source: The Odds API h2h market, fetched lazily when Tracker tab opens.
+
+const CLV_CACHE_KEY = 'edge_clv_cache';
+const CLV_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function clvCache() {
+  try { return JSON.parse(localStorage.getItem(CLV_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function clvCacheSet(key, val) {
+  const c = clvCache();
+  c[key] = { val, ts: Date.now() };
+  localStorage.setItem(CLV_CACHE_KEY, JSON.stringify(c));
+}
+function clvCacheGet(key) {
+  const c = clvCache();
+  const entry = c[key];
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CLV_CACHE_TTL) return null;
+  return entry.val;
+}
+
+function parseBetOdds(oddsStr) {
+  const n = parseInt(String(oddsStr).replace(/[^0-9+-]/g, ''), 10);
+  return Number.isFinite(n) && Math.abs(n) >= 100 ? n : null;
+}
+
+function clvVerdict(points) {
+  if (points > 5)  return { label: 'BEAT', cls: 'pos' };
+  if (points < -5) return { label: 'MISSED', cls: 'neg' };
+  return { label: 'PUSH', cls: 'neu' };
+}
+
+function detectSportFromGame(gameStr) {
+  const s = String(gameStr || '').toLowerCase();
+  if (/nba|lakers|celtics|warriors|knicks|bucks|heat|nuggets/.test(s)) return 'basketball_nba';
+  if (/nfl|eagles|cowboys|chiefs|patriots|packers|ravens|steelers/.test(s)) return 'americanfootball_nfl';
+  if (/nhl|rangers|bruins|maple leafs|oilers|avalanche|lightning/.test(s)) return 'icehockey_nhl';
+  return 'baseball_mlb'; // default for summer
+}
+
+function teamFromPick(pickStr) {
+  // Strip market suffixes: "St. Louis Cardinals ML" → "St. Louis Cardinals"
+  return String(pickStr || '')
+    .replace(/\s+(ML|Moneyline|moneyline|[+-]\d+(\.5)?|Over|Under).*$/i, '')
+    .trim();
+}
+
+async function fetchClosingLine(bet) {
+  const cacheKey = `clv_${bet.id}`;
+  const cached = clvCacheGet(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    const apiKey = typeof THE_ODDS_API_KEY !== 'undefined' ? THE_ODDS_API_KEY : null;
+    if (!apiKey) return null;
+
+    const sport = detectSportFromGame(bet.game);
+    const url = `/api/odds?sport=${sport}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const games = await res.json();
+    if (!Array.isArray(games)) return null;
+
+    const teamName = teamFromPick(bet.pick);
+    const matchedGame = games.find(g =>
+      String(g.home_team || '').toLowerCase().includes(teamName.toLowerCase()) ||
+      String(g.away_team || '').toLowerCase().includes(teamName.toLowerCase()) ||
+      teamName.toLowerCase().split(' ').some(w => w.length > 3 && (
+        String(g.home_team || '').toLowerCase().includes(w) ||
+        String(g.away_team || '').toLowerCase().includes(w)
+      ))
+    );
+    if (!matchedGame) return null;
+
+    // Find best available price for our team across all books
+    let bestOdds = null;
+    for (const bk of (matchedGame.bookmakers || [])) {
+      const h2h = (bk.markets || []).find(m => m.key === 'h2h');
+      const outcome = (h2h && h2h.outcomes || []).find(o =>
+        String(o.name || '').toLowerCase().includes(teamName.toLowerCase()) ||
+        teamName.toLowerCase().split(' ').some(w => w.length > 3 && String(o.name || '').toLowerCase().includes(w))
+      );
+      if (outcome && outcome.price != null) {
+        if (bestOdds === null || outcome.price > bestOdds) bestOdds = outcome.price;
+      }
+    }
+
+    clvCacheSet(cacheKey, bestOdds);
+    return bestOdds;
+  } catch { return null; }
+}
+
+function isBetEligibleForCLV(bet) {
+  // Only check bets placed more than 3 hours ago (game likely started)
+  const betAge = Date.now() - bet.id;
+  return betAge > 3 * 60 * 60 * 1000;
+}
+
+async function refreshCLV() {
+  const statusEl = document.getElementById('clv-status');
+  if (statusEl) statusEl.textContent = 'Checking closing lines...';
+
+  let updated = 0;
+  const eligible = bets.filter(b => isBetEligibleForCLV(b) && !b.closingOdds);
+
+  for (const bet of eligible) {
+    const entryOdds = parseBetOdds(bet.odds);
+    if (!entryOdds) continue;
+    const closingOdds = await fetchClosingLine(bet);
+    if (closingOdds == null) continue;
+    const clvPoints = closingOdds - entryOdds;
+    bet.closingOdds = closingOdds;
+    bet.clvPoints = clvPoints;
+    bet.clvVerdict = clvVerdict(clvPoints).label;
+    updated++;
+  }
+
+  if (updated > 0) {
+    saveBets();
+    renderBets();
+    updateTrackerStats();
+  }
+
+  if (statusEl) {
+    statusEl.textContent = updated > 0
+      ? `CLV updated for ${updated} bet${updated !== 1 ? 's' : ''}.`
+      : eligible.length > 0 ? 'No closing line data available yet.' : '';
+  }
+}
+
 // ─── TRACKER ──────────────────────────────────────────────────────────────────
 function logBet() {
   const game = document.getElementById('f-game').value.trim();
@@ -5702,9 +5844,29 @@ function updateTrackerStats() {
   document.getElementById('st-pnl').className = 'stat-val ' + (pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : 'neu');
   document.getElementById('st-roi').textContent = roi;
   document.getElementById('st-roi').className = 'stat-val ' + (parseFloat(roi) > 0 ? 'pos' : parseFloat(roi) < 0 ? 'neg' : 'neu');
+
+  // CLV stats
+  const clvBets = bets.filter(b => b.clvPoints != null);
+  const avgClv = clvBets.length
+    ? (clvBets.reduce((s, b) => s + b.clvPoints, 0) / clvBets.length).toFixed(1)
+    : null;
+  const beatCount = clvBets.filter(b => b.clvPoints > 5).length;
+  const beatRate = clvBets.length ? (beatCount / clvBets.length * 100).toFixed(0) + '%' : '—';
+  const clvEl = document.getElementById('st-clv');
+  const beatEl = document.getElementById('st-beat');
+  if (clvEl) {
+    clvEl.textContent = avgClv != null ? (avgClv > 0 ? '+' : '') + avgClv + ' pts' : '—';
+    clvEl.className = 'stat-val ' + (avgClv > 0 ? 'pos' : avgClv < 0 ? 'neg' : 'neu');
+  }
+  if (beatEl) {
+    beatEl.textContent = beatRate;
+    beatEl.className = 'stat-val ' + (parseFloat(beatRate) >= 55 ? 'pos' : parseFloat(beatRate) >= 40 ? 'neu' : 'neg');
+  }
+
   // reuse ev-val colors
-  ['st-pnl','st-roi'].forEach(id => {
+  ['st-pnl','st-roi','st-clv','st-beat'].forEach(id => {
     const el = document.getElementById(id);
+    if (!el) return;
     el.className = el.className.replace('stat-val','ev-val');
     el.classList.add('stat-val');
   });
@@ -5713,7 +5875,11 @@ function updateTrackerStats() {
 function renderBets() {
   const tbody = document.getElementById('betsBody');
   if (!bets.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:30px;font-family:var(--mono);font-size:9px;letter-spacing:2px;">NO BETS LOGGED YET</td></tr>'; return; }
-  tbody.innerHTML = bets.map(b => `
+  tbody.innerHTML = bets.map(b => {
+    const clvDisplay = b.clvPoints != null
+      ? `<span style="color:var(--${b.clvPoints > 5 ? 'green' : b.clvPoints < -5 ? 'red' : 'muted'})">${b.clvPoints > 0 ? '+' : ''}${b.clvPoints} (${b.clvVerdict || ''})</span>`
+      : isBetEligibleForCLV(b) ? '<span style="color:var(--muted)">fetching...</span>' : '<span style="color:var(--muted2)">pending</span>';
+    return `
     <tr>
       <td>${b.date}</td>
       <td>${b.game}</td>
@@ -5723,6 +5889,7 @@ function renderBets() {
       <td>${b.stake}u</td>
       <td style="color:var(--green)">+${b.toWin}u</td>
       <td>${b.book}</td>
+      <td>${clvDisplay}</td>
       <td>
         <div style="display:flex;gap:5px;">
           <button class="status-btn win ${b.status==='win'?'':'ghost'}" onclick="updateStatus(${b.id},'win')">W</button>
@@ -5731,7 +5898,8 @@ function renderBets() {
         </div>
       </td>
       <td><button class="del-btn" onclick="deleteBet(${b.id})">✕</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 // ─── PARLAY BUILDER ───────────────────────────────────────────────────────────
