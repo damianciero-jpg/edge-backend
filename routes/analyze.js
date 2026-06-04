@@ -272,6 +272,91 @@ async function fetchLiveGameOdds(prompt) {
   }
 }
 
+// ─── TEAM FORM SIGNAL (MLB Stats → Edge Score Input) ─────────────────────────
+// Converts real MLB team stats into a numeric signal (-10 to +10)
+// that feeds directly into computeEdgeScore as teamFormSignal.
+//
+// Factors:
+//   Win % vs .500        → up to ±4 points  (strong team vs weak team)
+//   Current streak       → up to ±3 points  (hot/cold momentum)
+//   Home/away split      → up to ±2 points  (home team advantage or road struggles)
+//   Run differential     → up to ±1 point   (true quality indicator)
+
+function parseRecord(recordStr) {
+  if (!recordStr) return null;
+  const parts = String(recordStr).split('-').map(Number);
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
+  return { wins: parts[0], losses: parts[1], total: parts[0] + parts[1] };
+}
+
+function parseStreak(streakCode) {
+  if (!streakCode) return 0;
+  const match = String(streakCode).match(/^([WL])(\d+)$/);
+  if (!match) return 0;
+  const n = parseInt(match[2], 10);
+  return match[1] === 'W' ? n : -n;
+}
+
+function computeTeamFormSignal(teamStats, isHome) {
+  if (!teamStats) return 0;
+  let signal = 0;
+
+  // Win % vs .500 — strong teams get bonus, weak teams get penalty
+  const rec = parseRecord(teamStats.record);
+  if (rec && rec.total >= 10) {
+    const winPct = rec.wins / rec.total;
+    // Scale: .600 WP → +4, .400 WP → -4, .500 → 0
+    signal += Math.max(-4, Math.min(4, (winPct - 0.5) * 40));
+  }
+
+  // Streak — winning streaks are momentum, losing streaks are red flags
+  const streak = parseStreak(teamStats.streak);
+  if (streak !== 0) {
+    // Scale: W5 → +3, L5 → -3, cap at ±3
+    signal += Math.max(-3, Math.min(3, streak * 0.6));
+  }
+
+  // Home/away split — home teams batting at home get bonus, road teams at home get penalty
+  if (isHome) {
+    const homeRec = parseRecord(teamStats.homeRecord);
+    if (homeRec && homeRec.total >= 5) {
+      const homeWinPct = homeRec.wins / homeRec.total;
+      signal += Math.max(-2, Math.min(2, (homeWinPct - 0.5) * 20));
+    }
+  } else {
+    const awayRec = parseRecord(teamStats.awayRecord);
+    if (awayRec && awayRec.total >= 5) {
+      const awayWinPct = awayRec.wins / awayRec.total;
+      signal += Math.max(-2, Math.min(2, (awayWinPct - 0.5) * 20));
+    }
+  }
+
+  return Math.max(-10, Math.min(10, signal));
+}
+
+function extractTeamFormFromMLBBlock(mlbStatsBlock, teamName, isHome) {
+  if (!mlbStatsBlock || !teamName) return 0;
+  const lines = mlbStatsBlock.split('\n');
+  const teamLine = lines.find(l => l.toLowerCase().includes(teamName.toLowerCase()));
+  if (!teamLine) return 0;
+
+  // Parse: "Boston Red Sox: 31-29 overall | Home: 16-15 | Away: 15-14 | Streak: W3"
+  const overallMatch = teamLine.match(/(\d+)-(\d+) overall/);
+  const homeMatch    = teamLine.match(/Home:\s*(\d+)-(\d+)/);
+  const awayMatch    = teamLine.match(/Away:\s*(\d+)-(\d+)/);
+  const streakMatch  = teamLine.match(/Streak:\s*([WL]\d+)/);
+
+  const stats = {
+    record:     overallMatch ? `${overallMatch[1]}-${overallMatch[2]}` : null,
+    homeRecord: homeMatch    ? `${homeMatch[1]}-${homeMatch[2]}`       : null,
+    awayRecord: awayMatch    ? `${awayMatch[1]}-${awayMatch[2]}`       : null,
+    streak:     streakMatch  ? streakMatch[1]                          : null,
+  };
+
+  return computeTeamFormSignal(stats, isHome);
+}
+
+
 const MODELS = {
   quick: process.env.ANTHROPIC_QUICK_MODEL || 'claude-haiku-4-5-20251001',
   deep: process.env.ANTHROPIC_DEEP_MODEL || 'claude-sonnet-4-6',
@@ -420,8 +505,12 @@ function computeConfidencePenalty(vigPct) {
 }
 
 // ─── MAIN EDGE SCORING ────────────────────────────────────────────────────────
-// Weights: priceEdge 60%, marketBreadth 10%, confidencePenalty 10%,
-//          injurySignal 10%, situationalSignal 10% — total = 100%
+// Weights: priceEdge 55%, teamFormSignal 15%, marketBreadth 10%,
+//          confidencePenalty 10%, injurySignal 5%, situationalSignal 5%
+//
+// teamFormSignal replaces the old generic situationalSignal as the primary
+// contextual input — it's derived from real MLB team records, streaks, and
+// home/away splits rather than keyword pattern matching.
 function computeEdgeScore({
   noVigProb,
   impliedProb: rawImplied,
@@ -429,14 +518,19 @@ function computeEdgeScore({
   confidencePenalty = 0,
   injurySignal = 0,
   situationalSignal = 0,
+  teamFormSignal = 0,
 }) {
   const priceEdge = (noVigProb - rawImplied) * 100;
+  // If we have real team form data, use it as the primary contextual signal.
+  // Otherwise fall back to keyword-based situational signal.
+  const contextSignal = teamFormSignal !== 0 ? teamFormSignal : situationalSignal;
   return (
-    priceEdge * 0.60 +
-    marketBreadth * 0.10 +
+    priceEdge        * 0.55 +
+    contextSignal    * 0.15 +
+    marketBreadth    * 0.10 +
     confidencePenalty * 0.10 +
-    injurySignal * 0.10 +
-    situationalSignal * 0.10
+    injurySignal     * 0.05 +
+    situationalSignal * 0.05
   );
 }
 
@@ -692,8 +786,8 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   }
 
   const factors = oddsDetected
-    ? getSignalFactors(prompt, odds, opponentOdds)
-    : { marketBreadth: 0, confidencePenalty: 0, injurySignal: 0, situationalSignal: 0, vigPct: null };
+    ? getSignalFactors(prompt, odds, opponentOdds, candidate)
+    : { marketBreadth: 0, confidencePenalty: 0, injurySignal: 0, situationalSignal: 0, teamFormSignal: 0, vigPct: null };
 
   const edgeScore = oddsDetected
     ? computeEdgeScore({ noVigProb: projected, impliedProb: implied, ...factors })
@@ -733,6 +827,7 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
     confidencePenalty: factors.confidencePenalty || 0,
     injurySignal: factors.injurySignal || 0,
     situationalSignal: factors.situationalSignal || 0,
+    teamFormSignal: factors.teamFormSignal || 0,
     // Phase 2: line movement (populated upstream, default null here)
     lineMovementSignal: null,
     pinnacleUsed: pinnacleOdds != null,
@@ -747,13 +842,26 @@ function buildCandidateEvaluation(prompt, candidate, lineMovementScore = 0) {
   };
 }
 
-function getSignalFactors(prompt, odds, opponentOdds) {
+function getSignalFactors(prompt, odds, opponentOdds, candidate) {
   const vigPct = calcVig(odds, opponentOdds);
+
+  // Extract MLB team form from the stats block injected into the prompt
+  // candidate has selectedTeam (the pick) and opponentTeam
+  let teamFormSignal = 0;
+  const mlbBlockMatch = String(prompt || '').match(/--- MLB TEAM STATS \(Live\) ---([\s\S]*?)(?:\n\n|$)/);
+  if (mlbBlockMatch) {
+    const mlbBlock = mlbBlockMatch[0];
+    const selectedTeam = (candidate && candidate.team) || '';
+    const isHome = (candidate && candidate.side) === 'home';
+    teamFormSignal = extractTeamFormFromMLBBlock(mlbBlock, selectedTeam, isHome);
+  }
+
   return {
     marketBreadth: computeMarketBreadth(prompt),
     confidencePenalty: computeConfidencePenalty(vigPct),
     injurySignal: extractInjurySignal(promptBody(prompt)),
     situationalSignal: extractSituationalSignal(promptBody(prompt)),
+    teamFormSignal,
     vigPct,
   };
 }
@@ -1080,6 +1188,7 @@ function buildStructuredResult(evaluation, aiText) {
     confidencePenalty: evaluation.confidencePenalty,
     injurySignal: evaluation.injurySignal,
     situationalSignal: evaluation.situationalSignal,
+    teamFormSignal: evaluation.teamFormSignal || 0,
     // Phase 2 field (populated by caller)
     lineMovementSignal: evaluation.lineMovementSignal,
     reason,
