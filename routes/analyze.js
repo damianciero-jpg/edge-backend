@@ -1061,6 +1061,49 @@ function buildEdgeEvaluation(prompt, context = {}, lineMovementScore = 0) {
   return fallback;
 }
 
+
+// ─── MULTI-CANDIDATE AI PROMPT ────────────────────────────────────────────────
+// Used when all algorithmic candidates score negative (public money distortion).
+// Instead of forcing the AI to evaluate one pre-selected side, present all
+// candidates and ask the AI to independently identify the best play.
+
+function buildMultiCandidatePrompt(basePrompt, pairs) {
+  const candidateLines = pairs.map((p, i) => {
+    const c = p.candidate;
+    const ev = p.eval;
+    return [
+      `Candidate ${i + 1}: ${c.label}`,
+      `  Market: ${c.market} | Odds: ${c.odds > 0 ? '+' : ''}${c.odds}`,
+      `  Implied prob: ${(ev.impliedProb * 100).toFixed(1)}% | Algo true prob: ${(ev.projectedProb * 100).toFixed(1)}%`,
+      `  Algo edge score: ${ev.edgeScore.toFixed(2)} (negative = algorithm sees no price edge)`,
+    ].join('\n');
+  }).join('\n\n');
+
+  return [
+    basePrompt,
+    '',
+    '─── ALL AVAILABLE PLAYS (algorithm found no clear price edge on any) ───',
+    candidateLines,
+    '',
+    'INSTRUCTION FOR RESEARCH MODE:',
+    'The price-gap algorithm found no clear edge. This often happens when public',
+    'money has distorted lines away from true value (e.g. 80%+ public tickets',
+    'on one side moves the line regardless of actual probability).',
+    '',
+    'Using your web search capability, research this game thoroughly:',
+    '- Key injuries on either side (starting pitcher, lineup changes)',
+    '- Sharp money / reverse line movement signals',
+    '- Recent form, head-to-head, ballpark factors',
+    '- Any contextual factors the price-gap algorithm cannot see',
+    '',
+    'Then identify the single best play from the candidates above, or PASS if',
+    'none have genuine value after research.',
+    '',
+    'Return this JSON shape only (no markdown, no preamble):',
+    '{"aiVerdict":"BET|LEAN|PASS","bestCandidate":"exact label from candidates above or PASS","reason":"2-3 sentences citing specific evidence","topFactors":["factor 1","factor 2","factor 3"]}',
+  ].filter(Boolean).join('\n');
+}
+
 function buildScoredPrompt(prompt, evaluation) {
   const methodologyNotes = [
     evaluation.pinnacleUsed
@@ -1500,15 +1543,19 @@ router.post('/', async (req, res) => {
 ${staleWarning}`
       : resolvedPrompt;
 
-    // Evaluate all candidates (up to 6: home ML, away ML, home spread, away spread, over, under)
+    // ─── CANDIDATE EVALUATION ────────────────────────────────────────────────────
+    // Phase A: Score all candidates algorithmically (up to 6 plays)
+    // Phase B: If all negative AND Research Mode, ask AI to evaluate all candidates
+    //          independently and identify the best play — then run consensus gate
+    //          on the AI's chosen side. This catches line distortion from public
+    //          money that the price-gap algorithm can't see.
     let evaluation;
+    let allPairsForAI = null; // set when we need AI to pick the best side
+
     if (liveOdds && liveOdds.candidates && liveOdds.candidates.length) {
-      // Zip candidates with their evaluations so index stays stable after sort.
-      // allEvals.sort() mutates in place — re-finding the index after sort always
-      // returns 0 and maps to candidates[0] (home ML), ignoring the real winner.
       const pairs = liveOdds.candidates.map(c => ({
         candidate: c,
-        eval: buildCandidateEvaluation(resolvedPrompt, {
+        eval: buildCandidateEvaluation(resolvedPromptFinal, {
           side: c.side,
           team: c.team,
           opponent: c.opponent,
@@ -1527,17 +1574,34 @@ ${staleWarning}`
       }));
       console.log('CANDIDATES LOG:', JSON.stringify(candidateSummary));
 
+      // Sort by edge score — best first
       pairs.sort((a, b) => b.eval.edgeScore - a.eval.edgeScore);
-      evaluation = pairs[0].eval;
 
-      const bestCandidate = pairs[0].candidate;
-      if (bestCandidate && evaluation.verdict !== 'PASS') {
-        evaluation.pick = bestCandidate.label;
-        evaluation.evaluating = bestCandidate.label;
+      const allNegative = pairs.every(p => p.eval.edgeScore <= 0);
+      const deepMode = mode === 'deep';
+
+      if (allNegative && deepMode) {
+        // All candidates have negative price edge — public money may be distorting lines.
+        // Don't pick a side yet. Instead, pass all candidates to the AI and let it
+        // identify the best play based on injuries, sharp money, matchup context.
+        // We'll build a multi-candidate prompt and run the AI call differently.
+        allPairsForAI = pairs;
+        // Use the least-negative as the baseline evaluation object
+        evaluation = pairs[0].eval;
+        evaluation.pick = pairs[0].candidate.label;
+        evaluation.evaluating = pairs[0].candidate.label;
+      } else {
+        // At least one positive candidate — use the best algorithmic pick
+        const positivePairs = pairs.filter(p => p.eval.edgeScore > 0);
+        const winner = positivePairs.length ? positivePairs[0] : pairs[0];
+        evaluation = winner.eval;
+        if (winner.candidate && evaluation.verdict !== 'PASS') {
+          evaluation.pick = winner.candidate.label;
+          evaluation.evaluating = winner.candidate.label;
+        }
       }
 
-      // Surface all candidates so the UI can show what was evaluated
-      // Filter to BET/LEAN candidates first, fall back to top 3 by score
+      // Surface all candidates for UI transparency
       const betCandidates = pairs.filter(p => p.eval.verdict !== 'PASS');
       evaluation.allCandidates = (betCandidates.length ? betCandidates : pairs.slice(0, 3)).map(p => ({
         label: p.candidate.label,
@@ -1547,8 +1611,9 @@ ${staleWarning}`
         impliedProb: p.eval.impliedProb,
         projectedProb: p.eval.projectedProb,
       }));
+
     } else {
-      evaluation = buildEdgeEvaluation(resolvedPrompt, {
+      evaluation = buildEdgeEvaluation(resolvedPromptFinal, {
         selectedSide: resolvedSelectedSide,
         selectedTeam: resolvedSelectedTeam,
         opponentTeam: resolvedOpponentTeam,
@@ -1574,7 +1639,17 @@ ${staleWarning}`
       projected: evaluation.projectedProb,
     }));
 
-    const scoredPrompt = buildScoredPrompt(resolvedPromptFinal, evaluation);
+    // Build the appropriate prompt — multi-candidate when all scores are negative in Research Mode
+    let scoredPrompt;
+    let multiCandidateMode = false;
+
+    if (allPairsForAI && mode === 'deep') {
+      scoredPrompt = buildMultiCandidatePrompt(resolvedPromptFinal, allPairsForAI);
+      multiCandidateMode = true;
+      console.log('MULTI-CANDIDATE MODE: sending all candidates to AI for selection');
+    } else {
+      scoredPrompt = buildScoredPrompt(resolvedPromptFinal, evaluation);
+    }
 
     if (evaluation.oddsDetected) {
       try {
@@ -1584,9 +1659,40 @@ ${staleWarning}`
         result = await withTimeout(callOpenAI(scoredPrompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
         fallbackUsed = true;
       }
+
+      // Multi-candidate: parse AI's chosen candidate and rebuild evaluation around it
+      if (multiCandidateMode && result && result.text) {
+        try {
+          const parsed = JSON.parse(cleanJsonText(result.text));
+          const aiChosen = String(parsed.bestCandidate || '').trim();
+          const aiVerdict = String(parsed.aiVerdict || '').toUpperCase();
+
+          if (aiChosen && aiChosen !== 'PASS' && aiVerdict !== 'PASS') {
+            const matchedPair = allPairsForAI.find(p =>
+              p.candidate.label.toLowerCase() === aiChosen.toLowerCase() ||
+              aiChosen.toLowerCase().includes(p.candidate.team.toLowerCase().split(' ').pop()) ||
+              p.candidate.team.toLowerCase().split(' ').pop() === aiChosen.toLowerCase().split(' ').find(w => w.length > 4)
+            );
+
+            if (matchedPair) {
+              const chosenEval = matchedPair.eval;
+              chosenEval.pick = matchedPair.candidate.label;
+              chosenEval.evaluating = matchedPair.candidate.label;
+              chosenEval.selectedTeam = matchedPair.candidate.team;
+              chosenEval.opponentTeam = matchedPair.candidate.opponent;
+              chosenEval.market = matchedPair.candidate.market;
+              chosenEval.mode = mode;
+              chosenEval.lineMovementSignal = lineMovementSignal;
+              chosenEval.allCandidates = evaluation.allCandidates;
+              evaluation = chosenEval;
+              console.log('AI chose:', matchedPair.candidate.label, 'score:', chosenEval.edgeScore);
+            }
+          }
+        } catch (e) {
+          console.warn('Multi-candidate parse failed:', e.message);
+        }
+      }
     } else {
-      // Deterministic fallback: no AI call — pass empty string to buildStructuredResult
-      // at the single call point below (line ~1571) to avoid applying consensus gate twice.
       result = {
         provider: 'edge-scoring',
         model: 'deterministic-fallback',
