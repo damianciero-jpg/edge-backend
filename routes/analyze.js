@@ -147,7 +147,12 @@ router.post('/', async (req, res) => {
   let lineMovementScore  = 0;
   if (liveOdds) {
     try {
-      const lm = await fetchLineMovement(liveOdds.homeTeam, liveOdds.awayTeam, liveOdds.homeOdds);
+      // Pass both teams' odds and real game ID for RLM detection
+      const lm = await fetchLineMovement(
+        liveOdds.homeTeam, liveOdds.awayTeam,
+        liveOdds.homeOdds, liveOdds.awayOdds,
+        req.body?.gameId || null
+      );
       lineMovementScore  = lm.score || 0;
       lineMovementSignal = lm;
     } catch (err) {
@@ -174,13 +179,22 @@ router.post('/', async (req, res) => {
   let allPairsForAI = null;
 
   if (liveOdds?.candidates?.length) {
-    const pairs = liveOdds.candidates.map(c => ({
-      candidate: c,
-      eval: buildCandidateEvaluation(resolvedPrompt, {
-        side: c.side, team: c.team, opponent: c.opponent,
-        market: c.market, odds: c.odds, opponentOdds: c.opponentOdds,
-      }, lineMovementScore),
-    }));
+    const pairs = liveOdds.candidates.map(c => {
+      // Use side-specific RLM score — home RLM for home side, away RLM for away
+      const candidateRLM = lineMovementSignal
+        ? (c.side === 'home'
+            ? (lineMovementSignal.home?.score || 0) + (lineMovementSignal.rlmScore || 0)
+            : (lineMovementSignal.away?.score || 0) - (lineMovementSignal.rlmScore || 0))
+        : lineMovementScore;
+
+      return {
+        candidate: c,
+        eval: buildCandidateEvaluation(resolvedPrompt, {
+          side: c.side, team: c.team, opponent: c.opponent,
+          market: c.market, odds: c.odds, opponentOdds: c.opponentOdds,
+        }, candidateRLM),
+      };
+    });
 
     console.log('CANDIDATES:', JSON.stringify(pairs.map(p => ({
       team: p.candidate.team, market: p.candidate.market,
