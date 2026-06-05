@@ -240,6 +240,15 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .ed-pick.lean{color:var(--yellow);}
 .ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
 .ed-metric{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;box-shadow:0 8px 18px rgba(16,32,48,0.04);}
+.why-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
+.why-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin-bottom:12px;}
+.why-gap{display:flex;align-items:center;gap:0;margin-bottom:14px;border-radius:8px;overflow:hidden;height:36px;}
+.why-gap-implied{background:color-mix(in srgb,var(--red) 20%,transparent);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--text);font-weight:600;}
+.why-gap-edge{background:color-mix(in srgb,var(--green) 25%,transparent);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--text);font-weight:600;}
+.why-signals{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.why-signal{background:var(--surface2);border-radius:8px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;}
+.why-signal-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;}
+.why-signal-val{font-family:var(--mono);font-size:11px;font-weight:700;}
 .kelly-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px;}
 .kelly-title{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin-bottom:10px;}
 .kelly-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
@@ -5652,7 +5661,7 @@ function renderAIResult(r, rawText = '') {
     const contentHtml = `<div class="ai-result">
       ${decisionHtml}
       ${playHtml}
-      <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
+      ${buildWhyDifferentCard(r)}
       <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
       <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
       ${r.staleWarning ? `<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">⚠ LINE AGE</div><div class="sec-body" style="color:#c8a830;font-size:12px">${escapeHtml(r.staleWarning)}</div></div>` : ''}
@@ -5684,7 +5693,7 @@ function renderAIResult(r, rawText = '') {
       <div class="ev-card"><div class="ev-label">OPPONENT EDGE</div><div class="ev-val ${ec(awayEV)}">${Number.isFinite(awayEV) ? (awayEV > 0 ? '+' : '') + awayEV.toFixed(1) + '%' : 'N/A'}</div></div>
     </div>
     ${r.allCandidates && r.allCandidates.length > 1 ? `<div class="sec"><div class="sec-hdr" style="color:var(--muted)">ALL PLAYS SCANNED (${r.allCandidates.length})</div><div class="sec-body" style="font-family:var(--mono);font-size:10px;line-height:2">${r.allCandidates.map(c => `<span style="color:${c.verdict==='BET'?'var(--green)':c.verdict==='LEAN'?'var(--yellow)':'var(--muted)'}">${c.verdict}</span> &nbsp;${escapeHtml(c.label)}&nbsp;<span style="color:var(--muted2)">score: ${Number.isFinite(c.edgeScore)?c.edgeScore.toFixed(1):c.edgeScore}</span>`).join('<br>')}</div></div>` : ''}
-    <div class="sec"><div class="sec-hdr">WHY THIS MATTERS</div><div class="sec-body">This line may be undervalued compared to the projected outcome.</div></div>
+    ${buildWhyDifferentCard(r)}
     <div class="sec"><div class="sec-hdr">KEY FACTORS</div><div class="sec-body">${factorRows}</div></div>
     <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
     <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
@@ -5933,6 +5942,113 @@ function updateKellyUnits(bankroll, qFraction, hFraction) {
   const hEl = document.getElementById('kelly-h-amt');
   if (qEl) qEl.textContent = (b * qFraction).toFixed(2);
   if (hEl) hEl.textContent = (b * hFraction).toFixed(2);
+}
+
+
+// ─── WHY DIFFERENT FROM MARKET ────────────────────────────────────────────────
+// Visualizes what's driving the edge — the gap between market price and EDGE
+// projection, broken down by signal: price gap, pitcher, team form, RLM, injury.
+
+function buildWhyDifferentCard(r) {
+  const implied   = parseFloat(r.impliedProb);
+  const projected = parseFloat(r.projectedProb);
+  if (!Number.isFinite(implied) || !Number.isFinite(projected)) return '';
+
+  const impliedPct    = (implied   <= 1 ? implied   * 100 : implied).toFixed(1);
+  const projectedPct  = (projected <= 1 ? projected * 100 : projected).toFixed(1);
+  const gapPct        = (parseFloat(projectedPct) - parseFloat(impliedPct)).toFixed(1);
+  const gapPositive   = parseFloat(gapPct) > 0;
+
+  // Bar widths — implied gets its proportional share, edge gets the rest
+  const total     = Math.max(parseFloat(projectedPct), parseFloat(impliedPct));
+  const impliedW  = Math.round((parseFloat(impliedPct)   / total) * 100);
+  const projW     = Math.round((parseFloat(projectedPct) / total) * 100);
+
+  // Signal breakdown — what's driving the gap
+  const lm     = r.lineMovementSignal || {};
+  const signals = [];
+
+  // Price gap (Pinnacle sharp-line)
+  const priceEdge = parseFloat(gapPct);
+  if (Math.abs(priceEdge) >= 0.5) {
+    signals.push({
+      label: 'PRICE GAP',
+      val:   (priceEdge > 0 ? '+' : '') + priceEdge.toFixed(1) + '%',
+      color: priceEdge > 0 ? 'var(--green)' : 'var(--red)',
+      desc:  priceEdge > 0 ? 'Pinnacle sharp line undervalues this side' : 'Market has this side overpriced',
+    });
+  }
+
+  // RLM signal
+  const rlm = parseFloat(lm.rlmScore) || 0;
+  if (Math.abs(rlm) >= 1) {
+    signals.push({
+      label: 'SHARP MONEY',
+      val:   rlm > 0 ? 'FOR' : 'AGAINST',
+      color: rlm > 2 ? 'var(--green)' : rlm < -2 ? 'var(--red)' : 'var(--yellow)',
+      desc:  rlm > 0 ? 'Line moved opposite to public — sharp action here' : 'Sharp money fading this side',
+    });
+  }
+
+  // Line movement direction
+  const dir = lm.direction || lm.home?.direction;
+  if (dir === 'STEAM') {
+    signals.push({ label: 'LINE MOVE', val: 'STEAM ↑', color: 'var(--green)', desc: 'Line moved in your favor since open' });
+  } else if (dir === 'FADE') {
+    signals.push({ label: 'LINE MOVE', val: 'FADE ↓', color: 'var(--red)', desc: 'Line moved against this side since open' });
+  }
+
+  // Injury signal
+  const inj = parseFloat(r.injurySignal);
+  if (Number.isFinite(inj) && Math.abs(inj) >= 1) {
+    signals.push({
+      label: 'INJURIES',
+      val:   inj > 0 ? 'FAVORABLE' : 'CONCERN',
+      color: inj > 0 ? 'var(--green)' : 'var(--red)',
+      desc:  inj > 0 ? 'Opponent injury situation favors this side' : 'Key injury risk on this side',
+    });
+  }
+
+  // Team form
+  const form = parseFloat(r.teamFormSignal);
+  if (Number.isFinite(form) && Math.abs(form) >= 1) {
+    signals.push({
+      label: 'TEAM FORM',
+      val:   form > 0 ? `+${form.toFixed(1)}` : form.toFixed(1),
+      color: form > 1 ? 'var(--green)' : form < -1 ? 'var(--red)' : 'var(--yellow)',
+      desc:  form > 0 ? 'Record, streak, and splits favor this side' : 'Recent form and splits are a concern',
+    });
+  }
+
+  // Confidence penalty (market width)
+  const penalty = parseFloat(r.confidencePenalty);
+  if (Number.isFinite(penalty) && penalty < -1) {
+    signals.push({ label: 'MARKET WIDTH', val: 'WIDE VIG', color: 'var(--yellow)', desc: 'High vig reduces confidence in the edge' });
+  }
+
+  if (!signals.length && Math.abs(priceEdge) < 0.5) return '';
+
+  const signalHtml = signals.map(s => `
+    <div class="why-signal" title="${s.desc}">
+      <span class="why-signal-label">${s.label}</span>
+      <span class="why-signal-val" style="color:${s.color}">${s.val}</span>
+    </div>`).join('');
+
+  return `<div class="why-card">
+    <div class="why-title">WHY THIS DIFFERS FROM MARKET</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">MARKET IMPLIED</span>
+      <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">EDGE PROJECTION</span>
+    </div>
+    <div class="why-gap">
+      <div class="why-gap-implied" style="width:${impliedW}%;min-width:70px;">${impliedPct}%</div>
+      <div class="why-gap-edge"   style="width:${100 - impliedW}%;min-width:70px;background:color-mix(in srgb,${gapPositive ? 'var(--green)' : 'var(--red)'} 25%,transparent);">${projectedPct}%</div>
+    </div>
+    <div style="text-align:center;font-family:var(--mono);font-size:11px;font-weight:700;color:${gapPositive ? 'var(--green)' : 'var(--red)'};margin-bottom:12px;">
+      ${gapPositive ? '+' : ''}${gapPct}% GAP
+    </div>
+    ${signals.length ? `<div class="why-signals">${signalHtml}</div>` : ''}
+  </div>`;
 }
 
 // ─── TRACKER ──────────────────────────────────────────────────────────────────
