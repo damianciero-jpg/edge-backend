@@ -1300,6 +1300,12 @@ body {
     </div>
     <div id="clv-status" style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:12px;min-height:16px;"></div>
 
+    <!-- Model Calibration Dashboard -->
+    <div style="margin-top:24px;margin-bottom:18px;">
+      <div class="section-lbl" style="margin-bottom:12px;font-size:10px;">MODEL CALIBRATION</div>
+      <div id="calibration-stats" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;"></div>
+    </div>
+
     <!-- Log form -->
     <div class="bet-form">
       <div class="section-lbl">LOG A BET</div>
@@ -1352,6 +1358,8 @@ body {
             <th>STAKE</th>
             <th>TO WIN</th>
             <th>BOOK</th>
+            <th>EDGE</th>
+            <th>MODE</th>
             <th>CLV</th>
             <th>STATUS</th>
             <th></th>
@@ -5314,6 +5322,8 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
     renderAIResult(result, txt);
     syncUserStatus();
     setTimeout(scrollAnalysisIntoView, 100);
+    // Auto-log prompt if verdict is BET or LEAN
+    try { autoLogBetFromAnalysis(result, game, game.sport_key); } catch {}
   } catch(e) {
     clearTimeout(clientTimeout);
     clearInterval(ticker);
@@ -5926,23 +5936,107 @@ function updateKellyUnits(bankroll, qFraction, hFraction) {
 }
 
 // ─── TRACKER ──────────────────────────────────────────────────────────────────
-function logBet() {
-  const game = document.getElementById('f-game').value.trim();
-  const pick = document.getElementById('f-pick').value.trim();
+function logBet(meta = null) {
+  const game   = document.getElementById('f-game').value.trim();
+  const pick   = document.getElementById('f-pick').value.trim();
   const market = document.getElementById('f-market').value;
-  const odds = parseInt(document.getElementById('f-odds').value);
-  const stake = parseFloat(document.getElementById('f-stake').value);
-  const book = document.getElementById('f-book').value.trim();
+  const odds   = parseInt(document.getElementById('f-odds').value);
+  const stake  = parseFloat(document.getElementById('f-stake').value);
+  const book   = document.getElementById('f-book').value.trim();
   if (!game || !pick || !odds || !stake) { showToast('Please fill in all required fields', 'error'); return; }
-  const dec = toDecimal(odds);
+  const dec   = toDecimal(odds);
   const toWin = (stake * (dec - 1)).toFixed(2);
-  const bet = { id: Date.now(), date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}), game, pick, market, odds: fmt(odds), stake, toWin, book: book||'—', status:'pending' };
+  const bet = {
+    id: Date.now(),
+    date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+    game, pick, market, odds: fmt(odds), stake, toWin,
+    book: book || '—', status: 'pending',
+    // Model metadata — populated from analysis result when auto-logged
+    edgeScore:   meta?.edgeScore   || null,
+    confidence:  meta?.confidence  || null,
+    verdict:     meta?.verdict     || null,
+    mode:        meta?.mode        || null,
+    sport:       meta?.sport       || null,
+    rlmScore:    meta?.rlmScore    || null,
+    rlmDirection: meta?.rlmDirection || null,
+    pitcherEdge: meta?.pitcherEdge || null,
+    autoLogged:  meta?.autoLogged  || false,
+  };
   bets.unshift(bet);
-  saveBets();
-  renderBets();
-  updateTrackerStats();
+  saveBets(); renderBets(); updateTrackerStats();
   ['f-game','f-pick','f-odds','f-stake','f-book'].forEach(id => document.getElementById(id).value = '');
   showToast('Bet logged successfully', 'success');
+}
+
+// Auto-log from analysis result — called when verdict is BET or LEAN
+function autoLogBetFromAnalysis(r, game, sport) {
+  if (!r || !game) return;
+  const verdict = String(r.verdict || '').toUpperCase();
+  if (verdict !== 'BET' && verdict !== 'LEAN') return;
+
+  // Check if already logged for this game+pick
+  const pick  = String(r.pick || r.evaluating || '').replace(/\s*(—.*)?$/, '').trim();
+  const gameName = `${game.away_team} @ ${game.home_team}`;
+  const alreadyLogged = bets.some(b => b.game === gameName && b.pick === pick && b.autoLogged);
+  if (alreadyLogged) return;
+
+  // Extract best available odds from pick string
+  const oddsMatch = pick.match(/([+-]\d{3,4})/);
+  const odds = oddsMatch ? parseInt(oddsMatch[1]) : null;
+  if (!odds) return; // can't log without odds
+
+  // Pre-fill the form with analysis data
+  const gameEl   = document.getElementById('f-game');
+  const pickEl   = document.getElementById('f-pick');
+  const marketEl = document.getElementById('f-market');
+  const oddsEl   = document.getElementById('f-odds');
+  if (gameEl)   gameEl.value   = gameName;
+  if (pickEl)   pickEl.value   = pick;
+  if (oddsEl)   oddsEl.value   = odds;
+  if (marketEl) {
+    const mk = String(r.market || 'h2h');
+    marketEl.value = mk === 'h2h' ? 'Moneyline' : mk === 'spreads' ? 'Spread' : mk === 'totals' ? 'Total' : 'Moneyline';
+  }
+
+  // Show auto-log prompt to user — don't log automatically without confirmation
+  const lm = r.lineMovementSignal || {};
+  showAutoLogPrompt(pick, odds, verdict, {
+    edgeScore:    r.edgeScore,
+    confidence:   r.confidence,
+    verdict,
+    mode:         r.mode || (r.provider === 'anthropic' ? 'quick' : 'quick'),
+    sport:        sport || game.sport_key,
+    rlmScore:     lm.rlmScore || 0,
+    rlmDirection: lm.rlmDirection || 'NEUTRAL',
+    autoLogged:   true,
+  });
+}
+
+function showAutoLogPrompt(pick, odds, verdict, meta) {
+  // Show a toast with a "Log this bet?" option
+  const color = verdict === 'BET' ? 'var(--green)' : 'var(--yellow)';
+  const toast = document.createElement('div');
+  toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid ${color};border-radius:12px;padding:14px 18px;z-index:9999;font-family:var(--mono);font-size:11px;text-align:center;min-width:260px;box-shadow:0 8px 24px rgba(0,0,0,0.3);`;
+  toast.innerHTML = `
+    <div style="color:${color};font-weight:700;margin-bottom:6px;">${verdict}: ${pick}</div>
+    <div style="color:var(--muted);margin-bottom:10px;">Log this pick to your tracker?</div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button id="autoLogYes" style="background:${color};color:#000;border:0;padding:7px 16px;border-radius:6px;font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;">LOG IT</button>
+      <button id="autoLogNo" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:7px 16px;border-radius:6px;font-family:var(--mono);font-size:10px;cursor:pointer;">SKIP</button>
+    </div>`;
+  document.body.appendChild(toast);
+
+  document.getElementById('autoLogYes').onclick = () => {
+    toast.remove();
+    const stakeEl = document.getElementById('f-stake');
+    if (stakeEl && !stakeEl.value) stakeEl.value = '1';
+    logBet(meta);
+    showTab('tracker');
+  };
+  document.getElementById('autoLogNo').onclick = () => toast.remove();
+
+  // Auto-dismiss after 10 seconds
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 10000);
 }
 
 function saveBets() { localStorage.setItem('edge_bets', JSON.stringify(bets)); }
@@ -6002,6 +6096,82 @@ function updateTrackerStats() {
     el.className = el.className.replace('stat-val','ev-val');
     el.classList.add('stat-val');
   });
+
+  // ── Model calibration stats ──────────────────────────────────────────────
+  renderCalibrationStats();
+}
+
+function renderCalibrationStats() {
+  const el = document.getElementById('calibration-stats');
+  if (!el) return;
+
+  const settled = bets.filter(b => b.status === 'win' || b.status === 'loss');
+  if (!settled.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:10px;text-align:center;padding:20px;">Log and settle bets to see model calibration data.</div>';
+    return;
+  }
+
+  // Win rate by verdict
+  const betVerdicts  = settled.filter(b => b.verdict === 'BET');
+  const leanVerdicts = settled.filter(b => b.verdict === 'LEAN');
+  const betWR    = betVerdicts.length  ? (betVerdicts.filter(b => b.status === 'win').length  / betVerdicts.length  * 100).toFixed(0) : null;
+  const leanWR   = leanVerdicts.length ? (leanVerdicts.filter(b => b.status === 'win').length / leanVerdicts.length * 100).toFixed(0) : null;
+
+  // Win rate by mode
+  const deepBets  = settled.filter(b => b.mode === 'deep');
+  const quickBets = settled.filter(b => b.mode === 'quick');
+  const deepWR    = deepBets.length  ? (deepBets.filter(b => b.status === 'win').length  / deepBets.length  * 100).toFixed(0) : null;
+  const quickWR   = quickBets.length ? (quickBets.filter(b => b.status === 'win').length / quickBets.length * 100).toFixed(0) : null;
+
+  // Edge score buckets
+  const buckets = [
+    { label: 'Score 1-3',  min: 1,  max: 3  },
+    { label: 'Score 3-6',  min: 3,  max: 6  },
+    { label: 'Score 6-10', min: 6,  max: 10 },
+    { label: 'Score 10+',  min: 10, max: 999 },
+  ];
+  const bucketRows = buckets.map(bk => {
+    const group = settled.filter(b => b.edgeScore != null && b.edgeScore >= bk.min && b.edgeScore < bk.max);
+    if (!group.length) return null;
+    const wr = (group.filter(b => b.status === 'win').length / group.length * 100).toFixed(0);
+    return { label: bk.label, count: group.length, wr };
+  }).filter(Boolean);
+
+  // Win rate by sport
+  const sports = [...new Set(settled.filter(b => b.sport).map(b => b.sport))];
+  const sportRows = sports.map(sport => {
+    const group = settled.filter(b => b.sport === sport);
+    const wr = (group.filter(b => b.status === 'win').length / group.length * 100).toFixed(0);
+    return { sport: sport.replace('baseball_','').replace('basketball_','').replace('americanfootball_','').replace('icehockey_','').toUpperCase(), count: group.length, wr };
+  });
+
+  const wr2color = wr => {
+    const n = parseInt(wr);
+    return n >= 55 ? 'var(--green)' : n >= 45 ? 'var(--yellow)' : 'var(--red)';
+  };
+
+  const row = (label, wr, count) => wr !== null
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-tertiary);">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${label} <span style="color:var(--muted2)">(${count})</span></span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${wr2color(wr)}">${wr}%</span>
+       </div>` : '';
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin-bottom:8px;">BY VERDICT</div>
+        ${row('BET', betWR, betVerdicts.length)}
+        ${row('LEAN', leanWR, leanVerdicts.length)}
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin:12px 0 8px;">BY MODE</div>
+        ${row('Research', deepWR, deepBets.length)}
+        ${row('Quick', quickWR, quickBets.length)}
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin-bottom:8px;">BY EDGE SCORE</div>
+        ${bucketRows.map(b => row(b.label, b.wr, b.count)).join('')}
+        ${sportRows.length ? `<div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--accent);margin:12px 0 8px;">BY SPORT</div>${sportRows.map(s => row(s.sport, s.wr, s.count)).join('')}` : ''}
+      </div>
+    </div>`;
 }
 
 function renderBets() {
@@ -6021,6 +6191,8 @@ function renderBets() {
       <td>${b.stake}u</td>
       <td style="color:var(--green)">+${b.toWin}u</td>
       <td>${b.book}</td>
+      <td style="color:${b.edgeScore != null ? (b.edgeScore >= 5 ? 'var(--green)' : b.edgeScore >= 2 ? 'var(--yellow)' : 'var(--muted)') : 'var(--muted2)'};font-family:var(--mono);font-size:10px;">${b.edgeScore != null ? b.edgeScore.toFixed(1) : '—'}</td>
+      <td style="color:var(--muted);font-family:var(--mono);font-size:9px;">${b.mode === 'deep' ? '🔍' : b.mode === 'quick' ? '⚡' : '—'}</td>
       <td>${clvDisplay}</td>
       <td>
         <div style="display:flex;gap:5px;">
