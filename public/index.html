@@ -5248,19 +5248,20 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt,
-        userId: getUserId(),
+        // Server-side prompt generation — backend builds prompt from gameId+sport
+        gameId:  game.id,
+        sport:   game.sport_key,
         useSearch,
-        selectedSide: selection.selectedSide,
-        selectedTeam: selection.selectedTeam,
-        opponentTeam: selection.opponentTeam,
-        market: selection.market,
-        odds: selection.odds,
-        gameKey: requestGameKey,
-        homeTeam: game.home_team,
-        awayTeam: game.away_team,
-        homeOdds: hBest,
-        awayOdds: aBest,
+        userId:  getUserId(),
+        selection: {
+          side:     selection.selectedSide,
+          team:     selection.selectedTeam,
+          opponent: selection.opponentTeam,
+          market:   selection.market || 'h2h',
+          label:    selection.label,
+        },
+        // Legacy prompt field kept for backward compatibility with home-upgrades.js
+        prompt,
       }),
       signal: controller.signal,
     });

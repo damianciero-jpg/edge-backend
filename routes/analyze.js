@@ -17,12 +17,14 @@ const { getLimitConfig,
 const { getCfg }                 = require('../lib/config');
 const { OWNER_EMAILS }           = require('../lib/owners');
 
-const { fetchLiveGameOdds }      = require('../lib/analysis/odds-service');
+const { fetchLiveGameOdds,
+        fetchGameById }          = require('../lib/analysis/odds-service');
 const { fetchLineMovement }      = require('../lib/analysis/line-service');
 const { buildCandidateEvaluation,
         buildEdgeEvaluation }    = require('../lib/analysis/evaluation-engine');
 const { buildScoredPrompt,
-        buildMultiCandidatePrompt } = require('../lib/analysis/prompt-builder');
+        buildMultiCandidatePrompt,
+        buildGamePrompt }        = require('../lib/analysis/prompt-builder');
 const { callAnthropic,
         callOpenAI,
         cleanJsonText,
@@ -80,24 +82,44 @@ router.post('/', async (req, res) => {
   }
 
   // ── Stage B: Parse request ────────────────────────────────────────────────
-  const { prompt, useSearch, secondLayer } = req.body;
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ ok: false, error: 'prompt is required.' });
-  }
+  const { prompt: rawPrompt, useSearch, secondLayer,
+          gameId, sport, market, selection } = req.body;
   const mode = useSearch ? 'deep' : 'quick';
 
+  const apiKey = await withTimeout(
+    getCfg('oddsApiKey', 'ODDS_API_KEY', process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY),
+    3000, 'getCfg'
+  ).catch(() => process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY || null);
+
   // ── Stage B: Fetch live odds (root dependency) ────────────────────────────
+  // NEW: if gameId + sport sent, fetch game directly (server-side prompt generation)
+  // LEGACY: if prompt string sent, use existing flow for backward compatibility
   let liveOdds = null;
+  let prompt   = rawPrompt || '';
+  let serverSideMode = false;
+
   try {
-    const apiKey = await withTimeout(
-      getCfg('oddsApiKey', 'ODDS_API_KEY', process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY),
-      3000, 'getCfg'
-    ).catch(() => process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY || null);
-    if (apiKey) {
+    if (gameId && sport && apiKey) {
+      // Server-side mode — fetch game by ID, build prompt internally
+      const game = await withTimeout(fetchGameById(gameId, sport, apiKey), 8000, 'fetchGameById');
+      if (game) {
+        prompt         = buildGamePrompt(game, mode, selection || null);
+        serverSideMode = true;
+        console.log('[EDGE] Server-side prompt built for:', game.away_team, '@', game.home_team);
+      }
+    }
+
+    if (!serverSideMode && !prompt) {
+      return res.status(400).json({ ok: false, error: 'gameId+sport or prompt is required.' });
+    }
+
+    if (!serverSideMode && apiKey) {
+      liveOdds = await withTimeout(fetchLiveGameOdds(prompt, apiKey), 8000, 'fetchLiveGameOdds');
+    } else if (serverSideMode && apiKey) {
       liveOdds = await withTimeout(fetchLiveGameOdds(prompt, apiKey), 8000, 'fetchLiveGameOdds');
     }
   } catch (err) {
-    console.warn('Odds fetch failed:', err.message);
+    console.warn('Odds/prompt setup failed:', err.message);
   }
 
   // ── Stage C: Fan-out — line movement (depends on odds) ───────────────────
