@@ -32,6 +32,19 @@ const { callAnthropic,
         analysisErrorMessage }   = require('../lib/analysis/ai-service');
 const { buildStructuredResult }  = require('../lib/analysis/response-formatter');
 
+// ─── STRUCTURED LOGGER ───────────────────────────────────────────────────────
+// All EDGE logs use this format for easy filtering in Vercel dashboard.
+// Filter by "[EDGE]" to see only analysis pipeline logs.
+
+function log(event, data = {}) {
+  console.log(JSON.stringify({
+    _edge: true,
+    event,
+    ts: new Date().toISOString(),
+    ...data,
+  }));
+}
+
 // ─── STALE LINE CONSTANTS ─────────────────────────────────────────────────────
 const STALE_WARN_MS = 15 * 60 * 1000;
 const STALE_HARD_MS = 30 * 60 * 1000;
@@ -56,6 +69,10 @@ router.post('/', async (req, res) => {
 
   if (!userId) return res.status(401).json({ ok: false, authRequired: true });
 
+  const reqStart = Date.now();
+  const reqId = Math.random().toString(36).slice(2, 8);
+  log('request_start', { reqId, userId: userId.split('@')[0] + '@...', mode: req.body?.useSearch ? 'deep' : 'quick', gameId: req.body?.gameId, sport: req.body?.sport });
+
   let user, limitCfg, globalCount, userDayCount;
   try {
     [user, limitCfg, globalCount, userDayCount] = await Promise.all([
@@ -65,11 +82,12 @@ router.post('/', async (req, res) => {
       withTimeout(getUserDailyCount(userId), 3000, 'getUserDailyCount'),
     ]);
   } catch (err) {
-    console.error('Stage A error:', err.message);
+    log('error', { reqId, stage: 'stage_a', error: err.message });
     return res.status(503).json({ ok: false, error: 'Service temporarily unavailable.' });
   }
 
   const hasAccess = isOwner || !!user?.isSubscriber;
+  log('stage_a_complete', { reqId, duration_ms: Date.now() - reqStart, hasAccess, credits: user?.credits ?? 0 });
 
   if (!hasAccess && (user?.credits ?? 0) <= 0) {
     return res.status(402).json({ ok: false, paywall: true, error: 'No credits remaining.' });
@@ -121,6 +139,8 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.warn('Odds/prompt setup failed:', err.message);
   }
+
+  log('odds_complete', { reqId, duration_ms: Date.now() - reqStart, hasOdds: !!liveOdds, serverSide: serverSideMode, sport: req.body?.sport, candidateCount: liveOdds?.candidates?.length || 0 });
 
   // ── Stage C: Fan-out — line movement (depends on odds) ───────────────────
   let lineMovementSignal = null;
@@ -286,6 +306,8 @@ router.post('/', async (req, res) => {
     result = { provider: 'edge-scoring', model: 'deterministic-fallback', text: '' };
   }
 
+  log('ai_complete', { reqId, duration_ms: Date.now() - reqStart, provider: result?.provider, model: result?.model, fallback: fallbackUsed, reviewed, oddsDetected: !!evaluation?.oddsDetected });
+
   // ── Stage D: Format response ──────────────────────────────────────────────
   const structured = buildStructuredResult(evaluation, result?.text || '');
   if (staleWarning) {
@@ -309,6 +331,9 @@ router.post('/', async (req, res) => {
     withTimeout(incrementGlobalCount(),       3000, 'incr global').catch(e => console.error(e.message)),
     withTimeout(incrementUserDailyCount(userId), 3000, 'incr user').catch(e => console.error(e.message)),
   ]).catch(e => console.error(e.message));
+
+  const totalMs = Date.now() - reqStart;
+  log('response', { reqId, total_ms: totalMs, verdict: structured.verdict, edgeScore: structured.edgeScore, pick: structured.pick, conflicted: structured.consensusConflict || false, stale: !!structured.staleWarning });
 
   return res.json({
     ok:          true,
