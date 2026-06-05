@@ -89,7 +89,10 @@ router.post('/', async (req, res) => {
   // ── Stage B: Fetch live odds (root dependency) ────────────────────────────
   let liveOdds = null;
   try {
-    const apiKey = await getCfg('oddsApiKey', 'ODDS_API_KEY', process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY);
+    const apiKey = await withTimeout(
+      getCfg('oddsApiKey', 'ODDS_API_KEY', process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY),
+      3000, 'getCfg'
+    ).catch(() => process.env.THE_ODDS_API_KEY || process.env.ODDS_KEY || null);
     if (apiKey) {
       liveOdds = await withTimeout(fetchLiveGameOdds(prompt, apiKey), 8000, 'fetchLiveGameOdds');
     }
@@ -197,7 +200,11 @@ router.post('/', async (req, res) => {
 
   if (evaluation.oddsDetected) {
     try {
-      result = await callAnthropic(scoredPrompt, mode);
+      result = await withTimeout(
+        callAnthropic(scoredPrompt, mode),
+        mode === 'deep' ? 185000 : 35000,
+        'callAnthropic'
+      );
     } catch (err) {
       if (!process.env.OPENAI_API_KEY) throw err;
       result = await withTimeout(callOpenAI(scoredPrompt, mode), mode === 'deep' ? 45000 : 20000, 'openai fallback');
