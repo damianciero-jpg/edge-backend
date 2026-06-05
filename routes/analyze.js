@@ -180,7 +180,7 @@ router.post('/', async (req, res) => {
 
   if (liveOdds?.candidates?.length) {
     const pairs = liveOdds.candidates.map(c => {
-      // Use side-specific RLM score — home RLM for home side, away RLM for away
+      // Use side-specific RLM score
       const candidateRLM = lineMovementSignal
         ? (c.side === 'home'
             ? (lineMovementSignal.home?.score || 0) + (lineMovementSignal.rlmScore || 0)
@@ -192,6 +192,8 @@ router.post('/', async (req, res) => {
         eval: buildCandidateEvaluation(resolvedPrompt, {
           side: c.side, team: c.team, opponent: c.opponent,
           market: c.market, odds: c.odds, opponentOdds: c.opponentOdds,
+          // Attach pitcher data so evaluation-engine can compute pitcherSignal
+          pitchers: liveOdds.pitchers || null,
         }, candidateRLM),
       };
     });
