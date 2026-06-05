@@ -137,10 +137,33 @@ async function fetchLiveGameOdds(prompt) {
     const games = await res.json();
     if (!Array.isArray(games)) return null;
 
-    const matchedGame = games.find(game =>
-      teamNameMatch(prompt, game.home_team) || teamNameMatch(prompt, game.away_team)
-    );
-    if (!matchedGame) return null;
+    // Try game ID first (most reliable — frontend now sends GAME ID in prompt)
+    const gameIdMatch = String(prompt || '').match(/\bGAME\s+ID:\s*([a-f0-9-]{8,})/i);
+    const promptGameId = gameIdMatch ? gameIdMatch[1].trim() : null;
+
+    // Also extract team names from prompt for fallback matching
+    const promptTeams = extractGameTeams(prompt);
+
+    const matchedGame = games.find(game => {
+      // Primary: exact game ID match
+      if (promptGameId && game.id && game.id === promptGameId) return true;
+      // Secondary: both team names match (exact game)
+      if (promptTeams) {
+        const homeMatch = game.home_team.toLowerCase() === promptTeams.home.toLowerCase() ||
+                          teamNameMatch(prompt, game.home_team);
+        const awayMatch = game.away_team.toLowerCase() === promptTeams.away.toLowerCase() ||
+                          teamNameMatch(prompt, game.away_team);
+        return homeMatch && awayMatch;
+      }
+      // Tertiary: at least one team name match (existing behavior)
+      return teamNameMatch(prompt, game.home_team) || teamNameMatch(prompt, game.away_team);
+    });
+
+    if (!matchedGame) {
+      console.warn('[EDGE] No game matched. promptGameId:', promptGameId, 'teams:', promptTeams);
+      return null;
+    }
+    console.log('[EDGE] Matched game:', matchedGame.away_team, '@', matchedGame.home_team, 'id:', matchedGame.id);
 
     const homeTeam = matchedGame.home_team;
     const awayTeam = matchedGame.away_team;
@@ -1667,15 +1690,27 @@ ${staleWarning}`
           const aiChosen = String(parsed.bestCandidate || '').trim();
           const aiVerdict = String(parsed.aiVerdict || '').toUpperCase();
 
+          console.log('MULTI-CANDIDATE AI response:', { aiChosen, aiVerdict });
+
           if (aiChosen && aiChosen !== 'PASS' && aiVerdict !== 'PASS') {
-            const matchedPair = allPairsForAI.find(p =>
-              p.candidate.label.toLowerCase() === aiChosen.toLowerCase() ||
-              aiChosen.toLowerCase().includes(p.candidate.team.toLowerCase().split(' ').pop()) ||
-              p.candidate.team.toLowerCase().split(' ').pop() === aiChosen.toLowerCase().split(' ').find(w => w.length > 4)
-            );
+            // Robust team matching — check multiple substring strategies
+            const chosenLower = aiChosen.toLowerCase();
+            const matchedPair = allPairsForAI.find(p => {
+              const teamLower = p.candidate.team.toLowerCase();
+              const labelLower = p.candidate.label.toLowerCase();
+              // Exact label match
+              if (labelLower === chosenLower) return true;
+              // Label contains chosen or chosen contains label
+              if (labelLower.includes(chosenLower) || chosenLower.includes(labelLower)) return true;
+              // Team name contained in AI choice
+              if (chosenLower.includes(teamLower)) return true;
+              // Any word of team name (>4 chars) appears in AI choice
+              return teamLower.split(' ').some(w => w.length > 4 && chosenLower.includes(w));
+            });
 
             if (matchedPair) {
               const chosenEval = matchedPair.eval;
+              const savedAllCandidates = evaluation.allCandidates;
               chosenEval.pick = matchedPair.candidate.label;
               chosenEval.evaluating = matchedPair.candidate.label;
               chosenEval.selectedTeam = matchedPair.candidate.team;
@@ -1683,10 +1718,26 @@ ${staleWarning}`
               chosenEval.market = matchedPair.candidate.market;
               chosenEval.mode = mode;
               chosenEval.lineMovementSignal = lineMovementSignal;
-              chosenEval.allCandidates = evaluation.allCandidates;
+              chosenEval.allCandidates = savedAllCandidates;
+              // CRITICAL: inject aiVerdict so consensus gate can use it
+              // We do this by embedding it in result.text as a JSON field
+              // so buildStructuredResult picks it up normally
+              const existingParsed = JSON.parse(cleanJsonText(result.text));
+              existingParsed.aiVerdict = aiVerdict;
+              result.text = JSON.stringify(existingParsed);
               evaluation = chosenEval;
-              console.log('AI chose:', matchedPair.candidate.label, 'score:', chosenEval.edgeScore);
+              console.log('AI chose:', matchedPair.candidate.label, '| score:', chosenEval.edgeScore, '| aiVerdict:', aiVerdict);
+            } else {
+              console.warn('MULTI-CANDIDATE: could not match AI choice to candidate:', aiChosen);
+              // Still inject aiVerdict into result so consensus gate sees it
+              try {
+                const ep = JSON.parse(cleanJsonText(result.text));
+                ep.aiVerdict = aiVerdict;
+                result.text = JSON.stringify(ep);
+              } catch {}
             }
+          } else {
+            console.log('MULTI-CANDIDATE: AI returned PASS or no candidate');
           }
         } catch (e) {
           console.warn('Multi-candidate parse failed:', e.message);

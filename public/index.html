@@ -5192,30 +5192,33 @@ async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(
   const selection = getAnalysisSelection(game, hBest, aBest);
   console.log(`[ANALYZE] Game selected: ${game.away_team} vs ${game.home_team}, odds: ${fmt(aBest)}/${fmt(hBest)}`);
 
+  const isBestMode = selection.selectedSide === 'best';
   const prompt = `You are an expert sports betting analyst. Analyze this upcoming game for expected value.
 
 GAME: ${game.away_team} @ ${game.home_team}
+GAME ID: ${game.id || ''}
 DATE: ${new Date(game.commence_time).toDateString()}
 SPORT: ${game.sport_title}
+ANALYSIS MODE: ${isBestMode ? 'FIND BEST EDGE — evaluate both sides independently' : 'SINGLE SIDE — evaluate selected pick only'}
 SELECTED PICK: ${selection.label}
 SELECTED SIDE: ${selection.selectedSide}
-SELECTED TEAM: ${selection.selectedTeam || 'Best available edge'}
-OPPONENT: ${selection.opponentTeam || 'Compare both sides'}
-MARKET: Moneyline
+SELECTED TEAM: ${isBestMode ? `${game.away_team} (away) OR ${game.home_team} (home) — find best edge` : selection.selectedTeam}
+OPPONENT: ${isBestMode ? 'Both sides being evaluated' : selection.opponentTeam}
+MARKET: ${selection.market || 'h2h'}
 
-LIVE ODDS (American):
+TEAMS AND BEST AVAILABLE ODDS:
+- ${game.away_team} (AWAY): ${fmt(aBest)} (implied: ${toImplied(aBest)}%)
+- ${game.home_team} (HOME): ${fmt(hBest)} (implied: ${toImplied(hBest)}%)
+
+ALL BOOKS ODDS:
 ${oddsCtx}
 
-IMPLIED PROBABILITIES:
-- ${game.home_team}: ${toImplied(hBest)}%
-- ${game.away_team}: ${toImplied(aBest)}%
-
 INSTRUCTIONS:
-1. Use web_search to find: recent form (last 5 games), key injuries, head-to-head record, home/away splits, and any relevant news for both teams.
-2. Estimate the TRUE win probability for each team based on your research.
-3. Calculate EV: EV = (true_prob × decimal_odds) - 1
-4. Give a clear BET/PASS/LEAN recommendation.
-5. Do not recommend a different side than the selected pick unless verdict is PASS and you explain that the opposite side may be stronger.
+1. Use web_search to find: recent form (last 5 games), key injuries, starting pitchers/starters, head-to-head, home/away splits, and any sharp money signals for BOTH teams.
+2. Estimate the TRUE win probability for EACH team based on your research.
+3. Calculate EV for both sides: EV = (true_prob × decimal_odds) - 1
+4. ${isBestMode ? 'Identify the SINGLE BEST play across both sides, or PASS if neither has edge.' : 'Give a clear BET/PASS/LEAN recommendation for the selected side.'}
+5. Your verdict must reflect the actual best value — do not default to the home team or favorite.
 
 Respond ONLY in this exact JSON format (no markdown, no backticks):
 {
