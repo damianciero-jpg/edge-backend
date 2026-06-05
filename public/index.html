@@ -296,6 +296,24 @@ header{display:flex;align-items:center;justify-content:space-between;padding:13p
 .bar:nth-child(5){animation-delay:0.4s;}
 @keyframes barAnim{0%,100%{height:6px;opacity:0.3;}50%{height:36px;opacity:1;}}
 .loading-txt{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2px;animation:txtFade 1.5s ease-in-out infinite;}
+.progress-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:420px;margin:0 auto;}
+.progress-game{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:16px;text-align:center;}
+.progress-stages{display:flex;flex-direction:column;gap:8px;}
+.progress-stage{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;transition:background 0.3s;}
+.progress-stage.active{background:color-mix(in srgb,var(--accent) 8%,transparent);}
+.progress-stage.done{opacity:0.6;}
+.progress-stage.waiting{opacity:0.35;}
+.ps-icon{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}
+.ps-icon.done{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green);}
+.ps-icon.active{background:color-mix(in srgb,var(--accent) 20%,transparent);}
+.ps-icon.waiting{background:var(--surface2);}
+.ps-spin{width:12px;height:12px;border:1.5px solid color-mix(in srgb,var(--accent) 30%,transparent);border-top-color:var(--accent);border-radius:50%;animation:dfs-spin 0.7s linear infinite;}
+.ps-label{font-family:var(--mono);font-size:10px;letter-spacing:1px;flex:1;}
+.ps-label.active{color:var(--text);}
+.ps-label.done{color:var(--muted);}
+.ps-label.waiting{color:var(--muted2);}
+.ps-time{font-family:var(--mono);font-size:9px;color:var(--muted2);}
+.progress-elapsed{text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:14px;letter-spacing:1px;}
 @keyframes txtFade{0%,100%{opacity:0.4;}50%{opacity:1;}}
 
 .err-msg{background:rgba(255,59,92,0.1);border:1px solid rgba(255,59,92,0.3);padding:12px 16px;font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:14px;}
@@ -5173,14 +5191,61 @@ async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(
   if (btn) btn.textContent = useSearch ? '⚡ QUICK EVALUATION' : 'RUNNING...';
   if (btnR) btnR.textContent = useSearch ? 'RESEARCHING...' : '🔍 RESEARCH MODE';
 
-  // Frontend-only staged loading state
+  // Real progress stages — match actual backend pipeline
+  // Quick: auth(~0.1s) → odds(~0.5s) → evaluate(~0.2s) → AI(~3-8s) → done
+  // Research: auth → odds → evaluate → AI+websearch(60-120s) → done
   let elapsed = 0;
-  const stagedMsgs = ['Checking odds...', 'Reviewing matchup...', 'Scoring risk...', 'Finding edge...'];
-  function loadingHtml() {
-    const msgIdx = Math.min(Math.floor(elapsed / (useSearch ? 18 : 2)), stagedMsgs.length - 1);
-    const sub = useSearch ? 'Research Mode typically takes 60–120 seconds' : 'Quick Evaluation in progress...';
-    return `<div class="loading-state"><div class="bars">${'<div class="bar"></div>'.repeat(5)}</div><div class="loading-txt">Analyzing ${escapeHtml(game.away_team)} vs ${escapeHtml(game.home_team)}... · ${elapsed}s</div><div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:8px;">${stagedMsgs[msgIdx]} · ${sub}</div></div>`;
+
+  const STAGES_QUICK = [
+    { id: 'auth',     label: 'AUTH & LIMITS',      doneAt: 0.5  },
+    { id: 'odds',     label: 'FETCHING ODDS',       doneAt: 2    },
+    { id: 'pitcher',  label: 'PITCHER & TEAM DATA', doneAt: 3.5  },
+    { id: 'eval',     label: 'SCORING CANDIDATES',  doneAt: 4.5  },
+    { id: 'ai',       label: 'AI ANALYSIS',         doneAt: 999  },
+  ];
+
+  const STAGES_RESEARCH = [
+    { id: 'auth',     label: 'AUTH & LIMITS',        doneAt: 0.5  },
+    { id: 'odds',     label: 'FETCHING ODDS',         doneAt: 2    },
+    { id: 'pitcher',  label: 'PITCHER & TEAM DATA',   doneAt: 4    },
+    { id: 'eval',     label: 'SCORING ALL CANDIDATES',doneAt: 5    },
+    { id: 'search',   label: 'WEB RESEARCH',          doneAt: 35   },
+    { id: 'ai',       label: 'AI SYNTHESIS',          doneAt: 999  },
+  ];
+
+  const stages = useSearch ? STAGES_RESEARCH : STAGES_QUICK;
+
+  function stageIcon(state) {
+    if (state === 'done')    return '<div class="ps-icon done">✓</div>';
+    if (state === 'active')  return '<div class="ps-icon active"><div class="ps-spin"></div></div>';
+    return '<div class="ps-icon waiting">·</div>';
   }
+
+  function loadingHtml() {
+    const rows = stages.map((s, i) => {
+      const isDone    = elapsed >= s.doneAt;
+      const isActive  = !isDone && (i === 0 || elapsed >= stages[i-1].doneAt);
+      const isWaiting = !isDone && !isActive;
+      const state     = isDone ? 'done' : isActive ? 'active' : 'waiting';
+      const timeLabel = isDone ? `${s.doneAt < 1 ? '<1' : Math.round(s.doneAt)}s` : isActive ? `${elapsed}s` : '';
+      return `<div class="progress-stage ${state}">
+        ${stageIcon(state)}
+        <span class="ps-label ${state}">${s.label}</span>
+        <span class="ps-time">${timeLabel}</span>
+      </div>`;
+    }).join('');
+
+    const eta = useSearch
+      ? elapsed < 35 ? 'Searching injury reports & sharp money...' : 'AI synthesizing research...'
+      : elapsed < 5 ? 'Fetching live odds & pitcher data...' : 'Running edge analysis...';
+
+    return `<div class="progress-card">
+      <div class="progress-game">${escapeHtml(game.away_team)} @ ${escapeHtml(game.home_team)}</div>
+      <div class="progress-stages">${rows}</div>
+      <div class="progress-elapsed">${eta} · ${elapsed}s elapsed</div>
+    </div>`;
+  }
+
   area.innerHTML = loadingHtml();
   setTimeout(scrollAnalysisIntoView, 50);
   const ticker = setInterval(() => {
