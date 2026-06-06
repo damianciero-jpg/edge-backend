@@ -101,7 +101,8 @@ router.post('/', async (req, res) => {
 
   // ── Stage B: Parse request ────────────────────────────────────────────────
   const { prompt: rawPrompt, useSearch, secondLayer,
-          gameId, sport, market, selection } = req.body;
+          gameId, sport, market, selection,
+          forceRecommendation } = req.body;
   const mode = useSearch ? 'deep' : 'quick';
 
   const apiKey = await withTimeout(
@@ -263,11 +264,11 @@ router.post('/', async (req, res) => {
   let multiCandidateMode = false;
 
   if (allPairsForAI && mode === 'deep') {
-    scoredPrompt       = buildMultiCandidatePrompt(resolvedPrompt, allPairsForAI);
+    scoredPrompt       = buildMultiCandidatePrompt(resolvedPrompt, allPairsForAI, forceRecommendation);
     multiCandidateMode = true;
     console.log('MULTI-CANDIDATE MODE: AI selecting best side');
   } else {
-    scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
+    scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation, forceRecommendation);
   }
 
   if (evaluation.oddsDetected) {
@@ -339,7 +340,7 @@ router.post('/', async (req, res) => {
   log('ai_complete', { reqId, duration_ms: Date.now() - reqStart, provider: result?.provider, model: result?.model, fallback: fallbackUsed, reviewed, oddsDetected: !!evaluation?.oddsDetected });
 
   // ── Stage D: Format response ──────────────────────────────────────────────
-  const structured = buildStructuredResult(evaluation, result?.text || '');
+  const structured = buildStructuredResult(evaluation, result?.text || '', forceRecommendation);
   if (staleWarning) {
     structured.staleWarning   = staleWarning;
     structured.lineAgeMinutes = staleAgeMinutes;

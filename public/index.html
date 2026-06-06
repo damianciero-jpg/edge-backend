@@ -5172,6 +5172,26 @@ function getAnalysisSelection(game, hBest, aBest) {
   };
 }
 
+// ─── PASS STREAK TRACKING ─────────────────────────────────────────────────────
+// After 4 consecutive PASSes, EDGE forces a BET/LEAN recommendation.
+const PASS_STREAK_KEY = 'edge_pass_streak';
+const FORCE_AFTER_PASSES = 4;
+
+function getPassStreak() {
+  return parseInt(localStorage.getItem(PASS_STREAK_KEY) || '0', 10);
+}
+function updatePassStreak(verdict) {
+  const v = String(verdict || '').toUpperCase();
+  if (v === 'PASS') {
+    localStorage.setItem(PASS_STREAK_KEY, String(getPassStreak() + 1));
+  } else {
+    localStorage.setItem(PASS_STREAK_KEY, '0');
+  }
+}
+function isForceRecommendationActive() {
+  return getPassStreak() >= FORCE_AFTER_PASSES;
+}
+
 async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(currentGame)) {
   const game = getGameByIdentity(gameKey);
   if (!game) return;
@@ -5239,7 +5259,13 @@ async function runAnalysis(useSearch, gameKey = selectedGameKey || gameIdentity(
       ? elapsed < 35 ? 'Searching injury reports & sharp money...' : 'AI synthesizing research...'
       : elapsed < 5 ? 'Fetching live odds & pitcher data...' : 'Running edge analysis...';
 
+    const streak = getPassStreak();
+    const forceBanner = streak >= FORCE_AFTER_PASSES
+      ? `<div style="margin-bottom:10px;padding:6px 10px;background:rgba(255,193,7,0.12);border:1px solid rgba(255,193,7,0.35);border-radius:6px;font-size:11px;color:#f5c518;font-family:var(--mono);letter-spacing:.5px">⚡ FORCED PICK — passed ${streak} straight · EDGE must make a call</div>`
+      : '';
+
     return `<div class="progress-card">
+      ${forceBanner}
       <div class="progress-game">${escapeHtml(game.away_team)} @ ${escapeHtml(game.home_team)}</div>
       <div class="progress-stages">${rows}</div>
       <div class="progress-elapsed">${eta} · ${elapsed}s elapsed</div>
@@ -5342,6 +5368,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
           market:   selection.market || 'h2h',
           label:    selection.label,
         },
+        forceRecommendation: isForceRecommendationActive(),
         // Legacy prompt field kept for backward compatibility with home-upgrades.js
         prompt,
       }),
@@ -5394,6 +5421,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
     if (!isCurrentAnalysisRequest(requestId, requestGameKey)) return;
     renderAIResult(result, txt);
+    updatePassStreak(result.verdict || result.recommendation);
     syncUserStatus();
     setTimeout(scrollAnalysisIntoView, 100);
     // Auto-log prompt if verdict is BET or LEAN
@@ -5699,7 +5727,12 @@ function renderAIResult(r, rawText = '') {
   const lockedPlayClass = showOverlay ? 'blurred' : '';
   const reasonText = r.reason || r.reasoning || rawText || 'No reasoning returned.';
 
+  const forcedPickBanner = r.forcedPick
+    ? `<div style="margin-bottom:12px;padding:7px 11px;background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.4);border-radius:6px;font-size:11px;color:#f5c518;font-family:var(--mono);letter-spacing:.5px">⚡ FORCED PICK — EDGE passed 4+ straight games and committed to a recommendation. Small unit only.</div>`
+    : '';
+
   const decisionHtml = `<div class="edge-decision-card">
+    ${forcedPickBanner}
     <div class="algo-badge">Powered by EDGE Proprietary Algorithm</div>
     <div class="ed-evaluating">Evaluating: <strong>${escapeHtml(evaluatingPlay)}</strong></div>
     <div class="ed-eyebrow">EDGE VERDICT:</div>
@@ -5731,6 +5764,7 @@ function renderAIResult(r, rawText = '') {
       <div class="sec"><div class="sec-hdr">RECOMMENDED ACTION</div><div class="sec-body"><strong>${escapeHtml(action)}</strong></div></div>
       ${r.staleWarning ? `<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">⚠ LINE AGE</div><div class="sec-body" style="color:#c8a830;font-size:12px">${escapeHtml(r.staleWarning)}</div></div>` : ''}
       ${r.consensusConflict ? `<div class="sec"><div class="sec-hdr" style="color:var(--red)">⚠ SIGNAL CONFLICT</div><div class="sec-body" style="color:var(--red);font-size:12px">Algorithm and AI signals disagree. EDGE defaulted to PASS.</div></div>` : ''}
+      ${r.forcedPick ? `<div class="sec"><div class="sec-hdr" style="color:#f5c518">⚡ FORCED RECOMMENDATION</div><div class="sec-body" style="color:#f5c518;font-size:12px">EDGE passed on 4+ consecutive games and was required to commit. Treat as a small-unit speculative play.</div></div>` : ''}
       <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
       <button class="pw-cta" onclick="revealFullAnalysis()" style="margin-top:2px;">Reveal Full Analysis</button>
       ${resultActionsHtml(true)}
@@ -5764,6 +5798,7 @@ function renderAIResult(r, rawText = '') {
     <div class="sec"><div class="sec-hdr">REASON</div><div class="sec-body">${escapeHtml(reasonText)}<div class="algo-note">EDGE combines proprietary scoring models with real-time data to identify potential value opportunities.</div></div></div>
     ${r.staleWarning ? `<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">⚠ LINE AGE</div><div class="sec-body" style="color:#c8a830;font-size:12px">${escapeHtml(r.staleWarning)}</div></div>` : ''}
     ${r.consensusConflict ? `<div class="sec"><div class="sec-hdr" style="color:var(--red)">⚠ SIGNAL CONFLICT</div><div class="sec-body" style="color:var(--red);font-size:12px">Algorithm and AI signals disagree. EDGE defaulted to PASS. Re-run when signals align.</div></div>` : ''}
+    ${r.forcedPick ? `<div class="sec"><div class="sec-hdr" style="color:#f5c518">⚡ FORCED RECOMMENDATION</div><div class="sec-body" style="color:#f5c518;font-size:12px">EDGE passed on 4+ consecutive games and was required to commit. Treat as a small-unit speculative play.</div></div>` : ''}
     <div class="result-disclaimer">EDGE provides informational analysis only. No outcome is guaranteed. Bet responsibly.</div>
     ${r.risk_notes?`<div class="sec"><div class="sec-hdr" style="color:var(--yellow)">RISK NOTES</div><div class="sec-body" style="color:#c8a830">${escapeHtml(r.risk_notes)}</div></div>`:''}
     ${r.stats_found?`<div class="sec"><div class="sec-hdr" style="color:var(--muted)">DATA SOURCES</div><div class="sec-body" style="color:var(--muted);font-size:11px">${escapeHtml(r.stats_found)}</div></div>`:''}
