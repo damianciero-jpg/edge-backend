@@ -205,19 +205,33 @@ router.post('/', async (req, res) => {
 
     pairs.sort((a, b) => b.eval.edgeScore - a.eval.edgeScore);
 
-    const allNegative = pairs.every(p => p.eval.edgeScore <= 0);
+    // If user explicitly selected a side, lock to that candidate
+    const explicitSide = req.body?.selection?.side;
+    const lockedPair = (explicitSide === 'away' || explicitSide === 'home')
+      ? pairs.find(p => p.candidate.side === explicitSide && p.candidate.market === 'h2h')
+      : null;
 
-    if (allNegative && mode === 'deep') {
-      allPairsForAI = pairs;
-      evaluation    = pairs[0].eval;
-      evaluation.pick      = pairs[0].candidate.label;
-      evaluation.evaluating = pairs[0].candidate.label;
+    if (lockedPair) {
+      // User picked a specific side — use it regardless of score
+      evaluation = lockedPair.eval;
+      evaluation.pick       = lockedPair.candidate.label;
+      evaluation.evaluating = lockedPair.candidate.label;
+      console.log('[EDGE] Locked to explicit side:', explicitSide, lockedPair.candidate.label);
     } else {
-      const best = pairs.filter(p => p.eval.edgeScore > 0)[0] || pairs[0];
-      evaluation  = best.eval;
-      if (best.candidate && evaluation.verdict !== 'PASS') {
-        evaluation.pick      = best.candidate.label;
-        evaluation.evaluating = best.candidate.label;
+      const allNegative = pairs.every(p => p.eval.edgeScore <= 0);
+
+      if (allNegative && mode === 'deep') {
+        allPairsForAI = pairs;
+        evaluation    = pairs[0].eval;
+        evaluation.pick      = pairs[0].candidate.label;
+        evaluation.evaluating = pairs[0].candidate.label;
+      } else {
+        const best = pairs.filter(p => p.eval.edgeScore > 0)[0] || pairs[0];
+        evaluation  = best.eval;
+        if (best.candidate && evaluation.verdict !== 'PASS') {
+          evaluation.pick      = best.candidate.label;
+          evaluation.evaluating = best.candidate.label;
+        }
       }
     }
 
