@@ -101,8 +101,7 @@ router.post('/', async (req, res) => {
 
   // ── Stage B: Parse request ────────────────────────────────────────────────
   const { prompt: rawPrompt, useSearch, secondLayer,
-          gameId, sport, market, selection,
-          forceRecommendation } = req.body;
+          gameId, sport, market, selection } = req.body;
   const mode = useSearch ? 'deep' : 'quick';
 
   const apiKey = await withTimeout(
@@ -193,8 +192,9 @@ router.post('/', async (req, res) => {
         eval: buildCandidateEvaluation(resolvedPrompt, {
           side: c.side, team: c.team, opponent: c.opponent,
           market: c.market, odds: c.odds, opponentOdds: c.opponentOdds,
-          // Attach pitcher data so evaluation-engine can compute pitcherSignal
+          // Attach pitcher + soccer data so evaluation-engine can compute signals
           pitchers: liveOdds.pitchers || null,
+          soccer:   liveOdds.soccer   || null,
         }, candidateRLM),
       };
     });
@@ -264,11 +264,11 @@ router.post('/', async (req, res) => {
   let multiCandidateMode = false;
 
   if (allPairsForAI && mode === 'deep') {
-    scoredPrompt       = buildMultiCandidatePrompt(resolvedPrompt, allPairsForAI, forceRecommendation);
+    scoredPrompt       = buildMultiCandidatePrompt(resolvedPrompt, allPairsForAI);
     multiCandidateMode = true;
     console.log('MULTI-CANDIDATE MODE: AI selecting best side');
   } else {
-    scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation, forceRecommendation);
+    scoredPrompt = buildScoredPrompt(resolvedPrompt, evaluation);
   }
 
   if (evaluation.oddsDetected) {
@@ -340,7 +340,7 @@ router.post('/', async (req, res) => {
   log('ai_complete', { reqId, duration_ms: Date.now() - reqStart, provider: result?.provider, model: result?.model, fallback: fallbackUsed, reviewed, oddsDetected: !!evaluation?.oddsDetected });
 
   // ── Stage D: Format response ──────────────────────────────────────────────
-  const structured = buildStructuredResult(evaluation, result?.text || '', forceRecommendation);
+  const structured = buildStructuredResult(evaluation, result?.text || '');
   if (staleWarning) {
     structured.staleWarning   = staleWarning;
     structured.lineAgeMinutes = staleAgeMinutes;
